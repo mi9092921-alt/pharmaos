@@ -153,3 +153,38 @@ async def test_sales_report_scan_is_index_backed(db_session: AsyncSession) -> No
         no_bitmap=True,
     )
     assert "idx_invoices_branch_created" in plan, plan
+
+
+async def test_movement_report_scan_is_index_backed(db_session: AsyncSession) -> None:
+    """P3-M2 — movement analysis (fast/slow movers, by-type totals) scans
+    stock_movements by (branch_id, movement_type, created_at range). Must hit
+    idx_movements_branch_type_created rather than the batch_id-only
+    idx_movements_batch."""
+    plan = await _plan(
+        db_session,
+        "EXPLAIN SELECT id FROM stock_movements "
+        "WHERE branch_id = '00000000-0000-0000-0000-000000000001' "
+        "AND movement_type = 'sale_out' AND NOT is_deleted "
+        "AND created_at >= CURRENT_DATE - 30 AND created_at < CURRENT_DATE + 1",
+    )
+    assert "idx_movements_branch_type_created" in plan, plan
+
+
+async def test_valuation_report_scan_is_index_backed(db_session: AsyncSession) -> None:
+    """P3-M2 — per-medication valuation groups ACTIVE batches for a branch —
+    the same (branch_id, medication_id) WHERE status='active' predicate
+    batch_status_report's sellable_value already relies on. No new index; this
+    guard just proves M2 didn't accidentally bypass idx_batches_branch_med.
+    idx_batches_expiry shares the branch_id + status='active' predicate, so
+    ORDER BY medication_id (the report's own GROUP BY column) + no_bitmap makes
+    the medication_id-leading index the deterministic pick, same technique as
+    idx_invoices_branch_created."""
+    plan = await _plan(
+        db_session,
+        "EXPLAIN SELECT medication_id, quantity, purchase_price FROM medication_batches "
+        "WHERE branch_id = '00000000-0000-0000-0000-000000000001' "
+        "AND NOT is_deleted AND status = 'active' "
+        "ORDER BY medication_id",
+        no_bitmap=True,
+    )
+    assert "idx_batches_branch_med" in plan, plan

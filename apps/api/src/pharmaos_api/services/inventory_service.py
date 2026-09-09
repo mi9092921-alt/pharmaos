@@ -12,7 +12,9 @@ CLAUDE.md rules enforced here:
   audits batch.quarantined.
 """
 
+import csv
 import datetime as dt
+import io
 import uuid
 from decimal import Decimal
 
@@ -605,6 +607,298 @@ async def batch_status_report(session: AsyncSession, *, branch_id: uuid.UUID) ->
         "sellable_value": str(sellable_value),
         "locked_value": str(locked_value),
         "totals": {"batch_count": total_count, "total_value": str(total_value)},
+    }
+
+
+# --------------------------- inventory reports (P3-M2) ---------------------------
+
+# Movement vocabulary (chk_movement_type) — every by-type bucket is always
+# present in the report (zero-filled), so the UI never has to guess which
+# types exist.
+_MOVEMENT_TYPES = (
+    "purchase_in",
+    "sale_out",
+    "return_in",
+    "return_out",
+    "adjustment",
+    "quarantine",
+    "expiry_writeoff",
+    "transfer_in",
+    "transfer_out",
+)
+
+
+def _validate_range(date_from: dt.date, date_to: dt.date) -> None:
+    if date_from > date_to:
+        raise ApiError(
+            ErrorCode.VALIDATION_FAILED, 422, message="date_from must be on or before date_to."
+        )
+
+
+async def stock_level_report(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    low_stock_only: bool = False,
+    skip: int = 0,
+    limit: int = 50,
+) -> dict[str, object]:
+    """Reports-tier view of a branch's stock levels against reorder policy.
+
+    Reuses list_inventory's cache-backed, index-served query (same
+    idx_inventory_branch path the operational /inventory screen uses) rather
+    than re-deriving it, and adds the branch-WIDE out-of-stock/low-stock
+    summary ALERT_RULES cares about (low_stock: cached_quantity <=
+    reorder_point; out_of_stock: cached_quantity == 0). Distinct from
+    GET /inventory (inventory.view, every role) by permission tier
+    (reports.inventory) and by surfacing that summary a manager reviews,
+    rather than only an operational picking list.
+    """
+    capped = min(max(limit, 1), MAX_PAGE_SIZE)
+    rows, total = await list_inventory(
+        session, branch_id=branch_id, low_stock_only=low_stock_only, skip=skip, limit=capped
+    )
+    items: list[dict[str, object]] = []
+    for row in rows:
+        qty = Decimal(str(row["cached_quantity"]))
+        if qty == 0:
+            status = "out_of_stock"
+        elif row["low_stock"]:
+            status = "low_stock"
+        else:
+            status = "ok"
+        items.append({**row, "status": status})
+
+    counts = (await session.execute(text(f"""
+                SELECT
+                    COUNT(*) FILTER (WHERE bi.cached_quantity = 0) AS out_of_stock,
+                    COUNT(*) FILTER (WHERE bi.cached_quantity > 0
+                        AND {_LOW_THRESHOLD} > 0
+                        AND bi.cached_quantity <= {_LOW_THRESHOLD}) AS low_stock,
+                    COUNT(*) AS total_skus
+                FROM branch_inventory bi
+                WHERE bi.branch_id = :b AND NOT bi.is_deleted
+                """).bindparams(b=branch_id))).one()  # noqa: S608 (fragments are constant)
+
+    return {
+        "branch_id": str(branch_id),
+        "items": items,
+        "pagination": {"skip": skip, "limit": capped, "total": total},
+        "summary": {
+            "total_skus": int(counts.total_skus),
+            "low_stock_count": int(counts.low_stock),
+            "out_of_stock_count": int(counts.out_of_stock),
+        },
+    }
+
+
+async def stock_level_report_csv(
+    session: AsyncSession, *, branch_id: uuid.UUID, low_stock_only: bool = False
+) -> str:
+    """The full stock-level list (every matching SKU, no pagination — export
+    is an occasional admin action per CLAUDE.md's `reports.export` rate limit,
+    not a hot path) as a spreadsheet-ready CSV. Mirrors list_inventory's
+    WHERE-fragment convention rather than paging through it in a loop."""
+    where = ["bi.branch_id = :b", "NOT bi.is_deleted", "NOT m.is_deleted"]
+    if low_stock_only:
+        where.append(f"({_LOW_THRESHOLD} > 0 AND bi.cached_quantity <= {_LOW_THRESHOLD})")
+    where_sql = " AND ".join(where)
+    rows = (await session.execute(text(f"""
+                SELECT m.trade_name, m.trade_name_ar, bi.cached_quantity, bi.reorder_point,
+                       ({_LOW_THRESHOLD} > 0
+                        AND bi.cached_quantity <= {_LOW_THRESHOLD}) AS low_stock
+                FROM branch_inventory bi JOIN medications m ON m.id = bi.medication_id
+                WHERE {where_sql}
+                ORDER BY m.trade_name
+                """).bindparams(b=branch_id))).all()  # noqa: S608 (fragments are constant)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["trade_name_ar", "trade_name", "cached_quantity", "reorder_point", "status"])
+    for r in rows:
+        qty = Decimal(r.cached_quantity)
+        status = "out_of_stock" if qty == 0 else ("low_stock" if r.low_stock else "ok")
+        writer.writerow(
+            [
+                r.trade_name_ar,
+                r.trade_name,
+                str(qty),
+                str(r.reorder_point) if r.reorder_point is not None else "",
+                status,
+            ]
+        )
+    return "\ufeff" + buf.getvalue()
+
+
+async def inventory_valuation_report(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    skip: int = 0,
+    limit: int = 50,
+) -> dict[str, object]:
+    """Per-medication valuation of a branch's ACTIVE (sellable) stock —
+    quantity x purchase_price, ranked by value descending. Served by the
+    existing idx_batches_branch_med (branch_id, medication_id) WHERE
+    NOT is_deleted AND status='active' partial index — the exact predicate
+    batch_status_report's sellable_value already sums branch-wide; this report
+    breaks that same figure out per SKU. Branch totals are read FROM
+    batch_status_report (not recomputed) so the two reports can never
+    disagree."""
+    capped = min(max(limit, 1), MAX_PAGE_SIZE)
+    totals = await batch_status_report(session, branch_id=branch_id)
+
+    total_skus = (await session.execute(text("""
+                SELECT COUNT(*) FROM (
+                    SELECT medication_id FROM medication_batches
+                    WHERE branch_id = :b AND NOT is_deleted
+                      AND status = 'active' AND quantity > 0
+                    GROUP BY medication_id
+                ) x
+                """).bindparams(b=branch_id))).scalar_one()
+
+    rows = (await session.execute(text("""
+                SELECT b.medication_id, m.trade_name, m.trade_name_ar,
+                       SUM(b.quantity) AS qty,
+                       SUM(b.quantity * b.purchase_price) AS value
+                FROM medication_batches b
+                JOIN medications m ON m.id = b.medication_id
+                WHERE b.branch_id = :b AND NOT b.is_deleted
+                  AND b.status = 'active' AND b.quantity > 0
+                GROUP BY b.medication_id, m.trade_name, m.trade_name_ar
+                ORDER BY value DESC, qty DESC
+                OFFSET :skip LIMIT :lim
+                """).bindparams(b=branch_id, skip=skip, lim=capped))).all()
+
+    items = [
+        {
+            "medication_id": str(r.medication_id),
+            "trade_name": r.trade_name,
+            "trade_name_ar": r.trade_name_ar,
+            "quantity": str(Decimal(r.qty).quantize(Decimal("0.001"))),
+            "value": str(Decimal(r.value).quantize(Decimal("0.01"))),
+        }
+        for r in rows
+    ]
+
+    return {
+        "branch_id": str(branch_id),
+        "items": items,
+        "pagination": {"skip": skip, "limit": capped, "total": int(total_skus)},
+        "totals": {
+            "sellable_value": totals["sellable_value"],
+            "locked_value": totals["locked_value"],
+        },
+    }
+
+
+async def movement_report(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    date_from: dt.date,
+    date_to: dt.date,
+    mover_limit: int = 10,
+) -> dict[str, object]:
+    """Stock-movement analysis for a branch over an inclusive local-day range:
+    totals by movement_type, plus fast/slow movers ranked by 'sale_out' volume
+    (pharmaos-phase-3-execution-plan-analytics.md P3-M2: "تحليل الحركة ...
+    وبطيء/سريع الحركة"). Backed by idx_movements_branch_type_created
+    (branch_id, movement_type, created_at) — same half-open local-day window
+    convention as reporting_service.sales_report (P3-M1).
+
+    Slow movers are medications CURRENTLY IN STOCK at this branch
+    (branch_inventory row with cached_quantity > 0), ranked by their LOWEST
+    sale_out volume in the range (zero first) — a stagnant-shelf-space signal,
+    distinct from items simply never stocked here at all.
+    """
+    _validate_range(date_from, date_to)
+    p: dict[str, object] = {
+        "b": branch_id,
+        "f": date_from,
+        "t_excl": date_to + dt.timedelta(days=1),
+    }
+
+    # 1) Totals by movement type — the branch's full ledger vocabulary is
+    # always present (zero-filled) so a caller never has to special-case a
+    # type that had no activity this range.
+    type_rows = (await session.execute(text("""
+                SELECT movement_type, COUNT(*) AS n, COALESCE(SUM(quantity_delta), 0) AS net_qty
+                FROM stock_movements
+                WHERE branch_id = :b AND NOT is_deleted
+                  AND created_at >= :f AND created_at < :t_excl
+                GROUP BY movement_type
+                """).bindparams(**p))).all()
+    by_type: dict[str, object] = {t: {"count": 0, "net_quantity": "0.000"} for t in _MOVEMENT_TYPES}
+    for r in type_rows:
+        by_type[r.movement_type] = {
+            "count": int(r.n),
+            "net_quantity": str(Decimal(r.net_qty).quantize(Decimal("0.001"))),
+        }
+    total_movements = sum(int(r.n) for r in type_rows)
+
+    # 2) Fast movers: top medications by sale_out volume in the range.
+    fast_rows = (await session.execute(text("""
+                SELECT b.medication_id, m.trade_name, m.trade_name_ar,
+                       SUM(-sm.quantity_delta) AS qty_sold
+                FROM stock_movements sm
+                JOIN medication_batches b ON b.id = sm.batch_id
+                JOIN medications m ON m.id = b.medication_id
+                WHERE sm.branch_id = :b AND NOT sm.is_deleted
+                  AND sm.movement_type = 'sale_out'
+                  AND sm.created_at >= :f AND sm.created_at < :t_excl
+                GROUP BY b.medication_id, m.trade_name, m.trade_name_ar
+                ORDER BY qty_sold DESC
+                LIMIT :lim
+                """).bindparams(**p, lim=mover_limit))).all()
+    fast_movers = [
+        {
+            "medication_id": str(r.medication_id),
+            "trade_name": r.trade_name,
+            "trade_name_ar": r.trade_name_ar,
+            "qty_sold": str(Decimal(r.qty_sold).quantize(Decimal("0.001"))),
+        }
+        for r in fast_rows
+    ]
+
+    # 3) Slow movers: currently-stocked SKUs LEFT JOINed to their sale_out
+    # volume in the range (0 if none sold at all).
+    slow_rows = (await session.execute(text("""
+                SELECT bi.medication_id, m.trade_name, m.trade_name_ar, bi.cached_quantity,
+                       COALESCE(sold.qty_sold, 0) AS qty_sold
+                FROM branch_inventory bi
+                JOIN medications m ON m.id = bi.medication_id
+                LEFT JOIN (
+                    SELECT b.medication_id, SUM(-sm.quantity_delta) AS qty_sold
+                    FROM stock_movements sm
+                    JOIN medication_batches b ON b.id = sm.batch_id
+                    WHERE sm.branch_id = :b AND NOT sm.is_deleted
+                      AND sm.movement_type = 'sale_out'
+                      AND sm.created_at >= :f AND sm.created_at < :t_excl
+                    GROUP BY b.medication_id
+                ) sold ON sold.medication_id = bi.medication_id
+                WHERE bi.branch_id = :b AND NOT bi.is_deleted AND bi.cached_quantity > 0
+                ORDER BY qty_sold ASC, bi.cached_quantity DESC
+                LIMIT :lim
+                """).bindparams(**p, lim=mover_limit))).all()
+    slow_movers = [
+        {
+            "medication_id": str(r.medication_id),
+            "trade_name": r.trade_name,
+            "trade_name_ar": r.trade_name_ar,
+            "cached_quantity": str(r.cached_quantity),
+            "qty_sold": str(Decimal(r.qty_sold).quantize(Decimal("0.001"))),
+        }
+        for r in slow_rows
+    ]
+
+    return {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "total_movements": total_movements,
+        "by_type": by_type,
+        "fast_movers": fast_movers,
+        "slow_movers": slow_movers,
     }
 
 
