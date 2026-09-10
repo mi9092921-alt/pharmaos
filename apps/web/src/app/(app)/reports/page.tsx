@@ -2,7 +2,7 @@
 
 import { Badge, Card, CardContent, Input, Label, Select, Spinner } from '@pharmaos/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CartesianGrid,
   Line,
@@ -66,7 +66,10 @@ export default function ReportsPage() {
 
   const branchesQuery = useQuery({ queryKey: ['inv-branches'], queryFn: listInventoryBranches });
   const branches = branchesQuery.data ?? [];
-  if (!branchId && branches[0]) setBranchId(branches[0].id);
+  useEffect(() => {
+    const first = branches[0];
+    if (!branchId && first) setBranchId(first.id);
+  }, [branches, branchId]);
 
   if (branchesQuery.isLoading) {
     return (

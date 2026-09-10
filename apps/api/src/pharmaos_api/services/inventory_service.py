@@ -768,7 +768,7 @@ async def inventory_valuation_report(
                 GROUP BY b.medication_id, m.trade_name, m.trade_name_ar
                 ORDER BY value DESC, qty DESC
                 OFFSET :skip LIMIT :lim
-                """).bindparams(b=branch_id, skip=skip, lim=capped))).all()
+                """).bindparams(b=branch_id, skip=max(skip, 0), lim=capped))).all()
 
     items = [
         {
@@ -844,7 +844,7 @@ async def movement_report(
                 FROM stock_movements sm
                 JOIN medication_batches b ON b.id = sm.batch_id
                 JOIN medications m ON m.id = b.medication_id
-                WHERE sm.branch_id = :b AND NOT sm.is_deleted
+                WHERE sm.branch_id = :b AND NOT sm.is_deleted AND NOT b.is_deleted
                   AND sm.movement_type = 'sale_out'
                   AND sm.created_at >= :f AND sm.created_at < :t_excl
                 GROUP BY b.medication_id, m.trade_name, m.trade_name_ar
@@ -872,7 +872,7 @@ async def movement_report(
                     SELECT b.medication_id, SUM(-sm.quantity_delta) AS qty_sold
                     FROM stock_movements sm
                     JOIN medication_batches b ON b.id = sm.batch_id
-                    WHERE sm.branch_id = :b AND NOT sm.is_deleted
+                    WHERE sm.branch_id = :b AND NOT sm.is_deleted AND NOT b.is_deleted
                       AND sm.movement_type = 'sale_out'
                       AND sm.created_at >= :f AND sm.created_at < :t_excl
                     GROUP BY b.medication_id
