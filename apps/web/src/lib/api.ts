@@ -1309,3 +1309,204 @@ export function drainTtEvents(branchId: string) {
     { method: 'POST', body: JSON.stringify({ branch_id: branchId }) },
   );
 }
+
+// ---- Reports: sales (P3-M1) ----
+
+export type ReportGranularity = 'day' | 'month' | 'year';
+
+export interface SalesSummary {
+  gross_sales: string;
+  subtotal: string;
+  discount_total: string;
+  tax_total: string;
+  refunds_total: string;
+  net_sales: string;
+  invoice_count: number;
+  refund_count: number;
+  avg_invoice: string;
+}
+
+export interface PaymentBreakdownRow {
+  method: string;
+  count: number;
+  total: string;
+}
+
+export interface SalesTrendPoint {
+  bucket: string;
+  total: string;
+}
+
+export interface TopItemRow {
+  medication_id: string;
+  name_ar: string | null;
+  name: string;
+  revenue: string;
+  qty_smallest: string;
+}
+
+export interface SalesReport {
+  branch_id: string;
+  date_from: string;
+  date_to: string;
+  granularity: ReportGranularity;
+  summary: SalesSummary;
+  by_payment_method: PaymentBreakdownRow[];
+  by_refund_method: PaymentBreakdownRow[];
+  trend: SalesTrendPoint[];
+  top_items: TopItemRow[];
+}
+
+export function getSalesReport(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+  granularity?: ReportGranularity;
+  topLimit?: number;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+    granularity: opts.granularity ?? 'day',
+  });
+  if (opts.topLimit) params.set('top_limit', String(opts.topLimit));
+  return apiFetch<SalesReport>(`/api/v1/reports/sales?${params.toString()}`);
+}
+
+export function salesReportExportUrl(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+  granularity?: ReportGranularity;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+    granularity: opts.granularity ?? 'day',
+  });
+  return `/api/v1/reports/sales/export?${params.toString()}`;
+}
+
+// ---- Reports: inventory (P3-M2) ----
+
+export type StockLevelStatus = 'ok' | 'low_stock' | 'out_of_stock';
+
+export interface StockLevelRow {
+  medication_id: string;
+  trade_name: string;
+  trade_name_ar: string | null;
+  cached_quantity: string;
+  min_stock_level: string | null;
+  max_stock_level: string | null;
+  reorder_point: string | null;
+  shelf_location: string | null;
+  low_stock: boolean;
+  status: StockLevelStatus;
+}
+
+export interface StockLevelReport {
+  branch_id: string;
+  items: StockLevelRow[];
+  pagination: { skip: number; limit: number; total: number };
+  summary: { total_skus: number; low_stock_count: number; out_of_stock_count: number };
+}
+
+export function getStockLevelReport(opts: {
+  branchId: string;
+  lowStockOnly?: boolean;
+  skip?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  if (opts.lowStockOnly) params.set('low_stock_only', 'true');
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<StockLevelReport>(`/api/v1/reports/inventory/stock-level?${params.toString()}`);
+}
+
+export function stockLevelExportUrl(opts: { branchId: string; lowStockOnly?: boolean }) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  if (opts.lowStockOnly) params.set('low_stock_only', 'true');
+  return `/api/v1/reports/inventory/stock-level/export?${params.toString()}`;
+}
+
+export interface ValuationRow {
+  medication_id: string;
+  trade_name: string;
+  trade_name_ar: string | null;
+  quantity: string;
+  value: string;
+}
+
+export interface InventoryValuationReport {
+  branch_id: string;
+  items: ValuationRow[];
+  pagination: { skip: number; limit: number; total: number };
+  totals: { sellable_value: string; locked_value: string };
+}
+
+export function getInventoryValuationReport(opts: {
+  branchId: string;
+  skip?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<InventoryValuationReport>(
+    `/api/v1/reports/inventory/valuation?${params.toString()}`,
+  );
+}
+
+export type MovementType =
+  | 'purchase_in'
+  | 'sale_out'
+  | 'return_in'
+  | 'return_out'
+  | 'adjustment'
+  | 'quarantine'
+  | 'expiry_writeoff'
+  | 'transfer_in'
+  | 'transfer_out';
+
+export interface MovementTypeRow {
+  count: number;
+  net_quantity: string;
+}
+
+export interface MoverRow {
+  medication_id: string;
+  trade_name: string;
+  trade_name_ar: string | null;
+  qty_sold: string;
+}
+
+export interface SlowMoverRow extends MoverRow {
+  cached_quantity: string;
+}
+
+export interface MovementReport {
+  date_from: string;
+  date_to: string;
+  total_movements: number;
+  by_type: Record<MovementType, MovementTypeRow>;
+  fast_movers: MoverRow[];
+  slow_movers: SlowMoverRow[];
+}
+
+export function getMovementReport(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+  moverLimit?: number;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+  });
+  if (opts.moverLimit) params.set('mover_limit', String(opts.moverLimit));
+  return apiFetch<MovementReport>(`/api/v1/reports/inventory/movement?${params.toString()}`);
+}
