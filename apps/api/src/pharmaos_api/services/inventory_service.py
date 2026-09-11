@@ -692,6 +692,20 @@ async def stock_level_report(
     }
 
 
+def _csv_safe(value: str) -> str:
+    """Neutralize CSV formula injection (OWASP): a free-text field
+    (trade_name/trade_name_ar have no character restriction — Field(min_length=1,
+    max_length=255) is the only constraint, per routers/catalog.py) could start
+    with =, +, -, or @ and be interpreted as a formula by Excel/Sheets on open.
+    A data_entry role can create medications (inventory.add); a branch_manager
+    exports this CSV (reports.export) — a malicious trade_name is a real,
+    if low-probability, cross-role injection vector this export introduces
+    that M1's numeric-only CSV never had. Prefixing with a single quote is
+    the standard mitigation; spreadsheet apps render it as forced-text and
+    drop the quote from display."""
+    return f"'{value}" if value and value[0] in "=+-@" else value
+
+
 async def stock_level_report_csv(
     session: AsyncSession, *, branch_id: uuid.UUID, low_stock_only: bool = False
 ) -> str:
@@ -720,8 +734,8 @@ async def stock_level_report_csv(
         status = "out_of_stock" if qty == 0 else ("low_stock" if r.low_stock else "ok")
         writer.writerow(
             [
-                r.trade_name_ar,
-                r.trade_name,
+                _csv_safe(r.trade_name_ar) if r.trade_name_ar else "",
+                _csv_safe(r.trade_name),
                 str(qty),
                 str(r.reorder_point) if r.reorder_point is not None else "",
                 status,

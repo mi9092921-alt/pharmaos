@@ -1334,6 +1334,7 @@ export interface PaymentBreakdownRow {
 
 export interface SalesTrendPoint {
   bucket: string;
+  count: number;
   total: string;
 }
 
@@ -1346,7 +1347,6 @@ export interface TopItemRow {
 }
 
 export interface SalesReport {
-  branch_id: string;
   date_from: string;
   date_to: string;
   granularity: ReportGranularity;

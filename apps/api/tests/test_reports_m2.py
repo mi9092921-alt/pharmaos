@@ -10,7 +10,9 @@ Each test uses its OWN branch (the `branch` fixture) so branch-scoped reports
 are isolated from batches/movements other tests leave in the shared test DB.
 """
 
+import csv
 import datetime as dt
+import io
 import uuid
 from decimal import Decimal
 
@@ -165,6 +167,61 @@ async def test_stock_level_report_low_stock_only_filter(
     assert str(ok_med) not in ids
     # Summary always covers the FULL branch, not just the filtered page.
     assert report["summary"]["total_skus"] == 2
+
+
+async def test_stock_level_csv_neutralizes_formula_injection(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """trade_name/trade_name_ar have no character restriction (Field just
+    bounds length — routers/catalog.py), and a data_entry role can create
+    medications (inventory.add) while only super_admin/branch_manager can
+    export (reports.export) — a cross-role CSV-formula-injection vector this
+    export introduces. A leading =/+/-/@ must come back single-quote-prefixed
+    (the standard Excel/Sheets mitigation), not verbatim."""
+    unit_id = (
+        await db_session.execute(
+            text(
+                "INSERT INTO units (name_ar) VALUES ('شريط') "
+                "ON CONFLICT (name_ar) DO UPDATE SET name_ar=EXCLUDED.name_ar RETURNING id"
+            )
+        )
+    ).scalar_one()
+    med = Medication(trade_name='=HYPERLINK("http://evil.example","x")', trade_name_ar="@دواء")
+    db_session.add(med)
+    await db_session.flush()
+    strip = MedicationPackaging(
+        medication_id=med.id,
+        level=2,
+        unit_id=unit_id,
+        name_ar="شريط",
+        qty_in_parent=Decimal(10),
+        selling_price=Decimal("30.00"),
+        is_default_sale=True,
+    )
+    db_session.add(strip)
+    await db_session.commit()
+    await inventory_service.receive_stock(
+        db_session,
+        actor=actor,
+        branch_id=branch.id,
+        medication_id=med.id,
+        batch_number=f"INV-{uuid.uuid4().hex[:8]}",
+        expiry_date=dt.date.today() + dt.timedelta(days=365),
+        quantity=Decimal(100),
+        purchase_price=Decimal("1.00"),
+    )
+
+    csv_text = await inventory_service.stock_level_report_csv(db_session, branch_id=branch.id)
+    reader = csv.reader(io.StringIO(csv_text.lstrip("\ufeff")))
+    header, data_row = list(reader)
+    assert header == ["trade_name_ar", "trade_name", "cached_quantity", "reorder_point", "status"]
+    name_ar, name_en = data_row[0], data_row[1]
+    # The single-quote prefix is the neutralization itself — a spreadsheet app
+    # treats it as force-text and drops it from display, so its PRESENCE here
+    # (not the raw '=.../'@... value) is exactly what proves the mitigation
+    # engaged, for both a leading '@' and a leading '='.
+    assert name_ar == "'@دواء"
+    assert name_en.startswith("'=HYPERLINK(")
 
 
 # ------------------------------ service: valuation ------------------------------
