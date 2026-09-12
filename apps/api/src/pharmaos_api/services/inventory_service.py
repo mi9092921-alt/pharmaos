@@ -17,6 +17,7 @@ import datetime as dt
 import io
 import uuid
 from decimal import Decimal
+from typing import cast
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -913,6 +914,103 @@ async def movement_report(
         "by_type": by_type,
         "fast_movers": fast_movers,
         "slow_movers": slow_movers,
+    }
+
+
+async def expiry_waste_report(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    date_from: dt.date,
+    date_to: dt.date,
+) -> dict[str, object]:
+    """Expiry & waste analytics (P3-M3): buckets + waste value + a forward
+    trend + locked/expired capital — reusing expiry_alerts and
+    batch_status_report per the execution plan rather than re-deriving them
+    (both re-verified against their actual return shapes from source before
+    wiring this up, not from memory).
+
+    Two different time semantics share this one report, documented explicitly
+    so the date range's scope is never ambiguous:
+      - `buckets` (from expiry_alerts) and `trend` are ALWAYS "as of today" —
+        near-expiry risk on ACTIVE stock does not take a date range; today's
+        90-day horizon is today's horizon regardless of what range the caller
+        passed for the waste side.
+      - `waste_swept` respects [date_from, date_to] — it answers "how much
+        was written off as expired DURING this period."
+
+    Waste-value correctness note (verified from expiry_sweep's own source
+    before writing this, not assumed by analogy with sale_out): expiry_sweep
+    writes each expiry_writeoff movement with quantity_delta = 0 — the batch's
+    PHYSICAL quantity is untouched by expiry (only its SELLABLE-cache
+    contribution is removed, same convention as quarantine). So waste value
+    can NOT be read from SUM(quantity_delta) the way sale_out volume is in
+    movement_report — that would always be zero. It is instead the swept
+    batches' own stored `quantity x purchase_price`, joined from the movement
+    (which still carries an accurate created_at per batch) to the batch (which
+    still carries the real quantity). Deliberately NOT filtered by the batch's
+    CURRENT status — the movement log is the historical record of what
+    happened during the period; a batch's status filter would let a later
+    reclassification retroactively rewrite history.
+    """
+    _validate_range(date_from, date_to)
+
+    buckets = await expiry_alerts(session, branch_id=branch_id)
+    status_report = await batch_status_report(session, branch_id=branch_id)
+    by_status = cast("dict[str, dict[str, object]]", status_report["by_status"])
+
+    waste_row = (
+        await session.execute(text("""
+                SELECT COUNT(DISTINCT sm.batch_id) AS n,
+                       COALESCE(SUM(b.quantity), 0) AS qty,
+                       COALESCE(SUM(b.quantity * b.purchase_price), 0) AS value
+                FROM stock_movements sm
+                JOIN medication_batches b ON b.id = sm.batch_id
+                WHERE sm.branch_id = :b AND NOT sm.is_deleted AND NOT b.is_deleted
+                  AND sm.movement_type = 'expiry_writeoff'
+                  AND sm.created_at >= :f AND sm.created_at < :t_excl
+                """).bindparams(b=branch_id, f=date_from, t_excl=date_to + dt.timedelta(days=1)))
+    ).one()
+
+    # Forward trend: ACTIVE stock's value by week-of-expiry over the same
+    # EXPIRY_WARNING_DAYS horizon expiry_alerts already uses (13 weekly
+    # buckets covering days 0-90; the last bucket is a partial 7-day week).
+    weeks = -(-EXPIRY_WARNING_DAYS // 7)  # ceil division
+    trend_rows = (
+        await session.execute(text("""
+                SELECT LEAST(FLOOR((expiry_date - CURRENT_DATE) / 7.0), :max_week)::int AS week_idx,
+                       COUNT(*) AS n, SUM(quantity) AS qty, SUM(quantity * purchase_price) AS value
+                FROM medication_batches
+                WHERE branch_id = :b AND NOT is_deleted AND status = 'active' AND quantity > 0
+                  AND expiry_date >= CURRENT_DATE
+                  AND expiry_date <= CURRENT_DATE + :horizon
+                GROUP BY week_idx
+                """).bindparams(b=branch_id, max_week=weeks - 1, horizon=EXPIRY_WARNING_DAYS))
+    ).all()
+    trend: list[dict[str, object]] = [
+        {"week": i, "count": 0, "quantity": "0.000", "value": "0.00"} for i in range(weeks)
+    ]
+    for r in trend_rows:
+        trend[int(r.week_idx)] = {
+            "week": int(r.week_idx),
+            "count": int(r.n),
+            "quantity": str(Decimal(r.qty).quantize(Decimal("0.001"))),
+            "value": str(Decimal(r.value).quantize(Decimal("0.01"))),
+        }
+
+    return {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "as_of": buckets["as_of"],
+        "buckets": buckets["buckets"],
+        "expired_value": by_status["expired"]["total_value"],
+        "locked_value": status_report["locked_value"],
+        "waste_swept": {
+            "count": int(waste_row.n),
+            "quantity": str(Decimal(waste_row.qty).quantize(Decimal("0.001"))),
+            "value": str(Decimal(waste_row.value).quantize(Decimal("0.01"))),
+        },
+        "trend": trend,
     }
 
 

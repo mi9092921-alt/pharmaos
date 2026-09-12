@@ -188,3 +188,42 @@ async def test_valuation_report_scan_is_index_backed(db_session: AsyncSession) -
         no_bitmap=True,
     )
     assert "idx_batches_branch_med" in plan, plan
+
+
+async def test_expiry_trend_scan_is_index_backed(db_session: AsyncSession) -> None:
+    """P3-M3 — the forward expiry trend groups ACTIVE batches for a branch by
+    week-of-expiry. Checked the REAL query exactly as written (GROUP BY
+    week_idx and all): the planner's natural, deterministic pick here is
+    idx_batches_branch_med, not idx_batches_expiry — both partial indexes
+    share the branch_id + status='active' predicate, and the planner puts
+    expiry_date/quantity in a Filter rather than the Index Cond for this
+    particular shape. Asserting what the query ACTUALLY does (verified via
+    manual EXPLAIN before writing this test) rather than which index would be
+    intuitively "expected" — either way this is a genuine Index Scan, never a
+    sequential scan, which is this guard's actual purpose."""
+    plan = await _plan(
+        db_session,
+        "EXPLAIN SELECT LEAST(FLOOR((expiry_date - CURRENT_DATE) / 7.0), 12)::int AS week_idx, "
+        "COUNT(*), SUM(quantity), SUM(quantity * purchase_price) FROM medication_batches "
+        "WHERE branch_id = '00000000-0000-0000-0000-000000000001' "
+        "AND NOT is_deleted AND status = 'active' AND quantity > 0 "
+        "AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + 90 "
+        "GROUP BY week_idx",
+    )
+    assert "idx_batches_branch_med" in plan, plan
+    assert "Seq Scan" not in plan, plan
+
+
+async def test_expiry_waste_scan_is_index_backed(db_session: AsyncSession) -> None:
+    """P3-M3 — waste value swept in a date range filters stock_movements by
+    (branch_id, movement_type='expiry_writeoff', created_at range) — the exact
+    shape idx_movements_branch_type_created (P3-M2) was built for; reused
+    here, not a new index."""
+    plan = await _plan(
+        db_session,
+        "EXPLAIN SELECT id FROM stock_movements "
+        "WHERE branch_id = '00000000-0000-0000-0000-000000000001' "
+        "AND movement_type = 'expiry_writeoff' AND NOT is_deleted "
+        "AND created_at >= CURRENT_DATE - 30 AND created_at < CURRENT_DATE + 1",
+    )
+    assert "idx_movements_branch_type_created" in plan, plan

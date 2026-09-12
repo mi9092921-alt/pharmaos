@@ -5,11 +5,16 @@ P3-M2 — inventory reports: stock level (+ CSV), valuation, movement analysis
          (by type + fast/slow movers). Gated by `reports.inventory` (super_admin,
          branch_manager, pharmacist per CLAUDE.md — a wider tier than
          `reports.sales`, since pharmacists review stock decisions day to day).
+P3-M3 — expiry & waste analytics: near-expiry buckets (reused verbatim from
+         expiry_alerts) + waste value swept in a date range + a forward
+         weekly trend + expired/locked capital (reused from
+         batch_status_report). Same reports.inventory gate as M2 — this is
+         the same inventory-analytics audience, not a new permission domain.
 
 All routes are READ-ONLY (GET), so there is no CSRF or audit surface here.
 Aggregation is entirely server-side SQL (decision D2), in `reporting_service`
 (sales) and `inventory_service` (inventory — reuses the Phase-1/2 read models
-per the P3-M2 plan rather than re-deriving them).
+per the P3-M2/M3 plan rather than re-deriving them).
 """
 
 import datetime as dt
@@ -140,5 +145,19 @@ async def inventory_movement_report(
         date_from=date_from,
         date_to=date_to,
         mover_limit=mover_limit,
+    )
+    return success_envelope(data)
+
+
+@router.get("/reports/inventory/expiry-waste")
+async def inventory_expiry_waste_report(
+    branch_id: uuid.UUID = Query(),
+    date_from: dt.date = Query(),
+    date_to: dt.date = Query(),
+    session: AsyncSession = Depends(get_session),
+    _: None = _reports_inventory,
+) -> dict[str, object]:
+    data = await inventory_svc.expiry_waste_report(
+        session, branch_id=branch_id, date_from=date_from, date_to=date_to
     )
     return success_envelope(data)
