@@ -168,6 +168,29 @@ async def test_expiry_waste_trend_weekly_buckets_and_horizon(
     assert str(far.id)  # sanity: the batch exists, it's just outside the horizon
 
 
+async def test_expiry_waste_trend_exact_horizon_boundary(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """day=90 is INSIDE the EXPIRY_WARNING_DAYS horizon (expiry_date <=
+    CURRENT_DATE + 90) and must land in the last bucket, week 12
+    (floor(90/7)=12, the LEAST(...,12) cap does nothing here — it's already
+    exactly 12). day=91 is one day outside and must be excluded from the
+    trend entirely, not clamped into week 12 too. Isolated in its own branch
+    so it can't be confused with the coarser multi-week test above."""
+    med_id = await _make_med(db_session)
+    await _receive(db_session, actor, branch, med_id, days=90, qty="4", price="1.00")
+    await _receive(db_session, actor, branch, med_id, days=91, qty="6", price="1.00")
+
+    today = dt.date.today()
+    report = await inventory_service.expiry_waste_report(
+        db_session, branch_id=branch.id, date_from=today, date_to=today
+    )
+    trend = report["trend"]
+    assert trend[12] == {"week": 12, "count": 1, "quantity": "4.000", "value": "4.00"}
+    total_in_trend = sum(int(w["count"]) for w in trend)
+    assert total_in_trend == 1  # the day=91 batch never appears anywhere
+
+
 async def test_expiry_waste_expired_and_locked_value_match_batch_status_report(
     db_session: AsyncSession, actor: User, branch: Branch
 ) -> None:
