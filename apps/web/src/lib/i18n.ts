@@ -710,6 +710,14 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'reports.movement_transfer_in': 'تحويل وارد',
     'reports.movement_transfer_out': 'تحويل صادر',
     'reports.no_movers': 'لا توجد بيانات كافية',
+    // P3-M3 — expiry & waste (bucket/severity/medication/value/quantity/
+    // batch_number/expiry/days_left/no_alerts labels reused from inventory.*)
+    'reports.tab_expiry_waste': 'الانتهاء والهدر',
+    'reports.expired_value': 'قيمة الدفعات المنتهية',
+    'reports.waste_value': 'قيمة الهدر خلال المدى',
+    'reports.waste_count': 'عدد الدفعات المهدرة',
+    'reports.expiry_trend': 'اتجاه الانتهاء القادم',
+    'reports.week': 'أسبوع',
   },
   en: {
     'app.name': 'PharmaOS',
@@ -1410,6 +1418,13 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'reports.movement_transfer_in': 'Transfer in',
     'reports.movement_transfer_out': 'Transfer out',
     'reports.no_movers': 'Not enough data yet',
+    // P3-M3 — expiry & waste
+    'reports.tab_expiry_waste': 'Expiry & Waste',
+    'reports.expired_value': 'Expired batch value',
+    'reports.waste_value': 'Waste value in range',
+    'reports.waste_count': 'Batches written off',
+    'reports.expiry_trend': 'Upcoming expiry trend',
+    'reports.week': 'Week',
   },
 };
 

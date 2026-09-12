@@ -4,6 +4,8 @@ import { Badge, Card, CardContent, Input, Label, Select, Spinner } from '@pharma
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -14,6 +16,9 @@ import {
 } from 'recharts';
 
 import {
+  type AlertSeverity,
+  type ExpiryBucketKey,
+  getExpiryWasteReport,
   getInventoryValuationReport,
   getMovementReport,
   getSalesReport,
@@ -55,6 +60,17 @@ const MOVEMENT_TYPES: MovementType[] = [
   'transfer_in',
   'transfer_out',
 ];
+
+// Mirrors /inventory's own ALERT_BUCKETS/SEV_TONE exactly (same bucket order,
+// same severity->Badge-tone mapping) — this report reuses expiry_alerts'
+// output verbatim, so its bucket presentation should read identically to the
+// operational screen the data already appears on.
+const ALERT_BUCKETS: ExpiryBucketKey[] = ['expired', 'within_30', 'within_60', 'within_90'];
+const SEV_TONE: Record<AlertSeverity, 'danger' | 'warning'> = {
+  danger: 'danger',
+  critical: 'danger',
+  warning: 'warning',
+};
 
 export default function ReportsPage() {
   const canSales = useAuth((s) => s.hasPermission('reports.sales'));
@@ -350,7 +366,7 @@ function MethodTable({ rows }: { rows: { method: string; count: number; total: s
 // ------------------------------ inventory (P3-M2) ------------------------------
 
 function InventoryTab({ branchId, canExport }: { branchId: string; canExport: boolean }) {
-  const [sub, setSub] = useState<'stock' | 'valuation' | 'movement'>('stock');
+  const [sub, setSub] = useState<'stock' | 'valuation' | 'movement' | 'expiry'>('stock');
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b border-border">
@@ -363,10 +379,14 @@ function InventoryTab({ branchId, canExport }: { branchId: string; canExport: bo
         <TabButton active={sub === 'movement'} onClick={() => setSub('movement')}>
           {t('reports.inv_tab_movement')}
         </TabButton>
+        <TabButton active={sub === 'expiry'} onClick={() => setSub('expiry')}>
+          {t('reports.tab_expiry_waste')}
+        </TabButton>
       </div>
       {sub === 'stock' && <StockLevelSubTab branchId={branchId} canExport={canExport} />}
       {sub === 'valuation' && <ValuationSubTab branchId={branchId} />}
       {sub === 'movement' && <MovementSubTab branchId={branchId} />}
+      {sub === 'expiry' && <ExpiryWasteSubTab branchId={branchId} />}
     </div>
   );
 }
@@ -614,6 +634,164 @@ function MovementSubTab({ branchId }: { branchId: string }) {
               </CardContent>
             </Card>
           </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ExpiryWasteSubTab({ branchId }: { branchId: string }) {
+  const [dateFrom, setDateFrom] = useState(todayIso());
+  const [dateTo, setDateTo] = useState(todayIso());
+  const query = useQuery({
+    queryKey: ['expiry-waste-report', branchId, dateFrom, dateTo],
+    queryFn: () => getExpiryWasteReport({ branchId, dateFrom, dateTo }),
+    enabled: !!branchId && dateFrom <= dateTo,
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 pt-5">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_from')}</Label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_to')}</Label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-9"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {query.isLoading ? (
+        <div className="flex justify-center py-8">
+          <Spinner />
+        </div>
+      ) : query.data ? (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {ALERT_BUCKETS.map((key) => {
+              const bucket = query.data.buckets[key];
+              return (
+                <Card key={key}>
+                  <CardContent className="space-y-1 pt-5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">{t(`inventory.bucket_${key}`)}</span>
+                      <Badge tone={SEV_TONE[bucket.severity]}>
+                        {t(`inventory.severity_${bucket.severity}`)}
+                      </Badge>
+                    </div>
+                    <div className="text-2xl font-bold tabular-nums text-slate-900">
+                      {bucket.count}
+                    </div>
+                    <div className="text-xs tabular-nums text-slate-500">
+                      {bucket.total_value} — {fmt(bucket.total_quantity)}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <KpiCard
+              label={t('reports.expired_value')}
+              tone="danger"
+              value={query.data.expired_value}
+            />
+            <KpiCard
+              label={t('reports.locked_value')}
+              tone="danger"
+              value={query.data.locked_value}
+            />
+            <div className="space-y-1">
+              <KpiCard
+                label={t('reports.waste_value')}
+                tone="danger"
+                value={query.data.waste_swept.value}
+              />
+              {query.data.waste_swept.count > 0 && (
+                <p className="text-xs text-slate-500">
+                  {t('reports.waste_count')}: {query.data.waste_swept.count}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="pt-6">
+              <h2 className="mb-3 text-sm font-semibold text-slate-800">
+                {t('reports.expiry_trend')}
+              </h2>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={query.data.trend.map((w) => ({
+                      label: `${t('reports.week')} ${w.week + 1}`,
+                      value: Number(w.value),
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="label" fontSize={11} stroke="#64748b" />
+                    <YAxis fontSize={12} stroke="#64748b" />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="var(--warning)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {ALERT_BUCKETS.map((key) => {
+            const bucket = query.data.buckets[key];
+            if (bucket.batches.length === 0) return null;
+            return (
+              <Card key={key}>
+                <CardContent className="pt-6">
+                  <h2 className="mb-3 text-sm font-semibold text-slate-800">
+                    {t(`inventory.bucket_${key}`)}
+                  </h2>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-xs text-slate-500">
+                        <th className="p-2 text-start">{t('inventory.medication')}</th>
+                        <th className="p-2 text-start">{t('inventory.batch_number')}</th>
+                        <th className="p-2 text-start">{t('inventory.expiry')}</th>
+                        <th className="p-2 text-start">{t('inventory.days_left')}</th>
+                        <th className="p-2 text-start">{t('inventory.quantity')}</th>
+                        <th className="p-2 text-start">{t('inventory.value')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bucket.batches.map((row) => (
+                        <tr key={row.batch_id} className="border-b border-border/60">
+                          <td className="p-2 font-medium text-slate-800">
+                            {row.trade_name_ar ?? row.trade_name}
+                          </td>
+                          <td className="p-2 text-slate-600">{row.batch_number}</td>
+                          <td className="p-2 tabular-nums text-slate-600">{row.expiry_date}</td>
+                          <td className="p-2 tabular-nums text-slate-600">{row.days_left}</td>
+                          <td className="p-2 tabular-nums text-slate-800">{fmt(row.quantity)}</td>
+                          <td className="p-2 tabular-nums text-slate-800">{row.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            );
+          })}
         </>
       ) : null}
     </div>

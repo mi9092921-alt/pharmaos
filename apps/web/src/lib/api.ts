@@ -1509,3 +1509,42 @@ export function getMovementReport(opts: {
   if (opts.moverLimit) params.set('mover_limit', String(opts.moverLimit));
   return apiFetch<MovementReport>(`/api/v1/reports/inventory/movement?${params.toString()}`);
 }
+
+// ---- Reports: expiry & waste (P3-M3) ----
+// Reuses ExpiryBucketKey/AlertSeverity/ExpiryAlertBatch/ExpiryBucket from the
+// P2-M4 block above verbatim — expiry_waste_report's `buckets` field IS
+// expiry_alerts()'s own `buckets` output, unmodified, so the shapes are
+// identical by construction, not just coincidentally similar.
+
+export interface WasteSweptSummary {
+  count: number;
+  quantity: string;
+  value: string;
+}
+
+export interface ExpiryTrendWeek {
+  week: number;
+  count: number;
+  quantity: string;
+  value: string;
+}
+
+export interface ExpiryWasteReport {
+  date_from: string;
+  date_to: string;
+  as_of: string;
+  buckets: Record<ExpiryBucketKey, ExpiryBucket>;
+  expired_value: string;
+  locked_value: string;
+  waste_swept: WasteSweptSummary;
+  trend: ExpiryTrendWeek[];
+}
+
+export function getExpiryWasteReport(opts: { branchId: string; dateFrom: string; dateTo: string }) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+  });
+  return apiFetch<ExpiryWasteReport>(`/api/v1/reports/inventory/expiry-waste?${params.toString()}`);
+}
