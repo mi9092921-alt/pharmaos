@@ -126,6 +126,31 @@ async def test_expiry_waste_value_from_swept_batches(
     assert report["waste_swept"] == {"count": 1, "quantity": "100.000", "value": "300.00"}
 
 
+async def test_expiry_waste_sums_across_multiple_swept_batches(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """Every prior waste_swept assertion used exactly one swept batch — never
+    proved the SUM/COUNT actually aggregate across more than one. Two
+    DIFFERENT medications, two DIFFERENT batches, swept together in one
+    expiry_sweep call: count must be 2, value must be the sum of both
+    (60.00 + 20.00), not either one alone or a double-count of one."""
+    med_a = await _make_med(db_session)
+    med_b = await _make_med(db_session)
+    batch_a = await _receive(db_session, actor, branch, med_a, days=5, qty="20", price="3.00")
+    batch_b = await _receive(db_session, actor, branch, med_b, days=5, qty="5", price="4.00")
+    await _force_expiry_offset(db_session, batch_a.id, days=-1)
+    await _force_expiry_offset(db_session, batch_b.id, days=-1)
+    swept = await inventory_service.expiry_sweep(db_session)
+    assert swept["swept"] >= 2
+
+    today = dt.date.today()
+    report = await inventory_service.expiry_waste_report(
+        db_session, branch_id=branch.id, date_from=today, date_to=today
+    )
+    # 20x3.00=60.00 + 5x4.00=20.00 = 80.00; quantity 20+5=25.
+    assert report["waste_swept"] == {"count": 2, "quantity": "25.000", "value": "80.00"}
+
+
 async def test_expiry_waste_swept_excluded_outside_date_range(
     db_session: AsyncSession, actor: User, branch: Branch
 ) -> None:
