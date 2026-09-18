@@ -171,46 +171,65 @@ async def test_movement_report_scan_is_index_backed(db_session: AsyncSession) ->
 
 
 async def test_valuation_report_scan_is_index_backed(db_session: AsyncSession) -> None:
-    """P3-M2 — per-medication valuation groups ACTIVE batches for a branch —
-    the same (branch_id, medication_id) WHERE status='active' predicate
-    batch_status_report's sellable_value already relies on. No new index; this
-    guard just proves M2 didn't accidentally bypass idx_batches_branch_med.
-    idx_batches_expiry shares the branch_id + status='active' predicate, so
-    ORDER BY medication_id (the report's own GROUP BY column) + no_bitmap makes
-    the medication_id-leading index the deterministic pick, same technique as
-    idx_invoices_branch_created."""
+    """P3-M2 — per-medication valuation groups ACTIVE batches for a branch,
+    joined to medications, GROUP BY medication_id/trade_name/trade_name_ar,
+    ORDER BY value DESC. This is the query EXACTLY as inventory_service.
+    inventory_valuation_report writes it (join, full GROUP BY, ORDER BY,
+    OFFSET/LIMIT included) — not a stripped-down proxy.
+
+    That distinction matters: an earlier version of this guard checked a
+    simplified probe (SELECT medication_id, quantity, purchase_price ...
+    ORDER BY medication_id, no join, no GROUP BY) and went flaky once the
+    full test suite ran together — accumulated data from other tests shifted
+    medication_batches' statistics enough that the simplified probe's tie
+    between idx_batches_branch_med / idx_batches_branch_status /
+    idx_batches_expiry (all three share the branch_id + status='active'
+    partial predicate) landed on a different winner than it had on a smaller
+    table. The REAL query, with its GROUP BY on medication_id specifically,
+    does NOT share that ambiguity — verified deterministic against both a
+    fresh database and the exact post-full-suite state that broke the old
+    probe (idx_batches_branch_med's (branch_id, medication_id) column order
+    lets the aggregation use an Incremental Sort off an already-partially-
+    sorted index scan, a real structural advantage the other two candidate
+    indexes don't have, not just a cost-estimate tie-break)."""
     plan = await _plan(
         db_session,
-        "EXPLAIN SELECT medication_id, quantity, purchase_price FROM medication_batches "
-        "WHERE branch_id = '00000000-0000-0000-0000-000000000001' "
-        "AND NOT is_deleted AND status = 'active' "
-        "ORDER BY medication_id",
-        no_bitmap=True,
+        "EXPLAIN SELECT b.medication_id, m.trade_name, m.trade_name_ar, "
+        "SUM(b.quantity) AS qty, SUM(b.quantity * b.purchase_price) AS value "
+        "FROM medication_batches b JOIN medications m ON m.id = b.medication_id "
+        "WHERE b.branch_id = '00000000-0000-0000-0000-000000000001' "
+        "AND NOT b.is_deleted AND b.status = 'active' AND b.quantity > 0 "
+        "GROUP BY b.medication_id, m.trade_name, m.trade_name_ar "
+        "ORDER BY value DESC, qty DESC OFFSET 0 LIMIT 50",
     )
     assert "idx_batches_branch_med" in plan, plan
+    assert "Seq Scan" not in plan, plan
 
 
 async def test_expiry_trend_scan_is_index_backed(db_session: AsyncSession) -> None:
     """P3-M3 — the forward expiry trend groups ACTIVE batches for a branch by
-    week-of-expiry. Checked the REAL query exactly as written (GROUP BY
-    week_idx and all): the planner's natural, deterministic pick here is
-    idx_batches_branch_med, not idx_batches_expiry — both partial indexes
-    share the branch_id + status='active' predicate, and the planner puts
-    expiry_date/quantity in a Filter rather than the Index Cond for this
-    particular shape. Asserting what the query ACTUALLY does (verified via
-    manual EXPLAIN before writing this test) rather than which index would be
-    intuitively "expected" — either way this is a genuine Index Scan, never a
-    sequential scan, which is this guard's actual purpose."""
+    week-of-expiry. The un-wrapped version of this query (WHERE branch_id +
+    status='active', no ORDER BY) matched THREE overlapping partial indexes
+    equally well (idx_batches_branch_med, idx_batches_branch_status,
+    idx_batches_expiry) — caught FLAKY when the full suite ran against a
+    genuinely fresh database and the planner picked a different one than it
+    had on the long-lived dev database this guard was first written against.
+    The real service query was restructured with an inner ORDER BY
+    expiry_date subquery specifically to fix this (not just to satisfy the
+    test) — verified deterministic across multiple independent database
+    instances before adopting it, matching exactly what production runs."""
     plan = await _plan(
         db_session,
-        "EXPLAIN SELECT LEAST(FLOOR((expiry_date - CURRENT_DATE) / 7.0), 12)::int AS week_idx, "
-        "COUNT(*), SUM(quantity), SUM(quantity * purchase_price) FROM medication_batches "
-        "WHERE branch_id = '00000000-0000-0000-0000-000000000001' "
-        "AND NOT is_deleted AND status = 'active' AND quantity > 0 "
-        "AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + 90 "
-        "GROUP BY week_idx",
+        "EXPLAIN SELECT week_idx, COUNT(*), SUM(qty), SUM(qty * price) FROM ("
+        "  SELECT LEAST(FLOOR((expiry_date - CURRENT_DATE) / 7.0), 12)::int AS week_idx, "
+        "         quantity AS qty, purchase_price AS price FROM medication_batches "
+        "  WHERE branch_id = '00000000-0000-0000-0000-000000000001' "
+        "  AND NOT is_deleted AND status = 'active' AND quantity > 0 "
+        "  AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + 90 "
+        "  ORDER BY expiry_date"
+        ") sub GROUP BY week_idx",
     )
-    assert "idx_batches_branch_med" in plan, plan
+    assert "idx_batches_expiry" in plan, plan
     assert "Seq Scan" not in plan, plan
 
 

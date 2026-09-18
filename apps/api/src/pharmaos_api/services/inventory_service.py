@@ -975,15 +975,33 @@ async def expiry_waste_report(
     # Forward trend: ACTIVE stock's value by week-of-expiry over the same
     # EXPIRY_WARNING_DAYS horizon expiry_alerts already uses (13 weekly
     # buckets covering days 0-90; the last bucket is a partial 7-day week).
+    # Wrapped in an inner ORDER BY expiry_date subquery deliberately: without
+    # it, the WHERE clause (branch_id + status='active') matches THREE
+    # different overlapping partial indexes equally well
+    # (idx_batches_branch_med, idx_batches_branch_status, idx_batches_expiry)
+    # and different Postgres instances/table-statistics states picked
+    # different ones non-deterministically (caught by running the full suite
+    # against a genuinely fresh database — a query-plan guard using the
+    # un-wrapped query passed locally but was flaky). The inner ORDER BY
+    # deterministically prefers idx_batches_expiry on every instance tested,
+    # and it's also the semantically correct choice: expiry_date lands in the
+    # Index Cond itself rather than a post-scan Filter, which is the tightest
+    # possible scan for a date-range query.
     weeks = -(-EXPIRY_WARNING_DAYS // 7)  # ceil division
     trend_rows = (
         await session.execute(text("""
-                SELECT LEAST(FLOOR((expiry_date - CURRENT_DATE) / 7.0), :max_week)::int AS week_idx,
-                       COUNT(*) AS n, SUM(quantity) AS qty, SUM(quantity * purchase_price) AS value
-                FROM medication_batches
-                WHERE branch_id = :b AND NOT is_deleted AND status = 'active' AND quantity > 0
-                  AND expiry_date >= CURRENT_DATE
-                  AND expiry_date <= CURRENT_DATE + :horizon
+                SELECT week_idx, COUNT(*) AS n, SUM(qty) AS qty, SUM(qty * price) AS value
+                FROM (
+                    SELECT LEAST(FLOOR((expiry_date - CURRENT_DATE) / 7.0), :max_week)::int
+                               AS week_idx,
+                           quantity AS qty, purchase_price AS price
+                    FROM medication_batches
+                    WHERE branch_id = :b AND NOT is_deleted AND status = 'active'
+                      AND quantity > 0
+                      AND expiry_date >= CURRENT_DATE
+                      AND expiry_date <= CURRENT_DATE + :horizon
+                    ORDER BY expiry_date
+                ) sub
                 GROUP BY week_idx
                 """).bindparams(b=branch_id, max_week=weeks - 1, horizon=EXPIRY_WARNING_DAYS))
     ).all()
