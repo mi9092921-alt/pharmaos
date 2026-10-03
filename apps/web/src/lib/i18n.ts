@@ -44,6 +44,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'nav.compliance': 'الامتثال',
     'nav.reports': 'التقارير',
     'nav.alerts': 'التنبيهات',
+    'nav.notifications': 'مركز الإشعارات',
     'nav.cashier': 'جلسات الكاشير',
     'nav.users': 'المستخدمون',
     'nav.settings': 'الإعدادات',
@@ -810,6 +811,18 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.msg_sync_failed': 'فشل مزامنة البيانات مع السحابة',
     'alerts.msg_backup_overdue': 'آخر نسخة احتياطية أقدم من {hours} ساعة (أو لا توجد)',
     'alerts.msg_inventory_drift': 'انحراف مخزون: الكاش {cached} مقابل حقيقة الدفعات {truth}',
+
+    // P3-M7 — notifications (delivery; alerts = state)
+    'notifications.title': 'الإشعارات',
+    'notifications.unread': '{count} غير مقروء',
+    'notifications.read_all': 'تعليم الكل كمقروء',
+    'notifications.mark_read': 'تعليم كمقروء',
+    'notifications.empty': 'لا إشعارات بعد',
+    'notifications.pending_email': 'بانتظار مزوّد البريد',
+    'notifications.priority_low': 'منخفضة',
+    'notifications.priority_medium': 'متوسطة',
+    'notifications.priority_high': 'عالية',
+    'notifications.priority_critical': 'حرجة',
   },
   en: {
     'app.name': 'PharmaOS',
@@ -842,6 +855,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'nav.compliance': 'Compliance',
     'nav.reports': 'Reports',
     'nav.alerts': 'Alerts',
+    'nav.notifications': 'Notifications',
     'nav.cashier': 'Cash sessions',
     'nav.users': 'Users',
     'nav.settings': 'Settings',
@@ -1608,6 +1622,18 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.msg_sync_failed': 'Data sync to the cloud failed',
     'alerts.msg_backup_overdue': 'Last backup older than {hours} hours (or none)',
     'alerts.msg_inventory_drift': 'Inventory drift: cache {cached} vs batch truth {truth}',
+
+    // P3-M7 — notifications (delivery; alerts = state)
+    'notifications.title': 'Notifications',
+    'notifications.unread': '{count} unread',
+    'notifications.read_all': 'Mark all read',
+    'notifications.mark_read': 'Mark read',
+    'notifications.empty': 'No notifications yet',
+    'notifications.pending_email': 'Awaiting mail provider',
+    'notifications.priority_low': 'Low',
+    'notifications.priority_medium': 'Medium',
+    'notifications.priority_high': 'High',
+    'notifications.priority_critical': 'Critical',
   },
 };
 

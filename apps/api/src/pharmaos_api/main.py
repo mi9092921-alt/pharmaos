@@ -26,6 +26,7 @@ from pharmaos_api.routers import (
     customers,
     finance,
     inventory,
+    notifications,
     pos,
     prescriptions,
     purchases,
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router)
     app.include_router(inventory.router)
     app.include_router(alerts.router)
+    app.include_router(notifications.router)
     app.include_router(cashier.router)
     app.include_router(purchases.router)
     app.include_router(customers.router)

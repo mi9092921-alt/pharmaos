@@ -34,6 +34,7 @@ to fire from a source that does not exist):
 import dataclasses
 import datetime as dt
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -42,7 +43,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pharmaos_api.errors import ApiError, ErrorCode
-from pharmaos_api.services import backup_service, inventory_service
+from pharmaos_api.models import Alert
+from pharmaos_api.services import backup_service, inventory_service, notification_service
+
+logger = logging.getLogger(__name__)
 
 _ALERT_RULES: dict[str, dict[str, str]] = {
     # CLAUDE.md ALERT_RULES — key -> severity + entity vocabulary.
@@ -410,7 +414,7 @@ _UPSERT_SQL = text("""
                   severity = EXCLUDED.severity,
                   message_key = EXCLUDED.message_key,
                   params = EXCLUDED.params
-    RETURNING (xmax = 0) AS inserted
+    RETURNING id, (xmax = 0) AS inserted
 """)
 
 _RESOLVE_SQL = text("""
@@ -425,14 +429,17 @@ _RESOLVE_SQL = text("""
 async def _generate(
     session: AsyncSession, branch_id: uuid.UUID, rule_key: str
 ) -> tuple[int, int, int, int]:
-    """Run one rule's evaluator, upsert its findings, resolve stale alerts.
-    Returns (created, refreshed, live_findings, resolved)."""
+    """Run one rule's evaluator, upsert its findings, resolve stale alerts,
+    and notify on NEWLY CREATED alerts (P3-M7 — one notification burst per new
+    condition; refreshes never re-notify). Returns
+    (created, refreshed, live_findings, resolved)."""
     findings = await _EVALUATORS[rule_key](session, branch_id)
     created = 0
     refreshed = 0
     keys: list[str] = []
+    new_alerts: list[Alert] = []
     for f in findings:
-        was_inserted = (
+        row = (
             await session.execute(
                 _UPSERT_SQL.bindparams(
                     b=branch_id,
@@ -445,14 +452,29 @@ async def _generate(
                     dedup_key=f.dedup_key,
                 )
             )
-        ).scalar_one()
-        if was_inserted:
+        ).first()
+        if row is None:  # pragma: no cover — the upsert always returns its row
+            raise RuntimeError("alert upsert returned no row")
+        if row.inserted:
             created += 1
+            alert = await session.get(Alert, row.id)
+            if alert is not None:
+                new_alerts.append(alert)
         else:
             refreshed += 1
         keys.append(f.dedup_key)
     result = await session.execute(_RESOLVE_SQL.bindparams(b=branch_id, rule=rule_key, keys=keys))
     resolved = len(result.scalars().all())
+    for alert in new_alerts:
+        # Delivery fan-out (in_app/desktop/email per severity) — best-effort by
+        # convention #8: a notification failure must never break alert
+        # generation. The SAVEPOINT keeps the alert upserts alive if the
+        # fan-out raises (a bare rollback would poison the whole transaction).
+        try:
+            async with session.begin_nested():
+                await notification_service.create_from_alert(session, alert)
+        except Exception:  # noqa: BLE001 — delivery is never load-bearing
+            logger.exception("notification fan-out failed for alert %s", alert.id)
     await session.commit()
     return created, refreshed, len(findings), resolved
 

@@ -39,6 +39,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { href: '/cashier', labelKey: 'nav.cashier', permission: 'cashier.open_session', ready: true },
   { href: '/alerts', labelKey: 'nav.alerts', permission: 'alerts.view', ready: true },
+  {
+    href: '/notifications',
+    labelKey: 'nav.notifications',
+    permission: 'notifications.view',
+    ready: true,
+  },
   { href: '/reports', labelKey: 'nav.reports', permission: 'reports.inventory', ready: true },
   { href: '/users', labelKey: 'nav.users', permission: 'settings.users', ready: true },
   { href: '/settings', labelKey: 'nav.settings', permission: 'settings.view', ready: true },

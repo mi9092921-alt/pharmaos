@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://pharmaos:pharmaos@localhost:5432/pharmaos"
     redis_url: str = "redis://localhost:6379"
 
+    # The pharmacy's LOCAL time zone (P3-M7 root fix). Every local-day semantic
+    # in the product (Z-report, daily invoice sequences, report date windows,
+    # CURRENT_DATE) resolves through the DB session's TimeZone — a docker PG
+    # defaults to UTC, so a sale at 00:30 local would land on the WRONG day and
+    # "today" reports would silently go empty. The session timezone is forced
+    # to this IANA zone on every connection (db.py); it must match the device's
+    # clock (Africa/Cairo = the primary market).
+    device_timezone: str = "Africa/Cairo"
+
     # Bind address — CLAUDE.md security: local API listens on 127.0.0.1 ONLY.
     api_host: str = "127.0.0.1"
     api_port: int = 8000

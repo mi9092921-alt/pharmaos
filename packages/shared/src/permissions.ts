@@ -82,6 +82,13 @@ export const PERMISSIONS: Record<string, readonly SystemRoleCode[]> = {
   'alerts.view': ['super_admin', 'branch_manager', 'pharmacist'],
   'alerts.manage': ['super_admin', 'branch_manager', 'pharmacist'],
 
+  // =================== الإشعارات (P3-M7 — append-only per CLAUDE.md) ===================
+  // Same operational audience as alerts.* (cash-discrepancy and compliance
+  // notifications are manager/pharmacist material — cashiers are deliberately
+  // outside this tier).
+  'notifications.view': ['super_admin', 'branch_manager', 'pharmacist'],
+  'notifications.manage': ['super_admin', 'branch_manager', 'pharmacist'],
+
   // =================== الإعدادات ===================
   'settings.view': ['super_admin', 'branch_manager'],
   'settings.edit': ['super_admin'],

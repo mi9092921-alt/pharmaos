@@ -1849,3 +1849,67 @@ export function resolveAlert(alertId: string) {
     method: 'POST',
   });
 }
+
+// ---- Notifications (P3-M7) ----
+// DELIVERY side of the alerting story (alerts = STATE). title_key/body_key +
+// params render client-side via t() + {token} interpolation. channel email
+// rows queue behind a provider gateway (sent_at NULL = pending provider).
+// user_id NULL = branch broadcast (no user-branch membership in the schema).
+
+export type NotificationChannel = 'in_app' | 'desktop' | 'email';
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'critical';
+
+export interface NotificationRow {
+  id: string;
+  channel: NotificationChannel;
+  priority: NotificationPriority;
+  title_key: string;
+  body_key: string;
+  params: Record<string, string | null>;
+  read_at: string | null;
+  sent_at: string | null;
+  related_alert_id: string | null;
+  created_at: string;
+}
+
+export interface NotificationsList {
+  branch_id: string;
+  notifications: NotificationRow[];
+  pagination: { skip: number; limit: number; total: number };
+}
+
+export function listNotifications(opts: {
+  branchId: string;
+  unreadOnly?: boolean;
+  skip?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  if (opts.unreadOnly) params.set('unread_only', 'true');
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<NotificationsList>(`/api/v1/notifications?${params.toString()}`);
+}
+
+export function getUnreadCount(opts: { branchId: string }) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  return apiFetch<{ branch_id: string; unread: number }>(
+    `/api/v1/notifications/unread-count?${params.toString()}`,
+  );
+}
+
+export function markNotificationRead(opts: { branchId: string; notificationId: string }) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  return apiFetch<{ id: string; already_read: boolean }>(
+    `/api/v1/notifications/${opts.notificationId}/read?${params.toString()}`,
+    { method: 'POST' },
+  );
+}
+
+export function markAllNotificationsRead(opts: { branchId: string }) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  return apiFetch<{ branch_id: string; marked: number }>(
+    `/api/v1/notifications/read-all?${params.toString()}`,
+    { method: 'POST' },
+  );
+}

@@ -295,3 +295,38 @@ class Alert(MandatoryColumnsMixin, Base):
     acknowledged_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class Notification(MandatoryColumnsMixin, Base):
+    """Notification DELIVERY row (P3-M7, ratified D4/D5).
+
+    Separate from alerts (STATE): an alert is "what is wrong", a notification
+    is "how a human is told". in_app/desktop rows are delivered on creation
+    (sent_at set); email rows queue behind a provider gateway (sent_at NULL
+    until a configured provider actually sends). user_id NULL = branch
+    broadcast (no user-branch membership exists to fan out per individual)."""
+
+    __tablename__ = "notifications"
+
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    channel: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default=text("'in_app'")
+    )
+    priority: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default=text("'medium'")
+    )
+    title_key: Mapped[str] = mapped_column(String(60), nullable=False)
+    body_key: Mapped[str] = mapped_column(String(60), nullable=False)
+    params: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    related_alert_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("alerts.id"), nullable=True
+    )

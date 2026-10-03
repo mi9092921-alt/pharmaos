@@ -22,7 +22,15 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        _engine = create_async_engine(get_settings().async_database_url, pool_pre_ping=True)
+        # The session timezone carries EVERY local-day semantic (Z-report,
+        # daily invoice sequences, report date windows, CURRENT_DATE). Without
+        # it a docker PG defaults to UTC and a 00:30-local sale lands on the
+        # wrong day — "today" reports silently go empty.
+        _engine = create_async_engine(
+            get_settings().async_database_url,
+            pool_pre_ping=True,
+            connect_args={"server_settings": {"timezone": get_settings().device_timezone}},
+        )
     return _engine
 
 
