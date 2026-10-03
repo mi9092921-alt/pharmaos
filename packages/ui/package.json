@@ -1,0 +1,25 @@
+{
+  "name": "@pharmaos/ui",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Shared UI components (shadcn/ui style + Tailwind CSS 4, RTL-first).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "tailwind-merge": "2.5.5"
+  },
+  "peerDependencies": {
+    "react": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "typescript": "5.7.2"
+  }
+}

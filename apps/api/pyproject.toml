@@ -1,0 +1,88 @@
+[project]
+name = "pharmaos-api"
+version = "1.1.0"
+description = "PharmaOS API — FastAPI backend (local device + cloud)."
+requires-python = ">=3.12"
+# Version policy (CLAUDE.md): exact pins, upgraded only as one tested wave.
+# Resolved & verified on Python 3.12 — recorded in docs/versions.md.
+dependencies = [
+    "fastapi==0.139.0",
+    "uvicorn[standard]==0.51.0",
+    "sqlalchemy[asyncio]==2.0.51",
+    "asyncpg==0.31.0",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.2",
+    "argon2-cffi==25.1.0",
+    "PyJWT==2.13.0",
+    "cryptography==49.0.0",
+    "keyring==25.7.0",
+    "celery==5.6.3",
+    "redis==8.0.1",
+    "httpx==0.28.1",
+    "openpyxl==3.1.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.15.21",
+    "black==26.5.1",
+    "mypy==2.2.0",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+# E/F: pycodestyle+pyflakes, I: isort, N: pep8-naming, UP: pyupgrade,
+# B: bugbear, ASYNC: async checks, S: bandit security, C4: comprehensions, SIM: simplify.
+select = ["E", "F", "I", "N", "UP", "B", "ASYNC", "S", "C4", "SIM"]
+# B008: `Depends(...)` in parameter defaults is the FastAPI dependency idiom —
+# the exact style mandated by the CLAUDE.md permission-check examples.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: asserts are the mechanism (S101); known credentials are fixtures (S105/S106/S107);
+# psql subprocess calls apply the committed seed file with controlled args (S603/S607).
+"tests/*" = ["S101", "S105", "S106", "S107", "S603", "S607"]
+
+[tool.black]
+target-version = ["py312"]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+
+# Celery ships no type stubs (no py.typed marker) — its decorators are treated
+# as untyped by mypy. Scoped exception for the task module only.
+[[tool.mypy.overrides]]
+module = "celery.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "openpyxl.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pharmaos_api.celery_app"
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+addopts = "-q"
+asyncio_mode = "auto"
+# One event loop for the whole session — the async engine is process-cached.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

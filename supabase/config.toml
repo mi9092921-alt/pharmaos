@@ -1,0 +1,20 @@
+# Supabase CLI configuration — PharmaOS.
+#
+# ⚠️ Do NOT edit anything under /supabase by hand except adding new migration
+# files via `supabase migration new <name>` (CLAUDE.md rule #8).
+#
+# The single source of schema truth is supabase/migrations/*.sql, applied
+# identically to the local PostgreSQL 17 (Docker) and the Supabase cloud project.
+# SQLAlchemy models MIRROR this schema; they never generate it (no Alembic).
+#
+# Cloud linking (`supabase link --project-ref <ref>`) is performed when the
+# cloud project credentials are provided; the local workflow is fully
+# functional without it.
+
+project_id = "pharmaos"
+
+[db]
+port = 54322
+shadow_port = 54320
+# Must match the local Docker image AND the Supabase cloud project major version.
+major_version = 17

@@ -1,0 +1,92 @@
+@import 'tailwindcss';
+
+/*
+ * PharmaOS Design System — fixed decisions from CLAUDE.md
+ * (Pharmacy Professional Theme). RTL-first; numbers always tabular.
+ */
+:root {
+  /* Primary — Pharmacy Blue */
+  --primary-50: #eff6ff;
+  --primary-500: #2563eb;
+  --primary-600: #1d4ed8;
+  --primary-700: #1e40af;
+
+  /* Success — Stock Available */
+  --success: #16a34a;
+
+  /* Warning — Low Stock / Expiry Soon */
+  --warning: #d97706;
+
+  /* Danger — Out of Stock / Expired */
+  --danger: #dc2626;
+
+  /* Neutral */
+  --surface: #f8fafc;
+  --border: #e2e8f0;
+
+  /* Typography — self-hosted Fontsource variable fonts (offline-first) */
+  --font-arabic: 'Cairo Variable', 'IBM Plex Arabic', sans-serif;
+  --font-numbers: 'Inter Variable', sans-serif;
+
+  /* Spacing scale */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+@theme inline {
+  --color-primary-50: var(--primary-50);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --font-arabic: var(--font-arabic);
+  --font-numbers: var(--font-numbers);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+html {
+  font-family: var(--font-arabic);
+}
+
+body {
+  background-color: var(--surface);
+  color: #0f172a;
+}
+
+/* CLAUDE.md UX rule: numbers & currency always tabular. */
+.numeric,
+[data-numeric] {
+  font-family: var(--font-numbers);
+  font-variant-numeric: tabular-nums;
+}
+
+/* P1-M9 — browser-print fallback for receipts (A4/A5 paper, or no thermal
+   printer attached). On screen the printable receipt stays hidden; in print
+   media it becomes the ONLY visible element. */
+.receipt-print {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .receipt-print,
+  .receipt-print * {
+    visibility: visible;
+  }
+  .receipt-print {
+    display: block;
+    position: absolute;
+    top: 0;
+    inset-inline-start: 0;
+    width: 100%;
+  }
+}

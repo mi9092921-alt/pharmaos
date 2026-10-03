@@ -1,0 +1,7 @@
+# PharmaOS monorepo workspaces (JavaScript/TypeScript packages).
+# apps/api is a Python (FastAPI) project managed by its own pyproject.toml and
+# is intentionally NOT a pnpm workspace member.
+packages:
+  - 'apps/web'
+  - 'apps/desktop'
+  - 'packages/*'

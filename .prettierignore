@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+pnpm-lock.yaml
+apps/api
+supabase/migrations
+# Authoritative spec documents — never reformatted by tooling.
+pharmaos.md
+CLAUDE.md

@@ -1,0 +1,16 @@
+{
+  "name": "@pharmaos/shared",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Shared types, permission matrix, and error-code registry (single source of truth).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.7.2"
+  }
+}
