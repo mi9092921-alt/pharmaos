@@ -1647,3 +1647,124 @@ export function profitLossExportUrl(opts: {
   });
   return `/api/v1/reports/profit-loss/export?${params.toString()}`;
 }
+
+// ---- Reports: suppliers & customers (P3-M5) ----
+// Supplier delivery rates (fill / full-supply / lead time) cover ONLY orders
+// whose delivery has begun or finished — undelivered orders never drag them
+// down, so the percent fields are null when no order was delivered yet.
+// Customer RFM is reported raw: recency_days / last_purchase are null for a
+// customer whose only in-range event is a refund (bought before the range).
+
+export interface SupplierPerformanceRow {
+  supplier_id: string;
+  name: string;
+  po_count: number;
+  ordered_value: string;
+  received_value: string;
+  fill_rate_percent: string | null;
+  full_supply_rate_percent: string | null;
+  avg_lead_time_days: string | null;
+}
+
+export interface SupplierPerformanceReport {
+  date_from: string;
+  date_to: string;
+  summary: {
+    supplier_count: number;
+    po_count: number;
+    total_ordered_value: string;
+    total_received_value: string;
+    fill_rate_percent: string | null;
+    full_supply_rate_percent: string | null;
+    avg_lead_time_days: string | null;
+    received_po_count: number;
+  };
+  suppliers: SupplierPerformanceRow[];
+}
+
+export function getSupplierPerformanceReport(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+  });
+  return apiFetch<SupplierPerformanceReport>(
+    `/api/v1/reports/suppliers/performance?${params.toString()}`,
+  );
+}
+
+export function supplierPerformanceExportUrl(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+  });
+  return `/api/v1/reports/suppliers/performance/export?${params.toString()}`;
+}
+
+export interface CustomerAnalyticsRow {
+  customer_id: string;
+  name: string | null;
+  phone: string | null;
+  invoice_count: number;
+  refund_count: number;
+  gross_spend: string;
+  refunds_total: string;
+  net_spend: string;
+  last_purchase: string | null;
+  recency_days: number | null;
+  loyalty_points: number;
+}
+
+export interface CustomerAnalyticsReport {
+  date_from: string;
+  date_to: string;
+  summary: {
+    customer_count: number;
+    invoice_count: number;
+    refund_count: number;
+    gross_spend: string;
+    refunds_total: string;
+    net_spend: string;
+    avg_spend_per_customer: string | null;
+  };
+  customers: CustomerAnalyticsRow[];
+}
+
+export function getCustomerAnalyticsReport(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+  topLimit?: number;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+  });
+  if (opts.topLimit) params.set('top_limit', String(opts.topLimit));
+  return apiFetch<CustomerAnalyticsReport>(
+    `/api/v1/reports/customers/analytics?${params.toString()}`,
+  );
+}
+
+export function customerAnalyticsExportUrl(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+  });
+  return `/api/v1/reports/customers/analytics/export?${params.toString()}`;
+}

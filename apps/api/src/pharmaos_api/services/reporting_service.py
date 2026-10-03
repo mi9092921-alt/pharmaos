@@ -2,6 +2,7 @@
 
 P3-M1 — sales reports (daily / monthly / annual).
 P3-M4 — profit & loss analytics (COGS from the batch, margins, operating net).
+P3-M5 — supplier performance + customer analytics.
 
 Design (approved decisions):
 - D2 — every report is an ON-DEMAND SQL aggregation (no snapshot/rollup tables);
@@ -581,4 +582,378 @@ async def sales_report_csv(
     trend = cast("list[dict[str, object]]", report["trend"])
     for row in trend:
         writer.writerow([row["bucket"], row["count"], row["total"]])
+    return "\ufeff" + buf.getvalue()
+
+
+# ============================== P3-M5 — suppliers ==============================
+#
+# Definitions (kept explicit because "fill rate" means different things):
+#   * po_count / ordered_value      — NON-CANCELLED orders in range (any status):
+#                                     the purchasing activity level.
+#   * fill_rate / full_supply /     — computed ONLY over orders whose delivery has
+#     avg_lead_time                   actually begun or finished (status in
+#                                     'received' | 'partially_received'). A pending
+#                                     or awaiting-receipt order says nothing about
+#                                     the supplier's delivery quality yet.
+#   * full_supply_rate              — share of those delivered orders that arrived
+#                                     COMPLETE (status = 'received').
+#   * fill_rate                     — Σ qty_received / Σ qty_ordered (line level,
+#                                     smallest units) over the same orders.
+#   * avg_lead_time_days            — approval → LAST purchase_in receipt movement
+#                                     (stock_movements.reference_type='purchase_
+#                                     order'), averaged per order that has one.
+
+
+async def supplier_performance_report(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    date_from: dt.date,
+    date_to: dt.date,
+    limit: int = 0,
+) -> dict[str, object]:
+    """A branch's purchasing activity and supplier delivery performance.
+
+    POs are filtered by ORDER_DATE (the business date, a local DATE like
+    expense_date — not created_at). Reuse: the receipt moment comes from the
+    append-only stock_movements ledger (reference_type='purchase_order'), NOT
+    from any report-side bookkeeping. `limit` caps the ranked supplier rows
+    (the ≤100 page-size convention); 0 = unlimited — the CSV export path.
+    """
+    _validate(date_from, date_to, "day")
+    p: dict[str, object] = {"b": branch_id, "f": date_from, "t": date_to}
+
+    # 1) Per-supplier order activity + delivered-order counts.
+    po_rows = (await session.execute(text("""
+                SELECT po.supplier_id, s.name,
+                       COUNT(*)                                  AS po_count,
+                       COALESCE(SUM(po.total), 0)                AS ordered_value,
+                       COUNT(*) FILTER (WHERE po.status = 'received')            AS full_count,
+                       COUNT(*) FILTER (WHERE po.status = 'partially_received')  AS partial_count
+                FROM purchase_orders po
+                JOIN suppliers s ON s.id = po.supplier_id
+                WHERE po.branch_id = :b AND NOT po.is_deleted AND po.status <> 'cancelled'
+                  AND po.order_date >= :f AND po.order_date <= :t
+                GROUP BY po.supplier_id, s.name
+                """).bindparams(**p))).all()
+
+    # 2) Line-level ordered/received quantities and received value, same scope.
+    line_rows = (await session.execute(text("""
+                SELECT po.supplier_id,
+                       COALESCE(SUM(pi.qty_ordered), 0)   AS qty_ordered,
+                       COALESCE(SUM(pi.qty_received), 0)  AS qty_received,
+                       COALESCE(SUM(pi.qty_received * pi.unit_cost), 0) AS received_value
+                FROM purchase_orders po
+                JOIN purchase_items pi ON pi.purchase_order_id = po.id
+                WHERE po.branch_id = :b AND NOT po.is_deleted AND NOT pi.is_deleted
+                  AND po.status IN ('received', 'partially_received')
+                  AND po.order_date >= :f AND po.order_date <= :t
+                GROUP BY po.supplier_id
+                """).bindparams(**p))).all()
+    lines_by_supplier = {str(r[0]): r for r in line_rows}
+
+    # 3) Lead time per supplier: approval → last receipt movement for that PO.
+    #    SUM + COUNT (not AVG) so the summary can compute the ORDER-WEIGHTED
+    #    portfolio average instead of an average-of-supplier-averages, which a
+    #    one-order supplier would dominate.
+    lead_rows = (await session.execute(text("""
+                SELECT po.supplier_id,
+                       SUM(EXTRACT(EPOCH FROM (m.last_ts - po.approved_at)) / 86400) AS lead_sum,
+                       COUNT(*) AS lead_count
+                FROM purchase_orders po
+                JOIN (
+                    SELECT sm.reference_id AS po_id, MAX(sm.created_at) AS last_ts
+                    FROM stock_movements sm
+                    WHERE sm.branch_id = :b AND sm.movement_type = 'purchase_in'
+                      AND sm.reference_type = 'purchase_order' AND NOT sm.is_deleted
+                    GROUP BY sm.reference_id
+                ) m ON m.po_id = po.id
+                WHERE po.branch_id = :b AND NOT po.is_deleted
+                  AND po.status IN ('received', 'partially_received')
+                  AND po.approved_at IS NOT NULL
+                  AND po.order_date >= :f AND po.order_date <= :t
+                GROUP BY po.supplier_id
+                """).bindparams(**p))).all()
+    lead_by_supplier = {str(r[0]): (Decimal(str(r[1])), int(r[2])) for r in lead_rows}
+
+    def _pct(numerator: Decimal, denominator: Decimal) -> str | None:
+        return None if denominator == 0 else str(_q2(numerator / denominator * 100))
+
+    suppliers: list[dict[str, object]] = []
+    for r in po_rows:
+        key = str(r[0])
+        lines = lines_by_supplier.get(key)
+        qty_ordered = Decimal(str(lines[1])) if lines else Decimal(0)
+        qty_received = Decimal(str(lines[2])) if lines else Decimal(0)
+        received_value = Decimal(str(lines[3])) if lines else Decimal(0)
+        full_count = int(r[4])
+        partial_count = int(r[5])
+        delivered = Decimal(full_count + partial_count)
+        lead_pair = lead_by_supplier.get(key)
+        lead_str = (
+            None
+            if lead_pair is None
+            else str((lead_pair[0] / Decimal(lead_pair[1])).quantize(Decimal("0.1")))
+        )
+        suppliers.append(
+            {
+                "supplier_id": key,
+                "name": r[1],
+                "po_count": int(r[2]),
+                "ordered_value": str(_q2(r[3])),
+                "received_value": str(_q2(received_value)),
+                "fill_rate_percent": _pct(qty_received, qty_ordered),
+                "full_supply_rate_percent": _pct(Decimal(full_count), delivered),
+                "avg_lead_time_days": lead_str,
+            }
+        )
+    suppliers.sort(key=lambda row: Decimal(str(row["ordered_value"])), reverse=True)
+    if limit > 0:
+        suppliers = suppliers[:limit]
+
+    total_ordered = sum((Decimal(str(r[3])) for r in po_rows), _ZERO)
+    total_received = sum((Decimal(str(lines[3])) for lines in lines_by_supplier.values()), _ZERO)
+    full_total = sum(int(r[4]) for r in po_rows)
+    partial_total = sum(int(r[5]) for r in po_rows)
+    delivered_total = full_total + partial_total
+
+    # Portfolio-wide rates: quantity-weighted fill, order-weighted full supply,
+    # and an ORDER-weighted lead-time average (Σ sums / Σ counts — not an
+    # average of the per-supplier averages above).
+    all_qty_ordered = sum((Decimal(str(v[1])) for v in lines_by_supplier.values()), _ZERO)
+    all_qty_received = sum((Decimal(str(v[2])) for v in lines_by_supplier.values()), _ZERO)
+    lead_sum = sum((v[0] for v in lead_by_supplier.values()), Decimal(0))
+    lead_count = sum(v[1] for v in lead_by_supplier.values())
+    avg_lead = (
+        str((lead_sum / Decimal(lead_count)).quantize(Decimal("0.1"))) if lead_count else None
+    )
+
+    return {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "summary": {
+            "supplier_count": len(po_rows),
+            "po_count": sum(int(r[2]) for r in po_rows),
+            "total_ordered_value": str(_q2(total_ordered)),
+            "total_received_value": str(_q2(total_received)),
+            "fill_rate_percent": _pct(all_qty_received, all_qty_ordered),
+            "full_supply_rate_percent": _pct(Decimal(full_total), Decimal(delivered_total)),
+            "avg_lead_time_days": avg_lead,
+            "received_po_count": delivered_total,
+        },
+        "suppliers": suppliers,
+    }
+
+
+async def supplier_performance_csv(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    date_from: dt.date,
+    date_to: dt.date,
+) -> str:
+    """The supplier performance table as CSV (one row per supplier)."""
+    report = await supplier_performance_report(
+        session, branch_id=branch_id, date_from=date_from, date_to=date_to
+    )
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "supplier",
+            "po_count",
+            "ordered_value",
+            "received_value",
+            "fill_rate_percent",
+            "full_supply_rate_percent",
+            "avg_lead_time_days",
+        ]
+    )
+    suppliers = cast("list[dict[str, object]]", report["suppliers"])
+    for row in suppliers:
+        writer.writerow(
+            [
+                row["name"],
+                row["po_count"],
+                row["ordered_value"],
+                row["received_value"],
+                row["fill_rate_percent"] or "",
+                row["full_supply_rate_percent"] or "",
+                row["avg_lead_time_days"] or "",
+            ]
+        )
+    return "\ufeff" + buf.getvalue()
+
+
+# ============================== P3-M5 — customers ==============================
+#
+# RFM (simplified, MVP): the three components are reported raw —
+#   R (recency)   = days since the customer's LAST completed purchase in range,
+#   F (frequency) = completed invoice count in range,
+#   M (monetary)  = net spend = Σ invoices.subtotal − Σ returns.subtotal
+#                   (credit notes carry the original invoice's customer_id, so
+#                   refunds net against the right customer).
+# No arbitrary scoring buckets — the dashboard sorts by M and shows R/F/M.
+# Per-customer purchase-history drill-down already exists (customer_service.
+# customer_history on the /customers screen) and is deliberately NOT re-derived.
+
+
+async def customer_analytics_report(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    date_from: dt.date,
+    date_to: dt.date,
+    top_limit: int = 10,
+) -> dict[str, object]:
+    """A branch's customer purchasing analytics over an inclusive local-day range.
+
+    Walk-in sales (invoice.customer_id IS NULL) have no customer to attribute
+    them to and are excluded. Loyalty balances are the customers table's
+    current derived balance (the ledger is the truth — a point-in-time read,
+    NOT range-scoped, matching how the /customers screen displays it).
+    """
+    _validate(date_from, date_to, "day")
+    p: dict[str, object] = {
+        "b": branch_id,
+        "f": date_from,
+        "t_excl": date_to + dt.timedelta(days=1),
+    }
+
+    # 1) Sales per customer (completed invoices only — same convention as the
+    #    sales/P&L reports). last_purchase/recency are computed IN SQL (the
+    #    ::date cast uses the session TimeZone — the same local-midnight
+    #    convention as date_trunc above), never mixed with Python's clock.
+    sold_rows = (await session.execute(text("""
+                SELECT i.customer_id,
+                       COUNT(DISTINCT i.id)   AS invoice_count,
+                       COALESCE(SUM(i.subtotal), 0) AS gross_spend,
+                       (MAX(i.created_at))::date AS last_purchase,
+                       CURRENT_DATE - (MAX(i.created_at))::date AS recency_days
+                FROM invoices i
+                WHERE i.branch_id = :b AND NOT i.is_deleted AND i.status = 'completed'
+                  AND i.customer_id IS NOT NULL
+                  AND i.created_at >= :f AND i.created_at < :t_excl
+                GROUP BY i.customer_id
+                """).bindparams(**p))).all()
+
+    # 2) Refunds per customer (credit notes carry the invoice's customer_id).
+    refund_rows = (await session.execute(text("""
+                SELECT r.customer_id,
+                       COUNT(*)                     AS refund_count,
+                       COALESCE(SUM(r.subtotal), 0) AS refunded
+                FROM returns r
+                WHERE r.branch_id = :b AND NOT r.is_deleted AND r.customer_id IS NOT NULL
+                  AND r.created_at >= :f AND r.created_at < :t_excl
+                GROUP BY r.customer_id
+                """).bindparams(**p))).all()
+    refunds_by_customer = {str(r[0]): (int(r[1]), Decimal(str(r[2]))) for r in refund_rows}
+    sold_by_customer = {
+        str(r[0]): (int(r[1]), Decimal(str(r[2])), cast("dt.date", r[3]), int(r[4]))
+        for r in sold_rows
+    }
+
+    # 3) Customer identity + current loyalty balance.
+    customer_ids = set(sold_by_customer) | set(refunds_by_customer)
+    customers: dict[str, tuple[object, object, object]] = {}
+    if customer_ids:
+        id_rows = (await session.execute(text("""
+                    SELECT id, name, phone, loyalty_points FROM customers
+                    WHERE id = ANY(:ids)
+                    """).bindparams(ids=list(customer_ids)))).all()
+        customers = {str(r[0]): (r[1], r[2], r[3]) for r in id_rows}
+
+    rows: list[dict[str, object]] = []
+    for key in customer_ids:
+        identity = customers.get(key, (None, None, 0))
+        invoice_count, gross, last_purchase, recency = sold_by_customer.get(
+            key, (0, _ZERO, None, None)
+        )
+        refund_count, refunded = refunds_by_customer.get(key, (0, _ZERO))
+        net = gross - refunded
+        rows.append(
+            {
+                "customer_id": key,
+                "name": identity[0],
+                "phone": identity[1],
+                "invoice_count": invoice_count,
+                "refund_count": refund_count,
+                "gross_spend": str(_q2(gross)),
+                "refunds_total": str(_q2(refunded)),
+                "net_spend": str(_q2(net)),
+                "last_purchase": None if last_purchase is None else last_purchase.isoformat(),
+                "recency_days": recency,
+                "loyalty_points": cast("int", identity[2]),
+            }
+        )
+    rows.sort(
+        key=lambda row: (Decimal(str(row["net_spend"])), str(row["last_purchase"] or "")),
+        reverse=True,
+    )
+    if top_limit >= 0:
+        rows = rows[:top_limit]
+
+    gross_total = sum((v[1] for v in sold_by_customer.values()), _ZERO)
+    refunds_total = sum((v[1] for v in refunds_by_customer.values()), _ZERO)
+    net_total = gross_total - refunds_total
+    customer_count = len(customer_ids)
+    avg_spend = str(_q2(net_total / Decimal(customer_count))) if customer_count else None
+
+    return {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "summary": {
+            "customer_count": customer_count,
+            "invoice_count": sum(int(r[1]) for r in sold_rows),
+            "refund_count": sum(v[0] for v in refunds_by_customer.values()),
+            "gross_spend": str(_q2(gross_total)),
+            "refunds_total": str(_q2(refunds_total)),
+            "net_spend": str(_q2(net_total)),
+            "avg_spend_per_customer": avg_spend,
+        },
+        "customers": rows,
+    }
+
+
+async def customer_analytics_csv(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    date_from: dt.date,
+    date_to: dt.date,
+) -> str:
+    """The customer analytics rows as CSV (one row per customer, top by spend)."""
+    report = await customer_analytics_report(
+        session,
+        branch_id=branch_id,
+        date_from=date_from,
+        date_to=date_to,
+        top_limit=0,
+    )
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "customer",
+            "phone",
+            "invoice_count",
+            "net_spend",
+            "last_purchase",
+            "recency_days",
+            "loyalty_points",
+        ]
+    )
+    rows = cast("list[dict[str, object]]", report["customers"])
+    for row in rows:
+        writer.writerow(
+            [
+                row["name"],
+                row["phone"] or "",
+                row["invoice_count"],
+                row["net_spend"],
+                row["last_purchase"],
+                row["recency_days"],
+                row["loyalty_points"],
+            ]
+        )
     return "\ufeff" + buf.getvalue()

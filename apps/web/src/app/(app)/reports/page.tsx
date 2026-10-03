@@ -19,13 +19,17 @@ import {
 
 import {
   type AlertSeverity,
+  type CustomerAnalyticsReport,
   type ExpiryBucketKey,
+  customerAnalyticsExportUrl,
+  getCustomerAnalyticsReport,
   getExpiryWasteReport,
   getInventoryValuationReport,
   getMovementReport,
   getProfitLossReport,
   getSalesReport,
   getStockLevelReport,
+  getSupplierPerformanceReport,
   listInventoryBranches,
   type MovementType,
   type ProfitLossReport,
@@ -34,6 +38,8 @@ import {
   type SalesReport,
   type StockLevelStatus,
   stockLevelExportUrl,
+  type SupplierPerformanceReport,
+  supplierPerformanceExportUrl,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
@@ -77,7 +83,7 @@ const SEV_TONE: Record<AlertSeverity, 'danger' | 'warning'> = {
   warning: 'warning',
 };
 
-type ReportTab = 'sales' | 'inventory' | 'profit';
+type ReportTab = 'sales' | 'inventory' | 'profit' | 'suppliers' | 'customers';
 
 export default function ReportsPage() {
   const canSales = useAuth((s) => s.hasPermission('reports.sales'));
@@ -86,12 +92,13 @@ export default function ReportsPage() {
   const canExport = useAuth((s) => s.hasPermission('reports.export'));
 
   const [branchId, setBranchId] = useState('');
-  // Tabs the viewer's permission set actually unlocks (sales and profit both
-  // live behind reports.* tiers the pharmacist lacks; inventory is the widest).
+  // Tabs the viewer's permission set actually unlocks (sales/customers share
+  // reports.sales; profit/suppliers share reports.financial; inventory is the
+  // widest tier the pharmacist holds).
   const availableTabs: ReportTab[] = [
-    ...(canSales ? (['sales'] as const) : []),
+    ...(canSales ? (['sales', 'customers'] as const) : []),
     ...(canInventory ? (['inventory'] as const) : []),
-    ...(canFinancial ? (['profit'] as const) : []),
+    ...(canFinancial ? (['profit', 'suppliers'] as const) : []),
   ];
   const [tab, setTab] = useState<ReportTab>(availableTabs[0] ?? 'inventory');
 
@@ -146,6 +153,16 @@ export default function ReportsPage() {
               {t('reports.tab_profit')}
             </TabButton>
           )}
+          {availableTabs.includes('suppliers') && (
+            <TabButton active={tab === 'suppliers'} onClick={() => setTab('suppliers')}>
+              {t('reports.tab_suppliers')}
+            </TabButton>
+          )}
+          {availableTabs.includes('customers') && (
+            <TabButton active={tab === 'customers'} onClick={() => setTab('customers')}>
+              {t('reports.tab_customers')}
+            </TabButton>
+          )}
         </div>
       )}
 
@@ -154,6 +171,12 @@ export default function ReportsPage() {
         <InventoryTab branchId={branchId} canExport={canExport} />
       )}
       {tab === 'profit' && canFinancial && <ProfitTab branchId={branchId} canExport={canExport} />}
+      {tab === 'suppliers' && canFinancial && (
+        <SuppliersTab branchId={branchId} canExport={canExport} />
+      )}
+      {tab === 'customers' && canSales && (
+        <CustomersTab branchId={branchId} canExport={canExport} />
+      )}
     </div>
   );
 }
@@ -627,6 +650,300 @@ function ProfitReportBody({ data }: { data: ProfitLossReport }) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ------------------------------ suppliers (P3-M5) ------------------------------
+
+function SuppliersTab({ branchId, canExport }: { branchId: string; canExport: boolean }) {
+  const [dateFrom, setDateFrom] = useState(todayIso());
+  const [dateTo, setDateTo] = useState(todayIso());
+  const reportQuery = useQuery({
+    queryKey: ['supplier-performance-report', branchId, dateFrom, dateTo],
+    queryFn: () => getSupplierPerformanceReport({ branchId, dateFrom, dateTo }),
+    enabled: !!branchId && dateFrom <= dateTo,
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 pt-5">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_from')}</Label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_to')}</Label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-9"
+            />
+          </div>
+          {canExport && (
+            <a
+              href={supplierPerformanceExportUrl({ branchId, dateFrom, dateTo })}
+              className="ms-auto text-sm font-medium text-primary-600 hover:underline"
+            >
+              {t('reports.export_csv')}
+            </a>
+          )}
+        </CardContent>
+      </Card>
+
+      {reportQuery.isLoading ? (
+        <div className="flex justify-center py-8">
+          <Spinner />
+        </div>
+      ) : reportQuery.data ? (
+        <SuppliersReportBody data={reportQuery.data} />
+      ) : (
+        <p className="py-6 text-center text-sm text-slate-500">{t('reports.empty_range')}</p>
+      )}
+    </div>
+  );
+}
+
+function SuppliersReportBody({ data }: { data: SupplierPerformanceReport }) {
+  const { summary, suppliers } = data;
+  const chartData = suppliers.slice(0, 8).map((s) => ({
+    name: s.name,
+    ordered: Number(s.ordered_value),
+    received: Number(s.received_value),
+  }));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <KpiCard label={t('reports.supplier_count')} value={String(summary.supplier_count)} />
+        <KpiCard label={t('reports.sup_po_count')} value={String(summary.po_count)} />
+        <KpiCard label={t('reports.sup_ordered_value')} value={summary.total_ordered_value} />
+        <KpiCard
+          label={t('reports.sup_fill_rate')}
+          value={summary.fill_rate_percent ? `${summary.fill_rate_percent}%` : '—'}
+        />
+        <KpiCard
+          label={t('reports.sup_full_supply')}
+          value={summary.full_supply_rate_percent ? `${summary.full_supply_rate_percent}%` : '—'}
+        />
+        <KpiCard label={t('reports.sup_lead_time')} value={summary.avg_lead_time_days ?? '—'} />
+      </div>
+
+      {chartData.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <h2 className="mb-3 text-sm font-semibold text-slate-800">{t('reports.sup_chart')}</h2>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
+                  <YAxis fontSize={12} stroke="#64748b" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar
+                    dataKey="ordered"
+                    name={t('reports.sup_chart_ordered')}
+                    fill="var(--primary-600)"
+                  />
+                  <Bar dataKey="received" name={t('reports.sup_chart_received')} fill="#15803d" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="pt-6">
+          {suppliers.length === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-500">{t('reports.empty_range')}</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-slate-500">
+                  <th className="p-2 text-start">{t('reports.supplier')}</th>
+                  <th className="p-2 text-start">{t('reports.sup_po_count')}</th>
+                  <th className="p-2 text-start">{t('reports.sup_ordered_value')}</th>
+                  <th className="p-2 text-start">{t('reports.sup_received_value')}</th>
+                  <th className="p-2 text-start">{t('reports.sup_fill_rate')}</th>
+                  <th className="p-2 text-start">{t('reports.sup_full_supply')}</th>
+                  <th className="p-2 text-start">{t('reports.sup_lead_time')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suppliers.map((row) => (
+                  <tr key={row.supplier_id} className="border-b border-border/60">
+                    <td className="p-2 font-medium text-slate-800">{row.name}</td>
+                    <td className="p-2 tabular-nums text-slate-600">{row.po_count}</td>
+                    <td className="p-2 tabular-nums text-slate-800">{row.ordered_value}</td>
+                    <td className="p-2 tabular-nums text-slate-600">{row.received_value}</td>
+                    <td className="p-2 tabular-nums text-slate-800">
+                      {row.fill_rate_percent ? `${row.fill_rate_percent}%` : '—'}
+                    </td>
+                    <td className="p-2 tabular-nums text-slate-800">
+                      {row.full_supply_rate_percent ? `${row.full_supply_rate_percent}%` : '—'}
+                    </td>
+                    <td className="p-2 tabular-nums text-slate-600">
+                      {row.avg_lead_time_days ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ------------------------------ customers (P3-M5) ------------------------------
+
+function CustomersTab({ branchId, canExport }: { branchId: string; canExport: boolean }) {
+  const [dateFrom, setDateFrom] = useState(todayIso());
+  const [dateTo, setDateTo] = useState(todayIso());
+  const reportQuery = useQuery({
+    queryKey: ['customer-analytics-report', branchId, dateFrom, dateTo],
+    queryFn: () => getCustomerAnalyticsReport({ branchId, dateFrom, dateTo, topLimit: 20 }),
+    enabled: !!branchId && dateFrom <= dateTo,
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 pt-5">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_from')}</Label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_to')}</Label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-9"
+            />
+          </div>
+          {canExport && (
+            <a
+              href={customerAnalyticsExportUrl({ branchId, dateFrom, dateTo })}
+              className="ms-auto text-sm font-medium text-primary-600 hover:underline"
+            >
+              {t('reports.export_csv')}
+            </a>
+          )}
+        </CardContent>
+      </Card>
+
+      {reportQuery.isLoading ? (
+        <div className="flex justify-center py-8">
+          <Spinner />
+        </div>
+      ) : reportQuery.data ? (
+        <CustomersReportBody data={reportQuery.data} />
+      ) : (
+        <p className="py-6 text-center text-sm text-slate-500">{t('reports.empty_range')}</p>
+      )}
+    </div>
+  );
+}
+
+function CustomersReportBody({ data }: { data: CustomerAnalyticsReport }) {
+  const { summary, customers } = data;
+  const chartData = customers
+    .slice(0, 8)
+    .map((c) => ({ name: c.name ?? c.customer_id.slice(0, 8), net: Number(c.net_spend) }));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard label={t('reports.cust_active')} value={String(summary.customer_count)} />
+        <KpiCard label={t('reports.cust_gross_spend')} value={summary.gross_spend} />
+        <KpiCard label={t('reports.cust_net_spend')} value={summary.net_spend} />
+        <KpiCard
+          label={t('reports.cust_avg_spend')}
+          value={summary.avg_spend_per_customer ?? '—'}
+        />
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <h2 className="mb-1 text-sm font-semibold text-slate-800">{t('reports.cust_top')}</h2>
+          <p className="mb-3 text-xs text-slate-500">{t('reports.rfm_note')}</p>
+          {customers.length === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-500">{t('reports.no_customers')}</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-slate-500">
+                  <th className="p-2 text-start">{t('reports.customer')}</th>
+                  <th className="p-2 text-start">{t('reports.cust_invoices')}</th>
+                  <th className="p-2 text-start">{t('reports.cust_refunds')}</th>
+                  <th className="p-2 text-start">{t('reports.cust_net_spend')}</th>
+                  <th className="p-2 text-start">{t('reports.cust_last_purchase')}</th>
+                  <th className="p-2 text-start">{t('reports.cust_recency')}</th>
+                  <th className="p-2 text-start">{t('reports.cust_loyalty')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customers.map((row) => (
+                  <tr key={row.customer_id} className="border-b border-border/60">
+                    <td className="p-2 font-medium text-slate-800">
+                      {row.name ?? '—'}
+                      {row.phone && (
+                        <span className="ms-2 text-xs text-slate-500">{row.phone}</span>
+                      )}
+                    </td>
+                    <td className="p-2 tabular-nums text-slate-600">{row.invoice_count}</td>
+                    <td className="p-2 tabular-nums text-slate-600">
+                      {row.refund_count > 0 ? row.refund_count : '—'}
+                    </td>
+                    <td className="p-2 tabular-nums text-slate-800">{row.net_spend}</td>
+                    <td className="p-2 tabular-nums text-slate-600">{row.last_purchase ?? '—'}</td>
+                    <td className="p-2 tabular-nums text-slate-600">{row.recency_days ?? '—'}</td>
+                    <td className="p-2 tabular-nums text-slate-800">{row.loyalty_points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {chartData.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <h2 className="mb-3 text-sm font-semibold text-slate-800">
+              {t('reports.cust_net_spend')}
+            </h2>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
+                  <YAxis fontSize={12} stroke="#64748b" />
+                  <Tooltip />
+                  <Bar dataKey="net" fill="var(--primary-600)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

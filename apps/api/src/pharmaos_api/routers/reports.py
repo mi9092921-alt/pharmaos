@@ -16,11 +16,16 @@ P3-M4 — profit & loss: net revenue (invoices.subtotal net of VAT, minus
          item/category/period, and operating net after expenses. Gated by
          `reports.financial` (super_admin, branch_manager) — margins are
          commercially sensitive pricing data, the same tier as reports.sales.
+P3-M5 — supplier performance (PO activity/value, approval→receipt lead time,
+         fill & full-supply rates) gated by `reports.financial` — purchasing
+         values are money data. Customer analytics (top spenders, simplified
+         RFM, loyalty balances) gated by `reports.sales` — it derives entirely
+         from the same invoices the sales reports already cover.
 
 All routes are READ-ONLY (GET), so there is no CSRF or audit surface here.
 Aggregation is entirely server-side SQL (decision D2), in `reporting_service`
-(sales + P&L) and `inventory_service` (inventory — reuses the Phase-1/2 read
-models per the P3-M2/M3 plan rather than re-deriving them).
+(sales + P&L + M5) and `inventory_service` (inventory — reuses the Phase-1/2
+read models per the P3-M2/M3 plan rather than re-deriving them).
 """
 
 import datetime as dt
@@ -129,6 +134,78 @@ async def profit_loss_report_export(
         granularity=granularity,
     )
     filename = f"profit_loss_{date_from.isoformat()}_{date_to.isoformat()}_{granularity}.csv"
+    return Response(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/reports/suppliers/performance")
+async def supplier_performance_report(
+    branch_id: uuid.UUID = Query(),
+    date_from: dt.date = Query(),
+    date_to: dt.date = Query(),
+    limit: int = Query(default=50, ge=1, le=inventory_svc.MAX_PAGE_SIZE),
+    session: AsyncSession = Depends(get_session),
+    _: None = _reports_financial,
+) -> dict[str, object]:
+    data = await svc.supplier_performance_report(
+        session, branch_id=branch_id, date_from=date_from, date_to=date_to, limit=limit
+    )
+    return success_envelope(data)
+
+
+@router.get("/reports/suppliers/performance/export")
+async def supplier_performance_report_export(
+    branch_id: uuid.UUID = Query(),
+    date_from: dt.date = Query(),
+    date_to: dt.date = Query(),
+    session: AsyncSession = Depends(get_session),
+    _: None = _reports_export,
+) -> Response:
+    csv_text = await svc.supplier_performance_csv(
+        session, branch_id=branch_id, date_from=date_from, date_to=date_to
+    )
+    filename = f"supplier_performance_{date_from.isoformat()}_{date_to.isoformat()}.csv"
+    return Response(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/reports/customers/analytics")
+async def customer_analytics_report(
+    branch_id: uuid.UUID = Query(),
+    date_from: dt.date = Query(),
+    date_to: dt.date = Query(),
+    top_limit: int = Query(default=10, ge=1, le=50),
+    session: AsyncSession = Depends(get_session),
+    _: None = _reports_sales,
+) -> dict[str, object]:
+    data = await svc.customer_analytics_report(
+        session,
+        branch_id=branch_id,
+        date_from=date_from,
+        date_to=date_to,
+        top_limit=top_limit,
+    )
+    return success_envelope(data)
+
+
+@router.get("/reports/customers/analytics/export")
+async def customer_analytics_report_export(
+    branch_id: uuid.UUID = Query(),
+    date_from: dt.date = Query(),
+    date_to: dt.date = Query(),
+    session: AsyncSession = Depends(get_session),
+    _: None = _reports_export,
+) -> Response:
+    csv_text = await svc.customer_analytics_csv(
+        session, branch_id=branch_id, date_from=date_from, date_to=date_to
+    )
+    filename = f"customer_analytics_{date_from.isoformat()}_{date_to.isoformat()}.csv"
     return Response(
         content=csv_text,
         media_type="text/csv; charset=utf-8",
