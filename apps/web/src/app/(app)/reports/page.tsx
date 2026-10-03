@@ -7,6 +7,8 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -21,10 +23,13 @@ import {
   getExpiryWasteReport,
   getInventoryValuationReport,
   getMovementReport,
+  getProfitLossReport,
   getSalesReport,
   getStockLevelReport,
   listInventoryBranches,
   type MovementType,
+  type ProfitLossReport,
+  profitLossExportUrl,
   salesReportExportUrl,
   type SalesReport,
   type StockLevelStatus,
@@ -72,13 +77,23 @@ const SEV_TONE: Record<AlertSeverity, 'danger' | 'warning'> = {
   warning: 'warning',
 };
 
+type ReportTab = 'sales' | 'inventory' | 'profit';
+
 export default function ReportsPage() {
   const canSales = useAuth((s) => s.hasPermission('reports.sales'));
   const canInventory = useAuth((s) => s.hasPermission('reports.inventory'));
+  const canFinancial = useAuth((s) => s.hasPermission('reports.financial'));
   const canExport = useAuth((s) => s.hasPermission('reports.export'));
 
   const [branchId, setBranchId] = useState('');
-  const [tab, setTab] = useState<'sales' | 'inventory'>(canSales ? 'sales' : 'inventory');
+  // Tabs the viewer's permission set actually unlocks (sales and profit both
+  // live behind reports.* tiers the pharmacist lacks; inventory is the widest).
+  const availableTabs: ReportTab[] = [
+    ...(canSales ? (['sales'] as const) : []),
+    ...(canInventory ? (['inventory'] as const) : []),
+    ...(canFinancial ? (['profit'] as const) : []),
+  ];
+  const [tab, setTab] = useState<ReportTab>(availableTabs[0] ?? 'inventory');
 
   const branchesQuery = useQuery({ queryKey: ['inv-branches'], queryFn: listInventoryBranches });
   const branches = branchesQuery.data ?? [];
@@ -114,14 +129,23 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {canSales && canInventory && (
+      {availableTabs.length > 1 && (
         <div className="flex gap-1 border-b border-border">
-          <TabButton active={tab === 'sales'} onClick={() => setTab('sales')}>
-            {t('reports.tab_sales')}
-          </TabButton>
-          <TabButton active={tab === 'inventory'} onClick={() => setTab('inventory')}>
-            {t('reports.tab_inventory')}
-          </TabButton>
+          {availableTabs.includes('sales') && (
+            <TabButton active={tab === 'sales'} onClick={() => setTab('sales')}>
+              {t('reports.tab_sales')}
+            </TabButton>
+          )}
+          {availableTabs.includes('inventory') && (
+            <TabButton active={tab === 'inventory'} onClick={() => setTab('inventory')}>
+              {t('reports.tab_inventory')}
+            </TabButton>
+          )}
+          {availableTabs.includes('profit') && (
+            <TabButton active={tab === 'profit'} onClick={() => setTab('profit')}>
+              {t('reports.tab_profit')}
+            </TabButton>
+          )}
         </div>
       )}
 
@@ -129,6 +153,7 @@ export default function ReportsPage() {
       {tab === 'inventory' && canInventory && (
         <InventoryTab branchId={branchId} canExport={canExport} />
       )}
+      {tab === 'profit' && canFinancial && <ProfitTab branchId={branchId} canExport={canExport} />}
     </div>
   );
 }
@@ -360,6 +385,249 @@ function MethodTable({ rows }: { rows: { method: string; count: number; total: s
         ))}
       </tbody>
     </table>
+  );
+}
+
+// ------------------------------ profit & loss (P3-M4) ------------------------------
+
+function ProfitTab({ branchId, canExport }: { branchId: string; canExport: boolean }) {
+  const [dateFrom, setDateFrom] = useState(todayIso());
+  const [dateTo, setDateTo] = useState(todayIso());
+  const [granularity, setGranularity] = useState<'day' | 'month' | 'year'>('day');
+
+  const reportQuery = useQuery({
+    queryKey: ['profit-loss-report', branchId, dateFrom, dateTo, granularity],
+    queryFn: () => getProfitLossReport({ branchId, dateFrom, dateTo, granularity }),
+    enabled: !!branchId && dateFrom <= dateTo,
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 pt-5">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_from')}</Label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.date_to')}</Label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('reports.granularity')}</Label>
+            <Select
+              className="h-9"
+              value={granularity}
+              onChange={(e) => setGranularity(e.target.value as typeof granularity)}
+            >
+              <option value="day">{t('reports.granularity_day')}</option>
+              <option value="month">{t('reports.granularity_month')}</option>
+              <option value="year">{t('reports.granularity_year')}</option>
+            </Select>
+          </div>
+          {canExport && (
+            <a
+              href={profitLossExportUrl({ branchId, dateFrom, dateTo, granularity })}
+              className="ms-auto text-sm font-medium text-primary-600 hover:underline"
+            >
+              {t('reports.export_csv')}
+            </a>
+          )}
+        </CardContent>
+      </Card>
+
+      {reportQuery.isLoading ? (
+        <div className="flex justify-center py-8">
+          <Spinner />
+        </div>
+      ) : reportQuery.data ? (
+        <ProfitReportBody data={reportQuery.data} />
+      ) : (
+        <p className="py-6 text-center text-sm text-slate-500">{t('reports.empty_range')}</p>
+      )}
+    </div>
+  );
+}
+
+// Same shape as SalesTab's KPI row: wire money strings render verbatim (EGP,
+// tabular-nums); a negative operating line reads in the danger tone.
+function ProfitReportBody({ data }: { data: ProfitLossReport }) {
+  const { summary, trend, by_category, top_items, by_expense_category } = data;
+  const chartData = trend.map((p) => ({
+    bucket: p.bucket,
+    revenue: Number(p.revenue),
+    gross_profit: Number(p.gross_profit),
+    expenses: Number(p.expenses),
+  }));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <KpiCard label={t('reports.pl_revenue')} value={summary.net_revenue} />
+        <KpiCard label={t('reports.pl_cogs')} value={summary.net_cogs} />
+        <KpiCard
+          label={t('reports.pl_gross_profit')}
+          value={
+            summary.gross_margin_percent
+              ? `${summary.gross_profit} (${summary.gross_margin_percent}%)`
+              : summary.gross_profit
+          }
+        />
+        <KpiCard label={t('reports.pl_expenses')} value={summary.expenses_total} tone="danger" />
+        <KpiCard
+          label={t('reports.pl_operating_profit')}
+          value={summary.operating_profit}
+          tone={Number(summary.operating_profit) < 0 ? 'danger' : undefined}
+        />
+        <KpiCard label={t('reports.invoice_count')} value={String(summary.invoice_count)} />
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <h2 className="mb-3 text-sm font-semibold text-slate-800">{t('reports.pl_trend')}</h2>
+          {chartData.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">{t('reports.empty_range')}</p>
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="bucket" fontSize={12} stroke="#64748b" />
+                  <YAxis fontSize={12} stroke="#64748b" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="revenue" name={t('reports.pl_revenue')} fill="var(--primary-600)" />
+                  <Bar dataKey="expenses" name={t('reports.pl_expenses')} fill="var(--warning)" />
+                  <Line
+                    type="monotone"
+                    dataKey="gross_profit"
+                    name={t('reports.pl_gross_profit')}
+                    stroke="#15803d"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardContent className="pt-6">
+            <h2 className="mb-3 text-sm font-semibold text-slate-800">
+              {t('reports.pl_by_category')}
+            </h2>
+            {by_category.length === 0 ? (
+              <p className="py-4 text-center text-sm text-slate-500">{t('reports.empty_range')}</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs text-slate-500">
+                    <th className="p-2 text-start">{t('reports.pl_category')}</th>
+                    <th className="p-2 text-start">{t('reports.pl_profit')}</th>
+                    <th className="p-2 text-start">{t('reports.pl_margin')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {by_category.map((row) => (
+                    <tr
+                      key={row.category_id ?? 'uncategorized'}
+                      className="border-b border-border/60"
+                    >
+                      <td className="p-2 font-medium text-slate-800">
+                        {row.name_ar ?? t('reports.pl_uncategorized')}
+                      </td>
+                      <td className="p-2 tabular-nums text-slate-800">{row.profit}</td>
+                      <td className="p-2 tabular-nums text-slate-600">
+                        {row.margin_percent ? `${row.margin_percent}%` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <h2 className="mb-3 text-sm font-semibold text-slate-800">
+              {t('reports.pl_expense_categories')}
+            </h2>
+            {by_expense_category.length === 0 ? (
+              <p className="py-4 text-center text-sm text-slate-500">
+                {t('reports.pl_no_expenses')}
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs text-slate-500">
+                    <th className="p-2 text-start">{t('reports.pl_category')}</th>
+                    <th className="p-2 text-start">{t('reports.total')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {by_expense_category.map((row) => (
+                    <tr key={row.expense_category_id} className="border-b border-border/60">
+                      <td className="p-2 font-medium text-slate-800">{row.name_ar}</td>
+                      <td className="p-2 tabular-nums text-slate-800">{row.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <h2 className="mb-3 text-sm font-semibold text-slate-800">{t('reports.pl_top_items')}</h2>
+          {top_items.length === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-500">{t('reports.empty_range')}</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-slate-500">
+                  <th className="p-2 text-start">{t('reports.medication')}</th>
+                  <th className="p-2 text-start">{t('reports.revenue')}</th>
+                  <th className="p-2 text-start">{t('reports.pl_cogs')}</th>
+                  <th className="p-2 text-start">{t('reports.pl_profit')}</th>
+                  <th className="p-2 text-start">{t('reports.pl_margin')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top_items.map((row) => (
+                  <tr key={row.medication_id} className="border-b border-border/60">
+                    <td className="p-2 font-medium text-slate-800">
+                      {row.name_ar ?? row.name ?? t('reports.pl_uncategorized')}
+                    </td>
+                    <td className="p-2 tabular-nums text-slate-800">{row.revenue}</td>
+                    <td className="p-2 tabular-nums text-slate-600">{row.cogs}</td>
+                    <td className="p-2 tabular-nums text-slate-800">{row.profit}</td>
+                    <td className="p-2 tabular-nums text-slate-600">
+                      {row.margin_percent ? `${row.margin_percent}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

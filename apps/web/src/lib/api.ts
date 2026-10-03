@@ -1548,3 +1548,102 @@ export function getExpiryWasteReport(opts: { branchId: string; dateFrom: string;
   });
   return apiFetch<ExpiryWasteReport>(`/api/v1/reports/inventory/expiry-waste?${params.toString()}`);
 }
+
+// ---- Reports: profit & loss (P3-M4) ----
+// COGS comes from the batch's own purchase_price via invoice_items.batch_id
+// (decision D3); revenue is invoices.subtotal (net of VAT) minus credit notes;
+// margin_percent is null whenever revenue is 0 (empty range / fully refunded).
+
+export interface ProfitLossSummary {
+  gross_sales_subtotal: string;
+  refunds_subtotal: string;
+  net_revenue: string;
+  cogs_sold: string;
+  cogs_returned: string;
+  net_cogs: string;
+  gross_profit: string;
+  gross_margin_percent: string | null;
+  expenses_total: string;
+  operating_profit: string;
+  invoice_count: number;
+  refund_count: number;
+}
+
+export interface ProfitCategoryRow {
+  category_id: string | null;
+  name_ar: string | null;
+  name_en: string | null;
+  revenue: string;
+  cogs: string;
+  profit: string;
+  margin_percent: string | null;
+}
+
+export interface ProfitItemRow {
+  medication_id: string;
+  name: string | null;
+  name_ar: string | null;
+  qty_smallest: string;
+  revenue: string;
+  cogs: string;
+  profit: string;
+  margin_percent: string | null;
+}
+
+export interface ExpenseCategoryRow {
+  expense_category_id: string;
+  name_ar: string;
+  name_en: string | null;
+  total: string;
+}
+
+export interface ProfitTrendPoint {
+  bucket: string;
+  revenue: string;
+  cogs: string;
+  gross_profit: string;
+  expenses: string;
+}
+
+export interface ProfitLossReport {
+  date_from: string;
+  date_to: string;
+  granularity: ReportGranularity;
+  summary: ProfitLossSummary;
+  by_expense_category: ExpenseCategoryRow[];
+  by_category: ProfitCategoryRow[];
+  top_items: ProfitItemRow[];
+  trend: ProfitTrendPoint[];
+}
+
+export function getProfitLossReport(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+  granularity?: ReportGranularity;
+  topLimit?: number;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+    granularity: opts.granularity ?? 'day',
+  });
+  if (opts.topLimit) params.set('top_limit', String(opts.topLimit));
+  return apiFetch<ProfitLossReport>(`/api/v1/reports/profit-loss?${params.toString()}`);
+}
+
+export function profitLossExportUrl(opts: {
+  branchId: string;
+  dateFrom: string;
+  dateTo: string;
+  granularity?: ReportGranularity;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    date_from: opts.dateFrom,
+    date_to: opts.dateTo,
+    granularity: opts.granularity ?? 'day',
+  });
+  return `/api/v1/reports/profit-loss/export?${params.toString()}`;
+}
