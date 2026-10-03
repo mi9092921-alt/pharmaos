@@ -26,6 +26,8 @@ ON CONFLICT (code) DO UPDATE
 INSERT INTO permissions (code)
 SELECT v.code
 FROM (VALUES
+    ('alerts.manage'),
+    ('alerts.view'),
     ('cashier.close_session'),
     ('cashier.open_session'),
     ('cashier.view_cash'),
@@ -75,6 +77,8 @@ ON CONFLICT (code) DO UPDATE
 CREATE TEMP TABLE _rbac_matrix (role_code TEXT NOT NULL, permission_code TEXT NOT NULL)
     ON COMMIT DROP;
 INSERT INTO _rbac_matrix (role_code, permission_code) VALUES
+    ('branch_manager', 'alerts.manage'),
+    ('branch_manager', 'alerts.view'),
     ('branch_manager', 'cashier.close_session'),
     ('branch_manager', 'cashier.open_session'),
     ('branch_manager', 'cashier.view_cash'),
@@ -119,6 +123,8 @@ INSERT INTO _rbac_matrix (role_code, permission_code) VALUES
     ('data_entry', 'inventory.add'),
     ('data_entry', 'inventory.view'),
     ('data_entry', 'sales.view'),
+    ('pharmacist', 'alerts.manage'),
+    ('pharmacist', 'alerts.view'),
     ('pharmacist', 'compliance.tt_report'),
     ('pharmacist', 'controlled_substances.view'),
     ('pharmacist', 'customers.create'),
@@ -138,6 +144,8 @@ INSERT INTO _rbac_matrix (role_code, permission_code) VALUES
     ('pharmacist', 'sales.discount'),
     ('pharmacist', 'sales.return'),
     ('pharmacist', 'sales.view'),
+    ('super_admin', 'alerts.manage'),
+    ('super_admin', 'alerts.view'),
     ('super_admin', 'cashier.close_session'),
     ('super_admin', 'cashier.open_session'),
     ('super_admin', 'cashier.view_cash'),

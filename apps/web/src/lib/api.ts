@@ -1768,3 +1768,84 @@ export function customerAnalyticsExportUrl(opts: {
   });
   return `/api/v1/reports/customers/analytics/export?${params.toString()}`;
 }
+
+// ---- Alerts (P3-M6) ----
+// alerts = STATE (what is wrong); notifications (P3-M7) = delivery. message_key
+// + params are rendered client-side: t(`alerts.msg.<rule_key>`) with {token}
+// interpolation over params (the API never ships localized strings).
+
+// AlertSeverity is reused verbatim from the P2-M4 block above (same
+// warning|danger|critical vocabulary — caught by tsc, not by me: defining it
+// again was a duplicate identifier).
+export type AlertStatus = 'active' | 'acknowledged' | 'resolved';
+
+export interface AlertRow {
+  id: string;
+  rule_key: string;
+  severity: AlertSeverity;
+  entity_type: string | null;
+  entity_id: string | null;
+  message_key: string;
+  params: Record<string, string | null>;
+  status: AlertStatus;
+  first_seen: string;
+  last_seen: string;
+  acknowledged_by: string | null;
+  acknowledged_at: string | null;
+}
+
+export interface AlertsList {
+  branch_id: string;
+  alerts: AlertRow[];
+  pagination: { skip: number; limit: number; total: number };
+}
+
+export function listAlerts(opts: {
+  branchId: string;
+  status?: 'active' | 'acknowledged' | 'resolved' | 'all';
+  skip?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams({
+    branch_id: opts.branchId,
+    status: opts.status ?? 'active',
+  });
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<AlertsList>(`/api/v1/alerts?${params.toString()}`);
+}
+
+export interface AlertsSummary {
+  branch_id: string;
+  warning: number;
+  danger: number;
+  critical: number;
+  total: number;
+}
+
+export function getAlertsSummary(opts: { branchId: string }) {
+  const params = new URLSearchParams({ branch_id: opts.branchId });
+  return apiFetch<AlertsSummary>(`/api/v1/alerts/summary?${params.toString()}`);
+}
+
+export function evaluateAlerts(opts: { branchId?: string }) {
+  const params = new URLSearchParams();
+  if (opts.branchId) params.set('branch_id', opts.branchId);
+  const qs = params.toString();
+  return apiFetch<{ branches?: number; created?: number; refreshed?: number }>(
+    `/api/v1/alerts/evaluate${qs ? `?${qs}` : ''}`,
+    { method: 'POST' },
+  );
+}
+
+export function acknowledgeAlert(alertId: string) {
+  return apiFetch<{ id: string; status: string }>(`/api/v1/alerts/${alertId}/acknowledge`, {
+    method: 'POST',
+  });
+}
+
+export function resolveAlert(alertId: string) {
+  return apiFetch<{ id: string; status: string }>(`/api/v1/alerts/${alertId}/resolve`, {
+    method: 'POST',
+  });
+}

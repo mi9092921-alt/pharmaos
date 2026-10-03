@@ -75,6 +75,13 @@ export const PERMISSIONS: Record<string, readonly SystemRoleCode[]> = {
   'reports.audit': ['super_admin'],
   'reports.export': ['super_admin', 'branch_manager'],
 
+  // =================== التنبيهات (P3-M6 — append-only per CLAUDE.md) ===================
+  // View = the operational audience of the inventory/compliance alert families
+  // (mirrors the reports.inventory tier). Manage (acknowledge/resolve) is the
+  // same operational set — acknowledging an expiry alert is day-to-day work.
+  'alerts.view': ['super_admin', 'branch_manager', 'pharmacist'],
+  'alerts.manage': ['super_admin', 'branch_manager', 'pharmacist'],
+
   // =================== الإعدادات ===================
   'settings.view': ['super_admin', 'branch_manager'],
   'settings.edit': ['super_admin'],

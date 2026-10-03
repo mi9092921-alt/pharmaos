@@ -8,6 +8,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -16,6 +17,7 @@ from fastapi.responses import JSONResponse
 from pharmaos_api.errors import ApiError, ErrorCode, error_envelope, success_envelope
 from pharmaos_api.middleware import LoginRateLimitMiddleware, SecurityHeadersMiddleware
 from pharmaos_api.routers import (
+    alerts,
     auth,
     cashier,
     catalog,
@@ -62,9 +64,36 @@ async def _boot_inventory_maintenance() -> None:
         logger.exception("inventory boot maintenance skipped (non-fatal)")
 
 
+async def _boot_alert_evaluation() -> None:
+    """Evaluate ALERT_RULES once at startup (P3-M6, ratified D6 — boot / CLI /
+    on-demand, no scheduler). Runs AFTER inventory maintenance so a drift alert
+    means the healer itself could not restore the invariant. Best-effort: an
+    alerts failure must never stop the API (plan convention #8)."""
+    from pharmaos_api.config import get_settings
+
+    if get_settings().pharmaos_env == "test":
+        return  # tests manage their own data and call the service directly
+    try:
+        from pharmaos_api.db import get_session_factory
+        from pharmaos_api.services import alerts_service
+
+        async with get_session_factory()() as session:
+            summary = await alerts_service.evaluate_all(session)
+        results = cast("list[dict[str, object]]", summary["results"])
+        created = sum(int(cast("int", r["created"])) for r in results)
+        logger.info(
+            "alerts evaluated at boot: %s branch(es), %s created",
+            summary["branches"],
+            created,
+        )
+    except Exception:  # boot maintenance is best-effort — never stop the API
+        logger.exception("alert evaluation at boot skipped (non-fatal)")
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _boot_inventory_maintenance()
+    await _boot_alert_evaluation()
     yield
 
 
@@ -86,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(catalog.router)
     app.include_router(inventory.router)
+    app.include_router(alerts.router)
     app.include_router(cashier.router)
     app.include_router(purchases.router)
     app.include_router(customers.router)

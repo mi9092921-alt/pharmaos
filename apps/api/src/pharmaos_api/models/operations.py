@@ -5,7 +5,7 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pharmaos_api.models.base import Base, MandatoryColumnsMixin
@@ -257,3 +257,41 @@ class Payment(MandatoryColumnsMixin, Base):
         UUID(as_uuid=True), ForeignKey("cash_sessions.id"), nullable=True
     )
     reference: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class Alert(MandatoryColumnsMixin, Base):
+    """Smart alert state (P3-M6, CLAUDE.md ALERT_RULES / ratified D4).
+
+    alerts = WHAT is wrong (lifecycle: active -> acknowledged -> resolved);
+    notifications (P3-M7) = HOW it is delivered. One live alert per
+    (branch_id, dedup_key) — the partial unique index uq_alerts_dedup_active —
+    so idempotent rule evaluation never duplicates rows. System-generated rows
+    carry created_by NULL."""
+
+    __tablename__ = "alerts"
+
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
+    )
+    rule_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    severity: Mapped[str] = mapped_column(String(10), nullable=False)
+    entity_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    message_key: Mapped[str] = mapped_column(String(60), nullable=False)
+    params: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(String(15), nullable=False, server_default=text("'active'"))
+    dedup_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    first_seen: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+    last_seen: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    acknowledged_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

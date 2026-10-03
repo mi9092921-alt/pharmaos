@@ -350,6 +350,19 @@ async def _inventory_maintenance(command: str) -> int:
     return 0
 
 
+async def _alerts_evaluate() -> int:
+    """Evaluate ALERT_RULES for every active branch (P3-M6, ratified D6 —
+    boot / CLI / on-demand; cron-able on the device like expiry-sweep)."""
+    import json as _json
+
+    from pharmaos_api.services import alerts_service
+
+    async with get_session_factory()() as session:
+        out = await alerts_service.evaluate_all(session)
+    print(_json.dumps(out, indent=2, default=str))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="pharmaos-api")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -390,6 +403,10 @@ def main(argv: list[str] | None = None) -> int:
     inv_sub.add_parser(
         "expiry-sweep", help="Mark past-expiry active batches as expired (cron-able)."
     )
+    sub.add_parser(
+        "alerts-evaluate",
+        help="Evaluate ALERT_RULES idempotently for every branch (P3-M6, cron-able).",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "bootstrap-admin":
@@ -413,6 +430,8 @@ def main(argv: list[str] | None = None) -> int:
             args.inventory_command, "check"
         )
         return asyncio.run(_inventory_maintenance(cmd))
+    if args.command == "alerts-evaluate":
+        return asyncio.run(_alerts_evaluate())
     if args.command == "catalog-seed":
         return asyncio.run(_catalog_seed(args.file, args.source))
     if args.command == "skeleton-sale":

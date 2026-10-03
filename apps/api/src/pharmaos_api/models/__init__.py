@@ -13,6 +13,7 @@ from pharmaos_api.models.compliance import EReceiptQueue, TtEvent
 from pharmaos_api.models.customer import Customer, LoyaltyTransaction
 from pharmaos_api.models.finance import Expense, ExpenseCategory
 from pharmaos_api.models.operations import (
+    Alert,
     CashSession,
     Invoice,
     InvoiceItem,
@@ -31,6 +32,7 @@ from pharmaos_api.models.settings import Settings
 from pharmaos_api.models.user import User
 
 __all__ = [
+    "Alert",
     "AuditLog",
     "Base",
     "Branch",
