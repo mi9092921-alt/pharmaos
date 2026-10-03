@@ -97,11 +97,16 @@ track-and-trace outbox modules (Port/Adapter with a local simulator; real
 acceptance **pending credentials**). See **`docs/phase2-acceptance.md`** for the
 acceptance-criteria harvest.
 
+**Phase 3 (Analytics) code-complete** — P3-M1..M8: the /reports dashboard
+(sales, inventory, expiry & waste, P&L with batch-cost COGS, supplier
+performance, customer RFM analytics — Recharts, CSV export, permission-tiered
+tabs), the smart alerts engine (12 rules per `ALERT_RULES`, dedup + lifecycle,
+boot/CLI/on-demand evaluation), and the notifications system (in-app bell +
+center, desktop toasts, email queued behind a provider gate). The acceptance
+criteria are harvested in **`docs/phase3-acceptance.md`** — including the
+"< 3s daily report" performance guard (42 ms measured at pilot scale) and the
+automated OWASP gate.
+
 Remaining before pilot sign-off: the on-device hardware pass —
 follow **`docs/pilot-checklist.md`** on the pharmacy machine.
 See `docs/versions.md` for the pinned version matrix and upgrade log.
-
-**Phase 3 (Analytics) is in progress** — P3-M1..M3 shipped. The governing
-execution plan lives in **`docs/phase3-execution-plan-analytics.md`** (milestone
-map P3-M1..M8, binding conventions, ratified decisions D1–D7), and the
-cross-session progress log in **`docs/progress-and-roadmap.md`**.

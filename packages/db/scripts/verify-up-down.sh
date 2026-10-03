@@ -13,6 +13,10 @@
 # Usage: DATABASE_URL=postgresql://... packages/db/scripts/verify-up-down.sh
 set -euo pipefail
 
+# Same UTF-8 pin as apply-migrations.sh — Windows psql can otherwise
+# double-encode Arabic literals when redirected (P3-M8 finding).
+export PGCLIENTENCODING=UTF8
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 MIGRATIONS_DIR="$REPO_ROOT/supabase/migrations"
 DOWNS_DIR="$REPO_ROOT/packages/db/downs"

@@ -30,6 +30,7 @@ export const ERROR_CODES = {
   PRESCRIPTION_REQUIRED: 'E-RX-001', // الدواء يتطلب وصفة ولم تُربط
   PRESCRIPTION_EXCEEDED: 'E-RX-002', // الكمية تتجاوز المتبقي من الوصفة
   PRESCRIPTION_INVALID: 'E-RX-003', // بند الوصفة غير مطابق لهذا الصنف
+  NOT_FOUND: 'E-GEN-001', // مسار/مورد غير موجود (404/405) — مغلف موحد حتى هنا
   UNEXPECTED: 'E-SYS-001',
 } as const;
 

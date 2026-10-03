@@ -13,6 +13,7 @@ from typing import cast
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from pharmaos_api.errors import ApiError, ErrorCode, error_envelope, success_envelope
 from pharmaos_api.middleware import LoginRateLimitMiddleware, SecurityHeadersMiddleware
@@ -104,6 +105,10 @@ def create_app() -> FastAPI:
         version="1.1.0",
         docs_url=None,
         redoc_url=None,
+        # No OpenAPI schema on the device either (P3-M8 OWASP gate: the local
+        # API surface should be exactly the endpoints the app calls — nothing
+        # self-describing for anything else reading 127.0.0.1).
+        openapi_url=None,
         lifespan=_lifespan,
     )
 
@@ -146,6 +151,24 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=422,
             content=error_envelope(ErrorCode.VALIDATION_FAILED, "Validation failed.", details),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(
+        _request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        # Routing-level rejections (404 unknown path, 405 wrong method) join the
+        # unified envelope too — the client's t(`errors.${code}`) path never
+        # meets a bare {"detail": ...} body (P3-M8, E-GEN-001). Starlette's
+        # computed headers (e.g. 405's RFC-9110 Allow) are forwarded untouched.
+        if exc.status_code == 404:
+            message = "The requested resource was not found."
+        else:
+            message = f"Request rejected with status {exc.status_code}."
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_envelope(ErrorCode.NOT_FOUND, message),
+            headers=exc.headers,
         )
 
     @app.exception_handler(Exception)

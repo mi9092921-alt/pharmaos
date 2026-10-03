@@ -50,10 +50,12 @@ async def list_alerts(
 
 @router.get("/alerts/summary")
 async def alert_summary(
-    branch_id: uuid.UUID = Query(),
+    branch_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     _: None = _alerts_view,
 ) -> dict[str, object]:
+    """Live severity counts — one branch, or a rollup across ALL branches when
+    branch_id is omitted (P3-M8: the dashboard banner watches every branch)."""
     data = await svc.alert_summary(session, branch_id=branch_id)
     return success_envelope(data)
 

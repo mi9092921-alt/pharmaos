@@ -36,6 +36,7 @@ class ErrorCode:
     PRESCRIPTION_REQUIRED = "E-RX-001"
     PRESCRIPTION_EXCEEDED = "E-RX-002"
     PRESCRIPTION_INVALID = "E-RX-003"
+    NOT_FOUND = "E-GEN-001"
 
 
 # Fallback messages in English (the neutral request-language fallback; the
@@ -64,6 +65,7 @@ _FALLBACK_MESSAGES: dict[str, str] = {
     ErrorCode.PRESCRIPTION_REQUIRED: "This medication requires a linked prescription.",
     ErrorCode.PRESCRIPTION_EXCEEDED: "Quantity exceeds what remains on the prescription.",
     ErrorCode.PRESCRIPTION_INVALID: "Prescription item does not match this medication.",
+    ErrorCode.NOT_FOUND: "The requested resource was not found.",
 }
 
 

@@ -1816,16 +1816,19 @@ export function listAlerts(opts: {
 }
 
 export interface AlertsSummary {
-  branch_id: string;
+  /** null = the response is a rollup across ALL branches (dashboard banner). */
+  branch_id: string | null;
   warning: number;
   danger: number;
   critical: number;
   total: number;
 }
 
-export function getAlertsSummary(opts: { branchId: string }) {
-  const params = new URLSearchParams({ branch_id: opts.branchId });
-  return apiFetch<AlertsSummary>(`/api/v1/alerts/summary?${params.toString()}`);
+export function getAlertsSummary(opts: { branchId?: string }) {
+  const params = new URLSearchParams();
+  if (opts.branchId) params.set('branch_id', opts.branchId);
+  const qs = params.toString();
+  return apiFetch<AlertsSummary>(`/api/v1/alerts/summary${qs ? `?${qs}` : ''}`);
 }
 
 export function evaluateAlerts(opts: { branchId?: string }) {

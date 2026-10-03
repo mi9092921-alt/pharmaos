@@ -4,7 +4,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, Spinner } from '@pharm
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 
-import { getAlertsSummary, listInventoryBranches } from '@/lib/api';
+import { getAlertsSummary } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
 import { NAV_ITEMS } from '@/lib/nav';
@@ -12,7 +12,9 @@ import { NAV_ITEMS } from '@/lib/nav';
 /** Dashboard home. Quick tiles reflect the sections the role can reach; ones
  * still to be built are shown as "coming soon" so the IA is visible early.
  * The alerts banner (P3-M6) shows only when LIVE critical/danger alerts exist
- * — warnings live on /alerts and never shout over the dashboard. */
+ * — warnings live on /alerts and never shout over the dashboard. Since P3-M8
+ * it watches ALL branches (the summary endpoint's rollup), so a second
+ * branch's emergency can never hide behind a first-branch-only query. */
 export default function DashboardHome() {
   const user = useAuth((s) => s.user);
   const hasPermission = useAuth((s) => s.hasPermission);
@@ -21,16 +23,10 @@ export default function DashboardHome() {
   const tiles = NAV_ITEMS.filter((item) => item.href !== '/' && hasPermission(item.permission));
 
   const canAlerts = hasPermission('alerts.view');
-  const branchesQuery = useQuery({
-    queryKey: ['inv-branches'],
-    queryFn: listInventoryBranches,
-    enabled: canAlerts,
-  });
-  const firstBranch = branchesQuery.data?.[0]?.id;
   const summaryQuery = useQuery({
-    queryKey: ['alerts-summary', firstBranch],
-    queryFn: () => getAlertsSummary({ branchId: firstBranch as string }),
-    enabled: !!firstBranch,
+    queryKey: ['alerts-summary'],
+    queryFn: () => getAlertsSummary({}),
+    enabled: canAlerts,
   });
   const urgent = (summaryQuery.data?.critical ?? 0) + (summaryQuery.data?.danger ?? 0);
 
@@ -45,7 +41,7 @@ export default function DashboardHome() {
         </p>
       </div>
 
-      {canAlerts && branchesQuery.isLoading && (
+      {canAlerts && summaryQuery.isLoading && (
         <div className="flex justify-center py-2">
           <Spinner />
         </div>

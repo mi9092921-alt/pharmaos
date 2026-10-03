@@ -568,16 +568,29 @@ async def list_alerts(
     }
 
 
-async def alert_summary(session: AsyncSession, *, branch_id: uuid.UUID) -> dict[str, object]:
-    """Live-alert counts by severity — the dashboard banner's data source."""
-    rows = (await session.execute(text("""
-                SELECT severity, COUNT(*) FROM alerts
-                WHERE branch_id = :b AND NOT is_deleted AND status <> 'resolved'
-                GROUP BY severity
-                """).bindparams(b=branch_id))).all()
+async def alert_summary(
+    session: AsyncSession, *, branch_id: uuid.UUID | None = None
+) -> dict[str, object]:
+    """Live-alert counts by severity — the dashboard banner's data source.
+
+    ``branch_id=None`` rolls up across ALL branches (P3-M8 polish): the banner
+    must never hide a second branch's emergency behind a first-branch-only
+    query. With a branch_id the response stays exactly the M6 shape."""
+    if branch_id is None:
+        rows = (await session.execute(text("""
+                    SELECT severity, COUNT(*) FROM alerts
+                    WHERE NOT is_deleted AND status <> 'resolved'
+                    GROUP BY severity
+                    """))).all()
+    else:
+        rows = (await session.execute(text("""
+                    SELECT severity, COUNT(*) FROM alerts
+                    WHERE branch_id = :b AND NOT is_deleted AND status <> 'resolved'
+                    GROUP BY severity
+                    """).bindparams(b=branch_id))).all()
     by_severity = {r[0]: int(r[1]) for r in rows}
     return {
-        "branch_id": str(branch_id),
+        "branch_id": str(branch_id) if branch_id is not None else None,
         "warning": by_severity.get("warning", 0),
         "danger": by_severity.get("danger", 0),
         "critical": by_severity.get("critical", 0),

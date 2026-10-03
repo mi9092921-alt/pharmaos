@@ -8,6 +8,13 @@
 # Usage: DATABASE_URL=postgresql://... packages/db/scripts/apply-migrations.sh
 set -euo pipefail
 
+# Migration files are UTF-8 (Arabic text throughout). Windows psql can fall
+# back to the console/ANSI codepage when stdin/stdout are redirected, which
+# silently double-encodes every Arabic literal it loads (mojibake DDL —
+# caught by P3-M8 when normalize_arabic's regex broke in a scratch DB). Pin
+# the client encoding so psql sends the file bytes verbatim on every host.
+export PGCLIENTENCODING=UTF8
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 MIGRATIONS_DIR="$REPO_ROOT/supabase/migrations"
 : "${DATABASE_URL:?DATABASE_URL is required}"
