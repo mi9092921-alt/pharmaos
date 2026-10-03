@@ -100,3 +100,8 @@ acceptance-criteria harvest.
 Remaining before pilot sign-off: the on-device hardware pass —
 follow **`docs/pilot-checklist.md`** on the pharmacy machine.
 See `docs/versions.md` for the pinned version matrix and upgrade log.
+
+**Phase 3 (Analytics) is in progress** — P3-M1..M3 shipped. The governing
+execution plan lives in **`docs/phase3-execution-plan-analytics.md`** (milestone
+map P3-M1..M8, binding conventions, ratified decisions D1–D7), and the
+cross-session progress log in **`docs/progress-and-roadmap.md`**.
