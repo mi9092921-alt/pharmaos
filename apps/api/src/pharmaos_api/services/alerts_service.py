@@ -100,7 +100,7 @@ async def _eval_low_stock(session: AsyncSession, branch_id: uuid.UUID) -> list[F
                        COALESCE(m.trade_name_ar, m.trade_name) AS name
                 FROM branch_inventory bi
                 JOIN medications m ON m.id = bi.medication_id
-                WHERE bi.branch_id = :b AND NOT bi.is_deleted
+                WHERE bi.branch_id = :b AND NOT bi.is_deleted AND NOT m.is_deleted
                   AND bi.reorder_point IS NOT NULL
                   AND bi.cached_quantity > 0
                   AND bi.cached_quantity <= bi.reorder_point
@@ -129,7 +129,7 @@ async def _eval_out_of_stock(session: AsyncSession, branch_id: uuid.UUID) -> lis
                        COALESCE(m.trade_name_ar, m.trade_name) AS name
                 FROM branch_inventory bi
                 JOIN medications m ON m.id = bi.medication_id
-                WHERE bi.branch_id = :b AND NOT bi.is_deleted
+                WHERE bi.branch_id = :b AND NOT bi.is_deleted AND NOT m.is_deleted
                   AND bi.cached_quantity = 0
                 """).bindparams(b=branch_id))).all()
     return [
@@ -160,6 +160,7 @@ async def _eval_expiry(
                 FROM medication_batches b
                 JOIN medications m ON m.id = b.medication_id
                 WHERE b.branch_id = :b AND NOT b.is_deleted
+                  AND NOT m.is_deleted
                   AND b.status = 'active' AND b.quantity > 0
                   AND b.expiry_date >= CURRENT_DATE + :min_days
                   AND b.expiry_date <= CURRENT_DATE + :max_days
@@ -191,7 +192,8 @@ async def _eval_expired(session: AsyncSession, branch_id: uuid.UUID) -> list[Fin
                        COALESCE(m.trade_name_ar, m.trade_name) AS name
                 FROM medication_batches b
                 JOIN medications m ON m.id = b.medication_id
-                WHERE b.branch_id = :b AND NOT b.is_deleted AND b.status = 'expired'
+                WHERE b.branch_id = :b AND NOT b.is_deleted
+                  AND NOT m.is_deleted AND b.status = 'expired'
                 """).bindparams(b=branch_id))).all()
     return [
         Finding(

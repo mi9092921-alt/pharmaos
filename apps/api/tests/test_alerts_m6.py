@@ -36,7 +36,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pharmaos_api.errors import ApiError
-from pharmaos_api.models import Branch, MedicationBatch, Role, User
+from pharmaos_api.models import Branch, Medication, MedicationBatch, Role, User
 from pharmaos_api.services import alerts_service, cashier_service, inventory_service
 from tests.test_reports_m5 import _make_med  # reused stocking helper (strip+tablet chain)
 
@@ -213,6 +213,35 @@ async def test_expiry_buckets_critical_warning_and_expired(
     assert isinstance(alerts, list)
     expired = next(a for a in alerts if a["rule_key"] == "expired")
     assert expired["severity"] == "danger" and expired["entity_type"] == "batch"
+
+
+async def test_deleted_medications_never_fire_stock_or_expiry_alerts(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """soft_delete_medication has no stock guard (a pre-existing catalog
+    behavior), so a deleted medication's cache row and batches survive it. The
+    stock and expiry rule evaluators must not alert on items the catalog no
+    longer carries — otherwise deletion turns into permanent alert noise."""
+    _, med_id, _ = await _make_med(db_session, branch.id)  # 1000 stocked
+    await _sync_cache(db_session, branch, med_id)
+    await _set_reorder(db_session, branch, med_id, "1500")  # low_stock would fire
+    batch = (
+        await db_session.execute(
+            select(MedicationBatch).where(MedicationBatch.medication_id == med_id)
+        )
+    ).scalar_one()
+    await _force_expiry(db_session, batch.id, days=10)  # expiry_critical would fire
+
+    med = await db_session.get(Medication, med_id)
+    assert med is not None
+    med.is_deleted = True
+    await db_session.commit()
+
+    report = await alerts_service.evaluate_branch(db_session, branch.id)
+    assert _rule(report, "low_stock") == 0
+    assert _rule(report, "out_of_stock") == 0
+    assert _rule(report, "expiry_critical") == 0
+    assert _rule(report, "expiry_warning") == 0
 
 
 async def test_high_discount_fires_above_limit_and_inert_at_zero(

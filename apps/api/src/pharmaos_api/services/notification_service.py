@@ -313,16 +313,27 @@ async def list_notifications(
 
 
 async def unread_count(
-    session: AsyncSession, *, branch_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession, *, user_id: uuid.UUID, branch_id: uuid.UUID | None = None
 ) -> dict[str, object]:
-    """The bell's data source: unread in_app rows visible to the viewer."""
-    count = (await session.execute(text("""
-                SELECT COUNT(*) FROM notifications n
-                WHERE n.branch_id = :b AND NOT n.is_deleted
-                  AND (n.user_id = :u OR n.user_id IS NULL)
-                  AND n.read_at IS NULL AND n.channel = 'in_app'
-                """).bindparams(b=branch_id, u=user_id))).scalar_one()
-    return {"branch_id": str(branch_id), "unread": int(count)}
+    """The bell's data source: unread in_app rows visible to the viewer — one
+    branch, or rolled up across ALL branches when branch_id is omitted (the
+    same P3-M8 rationale as the alert banner's rollup: a second branch's
+    unread notification must not hide behind a first-branch-only query)."""
+    if branch_id is None:
+        count = (await session.execute(text("""
+                    SELECT COUNT(*) FROM notifications n
+                    WHERE NOT n.is_deleted
+                      AND (n.user_id = :u OR n.user_id IS NULL)
+                      AND n.read_at IS NULL AND n.channel = 'in_app'
+                    """).bindparams(u=user_id))).scalar_one()
+    else:
+        count = (await session.execute(text("""
+                    SELECT COUNT(*) FROM notifications n
+                    WHERE n.branch_id = :b AND NOT n.is_deleted
+                      AND (n.user_id = :u OR n.user_id IS NULL)
+                      AND n.read_at IS NULL AND n.channel = 'in_app'
+                    """).bindparams(b=branch_id, u=user_id))).scalar_one()
+    return {"branch_id": str(branch_id) if branch_id is not None else None, "unread": int(count)}
 
 
 async def _visible_row(

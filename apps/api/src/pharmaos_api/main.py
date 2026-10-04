@@ -92,10 +92,32 @@ async def _boot_alert_evaluation() -> None:
         logger.exception("alert evaluation at boot skipped (non-fatal)")
 
 
+async def _boot_email_drain() -> None:
+    """Drain the queued email channel through the configured provider once at
+    startup (P3-M7, ratified D5/D6 — after alert evaluation so rows it just
+    queued are the first candidates). The NoopEmailProvider default keeps
+    every row pending; a failure must never stop the API (plan convention #8)."""
+    from pharmaos_api.config import get_settings
+
+    if get_settings().pharmaos_env == "test":
+        return  # tests call the drain directly
+    try:
+        from pharmaos_api.db import get_session_factory
+        from pharmaos_api.services import notification_service
+
+        async with get_session_factory()() as session:
+            out = await notification_service.dispatch_pending_email(session)
+        if out["attempted"] or out["skipped"]:
+            logger.info("email drain at boot: %s", out)
+    except Exception:  # boot maintenance is best-effort — never stop the API
+        logger.exception("email drain at boot skipped (non-fatal)")
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _boot_inventory_maintenance()
     await _boot_alert_evaluation()
+    await _boot_email_drain()
     yield
 
 

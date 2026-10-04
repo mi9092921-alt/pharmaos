@@ -13,6 +13,7 @@ rows stay pending. A configured provider (monkeypatched here) marks sent_at
 only on an actual send. SMS is never touched.
 """
 
+import json
 import uuid
 
 import httpx
@@ -298,6 +299,129 @@ async def test_alerts_engine_creates_notifications(
     assert len(rows_after) == 1  # refresh did NOT re-notify
 
 
+async def test_unread_count_rolls_up_across_branches(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """The bell must watch EVERY branch (the M8 banner rollup's rationale): with
+    no branch_id the count sums unread in_app rows across all branches, still
+    scoped to the viewer's visibility and to the in_app channel only."""
+    other = Branch(name=f"فرع {uuid.uuid4().hex[:6]}", country_code="EG", currency_code="EGP")
+    db_session.add(other)
+    await db_session.commit()
+
+    await notification_service.notify(
+        db_session,
+        branch_id=branch.id,
+        channel="in_app",
+        priority="critical",
+        title_key="alerts.rule_cash_discrepancy",
+        body_key="alerts.msg.cash_discrepancy",
+        params={},
+    )
+    await notification_service.notify(
+        db_session,
+        branch_id=branch.id,
+        channel="desktop",
+        priority="critical",
+        title_key="alerts.rule_cash_discrepancy",
+        body_key="alerts.msg.cash_discrepancy",
+        params={},
+    )  # desktop rows never count toward the bell
+    await notification_service.notify(
+        db_session,
+        branch_id=other.id,
+        channel="in_app",
+        priority="high",
+        title_key="alerts.rule_low_stock",
+        body_key="alerts.msg.low_stock",
+        params={},
+    )
+    await db_session.commit()
+
+    one = await notification_service.unread_count(db_session, user_id=actor.id, branch_id=branch.id)
+    assert one == {"branch_id": str(branch.id), "unread": 1}
+    other_one = await notification_service.unread_count(
+        db_session, user_id=actor.id, branch_id=other.id
+    )
+    assert other_one == {"branch_id": str(other.id), "unread": 1}
+    # The suite shares the test DB, so other tests' unread rows also sit in the
+    # rollup — what matters here is that the second branch's row IS included.
+    rollup = await notification_service.unread_count(db_session, user_id=actor.id)
+    assert rollup["branch_id"] is None
+    assert rollup["unread"] >= one["unread"] + other_one["unread"]
+
+
+async def test_cli_email_drain_marks_sent_with_configured_provider(
+    db_session: AsyncSession,
+    branch: Branch,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The queue drain must be reachable from a PRODUCTION path, not only from
+    tests: the CLI command (alerts-evaluate's D6 pattern) runs the real
+    dispatch. The default Noop provider leaves the row pending; a configured
+    provider marks sent_at on the actual send."""
+    nid = await notification_service.notify(
+        db_session,
+        branch_id=branch.id,
+        channel="email",
+        priority="critical",
+        title_key="alerts.rule_cash_discrepancy",
+        body_key="alerts.msg.cash_discrepancy",
+        params={"to_email": "manager@pharma.example"},
+    )
+    await db_session.commit()
+
+    # The handler is the CLI command's body: it prints the drain summary and
+    # returns an exit code — the delivery facts live in the printed JSON.
+    from pharmaos_api.cli import _notifications_drain_email
+
+    exit_code = await _notifications_drain_email()
+    assert exit_code == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["sent"] == 0 and printed["attempted"] >= 1  # honest no-op: queued, unclaimed
+    db_session.expire_all()
+    row = await db_session.get(Notification, nid)
+    assert row is not None and row.sent_at is None
+
+    class _Configured:
+        def send(
+            self, *, to_email: str, subject: str, body: str
+        ) -> notification_service.EmailDelivery:
+            return notification_service.EmailDelivery(sent=True, reason="ok")
+
+    monkeypatch.setattr(notification_service, "get_email_provider", lambda: _Configured())
+    exit_code = await _notifications_drain_email()
+    assert exit_code == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["sent"] >= 1
+
+    db_session.expire_all()
+    row = await db_session.get(Notification, nid)
+    assert row is not None and row.sent_at is not None
+
+
+async def test_boot_email_drain_invokes_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The boot hook runs the drain in every non-test environment (best-effort —
+    convention #8): the M7 queue drains without waiting for a manual command."""
+    from types import SimpleNamespace
+
+    from pharmaos_api import config as config_module
+    from pharmaos_api.main import _boot_email_drain
+    from pharmaos_api.services import notification_service
+
+    calls: list[dict[str, int]] = []
+
+    async def _fake_dispatch(session: object, *, limit: int = 50) -> dict[str, int]:
+        calls.append({"attempted": 0, "sent": 0, "failed": 0, "skipped": 0})
+        return calls[-1]
+
+    monkeypatch.setattr(config_module, "get_settings", lambda: SimpleNamespace(pharmaos_env="dev"))
+    monkeypatch.setattr(notification_service, "dispatch_pending_email", _fake_dispatch)
+    await _boot_email_drain()
+    assert len(calls) == 1
+
+
 # ------------------------------ HTTP layer ------------------------------
 
 
@@ -360,6 +484,12 @@ async def test_notifications_http_matrix_csrf_and_flow(
 
     unread = await client.get("/api/v1/notifications/unread-count", params=params)
     assert unread.status_code == 200 and unread.json()["data"]["unread"] == 1
+
+    # branch_id omitted → the all-branch rollup the topbar bell watches.
+    rollup = await client.get("/api/v1/notifications/unread-count")
+    assert rollup.status_code == 200, rollup.text
+    assert rollup.json()["data"]["branch_id"] is None
+    assert rollup.json()["data"]["unread"] >= 1
 
     marked = await client.post(
         f"/api/v1/notifications/{nid}/read", params=params, headers={"X-CSRF-Token": csrf}

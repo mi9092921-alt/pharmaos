@@ -1894,10 +1894,13 @@ export function listNotifications(opts: {
   return apiFetch<NotificationsList>(`/api/v1/notifications?${params.toString()}`);
 }
 
-export function getUnreadCount(opts: { branchId: string }) {
-  const params = new URLSearchParams({ branch_id: opts.branchId });
-  return apiFetch<{ branch_id: string; unread: number }>(
-    `/api/v1/notifications/unread-count?${params.toString()}`,
+export function getUnreadCount(opts: { branchId?: string } = {}) {
+  // branchId omitted → the endpoint rolls up unread across ALL branches.
+  const params = new URLSearchParams();
+  if (opts.branchId) params.set('branch_id', opts.branchId);
+  const qs = params.toString();
+  return apiFetch<{ branch_id: string | null; unread: number }>(
+    `/api/v1/notifications/unread-count${qs ? `?${qs}` : ''}`,
   );
 }
 

@@ -39,6 +39,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pharmaos_api.errors import ApiError, ErrorCode
+from pharmaos_api.services.csv_safe import csv_safe
 
 _ZERO = Decimal("0.00")
 _GRANULARITIES = frozenset({"day", "month", "year"})
@@ -773,7 +774,9 @@ async def supplier_performance_csv(
     for row in suppliers:
         writer.writerow(
             [
-                row["name"],
+                # Supplier names are free text created by narrower roles than the
+                # reports.export audience — neutralize CSV formula injection.
+                csv_safe(cast("str", row["name"])),
                 row["po_count"],
                 row["ordered_value"],
                 row["received_value"],
@@ -890,7 +893,7 @@ async def customer_analytics_report(
         key=lambda row: (Decimal(str(row["net_spend"])), str(row["last_purchase"] or "")),
         reverse=True,
     )
-    if top_limit >= 0:
+    if top_limit > 0:
         rows = rows[:top_limit]
 
     gross_total = sum((v[1] for v in sold_by_customer.values()), _ZERO)
@@ -922,7 +925,13 @@ async def customer_analytics_csv(
     date_from: dt.date,
     date_to: dt.date,
 ) -> str:
-    """The customer analytics rows as CSV (one row per customer, top by spend)."""
+    """The customer analytics rows as CSV (one row per customer, top by spend).
+
+    top_limit=0 means UNLIMITED here (the same convention
+    supplier_performance_report documents for its CSV path) — the router's
+    Query(ge=1) keeps API callers from ever sending 0, so this is a service/CSV
+    concern only.
+    """
     report = await customer_analytics_report(
         session,
         branch_id=branch_id,
@@ -947,8 +956,11 @@ async def customer_analytics_csv(
     for row in rows:
         writer.writerow(
             [
-                row["name"],
-                row["phone"] or "",
+                # Free text (any cashier can create customers; a manager exports)
+                # and phones legitimately start with '+' (international format) —
+                # both must be neutralized against CSV formula interpretation.
+                csv_safe(cast("str", row["name"])),
+                csv_safe(cast("str | None", row["phone"])),
                 row["invoice_count"],
                 row["net_spend"],
                 row["last_purchase"],

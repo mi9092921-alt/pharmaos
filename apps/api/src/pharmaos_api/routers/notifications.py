@@ -52,11 +52,14 @@ async def list_notifications(
 
 @router.get("/notifications/unread-count")
 async def unread_count(
-    branch_id: uuid.UUID = Query(),
+    branch_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
     _: None = _notifications_view,
 ) -> dict[str, object]:
+    """Unread in_app count — one branch, or an all-branch rollup when
+    branch_id is omitted (the topbar bell watches every branch, mirroring the
+    alert banner's M8 rollup)."""
     data = await svc.unread_count(session, branch_id=branch_id, user_id=user.id)
     return success_envelope(data)
 

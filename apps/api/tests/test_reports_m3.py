@@ -168,6 +168,48 @@ async def test_expiry_waste_swept_excluded_outside_date_range(
     assert report["waste_swept"] == {"count": 0, "quantity": "0.000", "value": "0.00"}
 
 
+async def test_expiry_waste_counts_a_re_swept_batch_once(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """set_batch_status permits expired -> active (an operator correcting a
+    misclassification), and the next expiry_sweep then writes a SECOND
+    expiry_writeoff movement for the SAME batch. The batch's physical units
+    did not double, so the report must contribute its quantity/value ONCE —
+    count, quantity, and value must stay internally consistent instead of
+    qty/value silently doubling behind a count of 1."""
+    med_id = await _make_med(db_session)
+    batch = await _receive(db_session, actor, branch, med_id, days=5, qty="10", price="2.00")
+    await _force_expiry_offset(db_session, batch.id, days=-1)
+    await inventory_service.expiry_sweep(db_session)
+
+    swept = await inventory_service.get_batch(db_session, batch.id)
+    assert swept.status == "expired"
+    reactivated = await inventory_service.set_batch_status(
+        db_session, actor=actor, batch=swept, status="active", reason="misclassification fixed"
+    )
+    assert reactivated.status == "active"
+    await inventory_service.expiry_sweep(db_session)
+
+    movements = (
+        await db_session.execute(
+            text(
+                "SELECT COUNT(*) FROM stock_movements sm "
+                "WHERE sm.batch_id = :i AND sm.movement_type = 'expiry_writeoff'"
+            ).bindparams(i=batch.id)
+        )
+    ).scalar_one()
+    assert movements == 2  # the scenario really produced two writeoff movements
+
+    today = dt.date.today()
+    report = await inventory_service.expiry_waste_report(
+        db_session,
+        branch_id=branch.id,
+        date_from=today - dt.timedelta(days=1),
+        date_to=today,
+    )
+    assert report["waste_swept"] == {"count": 1, "quantity": "10.000", "value": "20.00"}
+
+
 async def test_expiry_waste_trend_weekly_buckets_and_horizon(
     db_session: AsyncSession, actor: User, branch: Branch
 ) -> None:

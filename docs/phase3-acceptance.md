@@ -81,6 +81,54 @@ query-plan guard.
   canonical paths (CI on Linux, Supabase CLI) were never affected; the pin
   protects local Windows verification.
 
+## Post-acceptance review fixes (2026-10-04)
+
+An independent review-agent audit of the shipped Phase 3 confirmed six defects;
+all are fixed with regression tests (309 pytest green, 302+7; all gates clean;
+no new migration, no dependency, no breaking API change):
+
+- **CSV formula injection closed on EVERY export (was stock-level only):** the
+  P3-M5 supplier/customer CSV exports wrote free-text name/phone raw while the
+  repo's own mitigation shipped only on the M2 stock-level CSV — the exact
+  cross-role vector its docstring documents (cashier creates, manager exports).
+  The mitigation now lives in the shared `services/csv_safe.py` and both M5
+  exports sanitize; a leading `+` phone (ordinary international format) is
+  covered, not just malicious payloads.
+- **Customer analytics CSV export was always header-only (new defect, caught
+  by the injection test):** the CSV passed `top_limit=0` into a report that
+  sliced at `top_limit >= 0` — the M4 "0 = none" convention colliding with the
+  M5 "0 = unlimited" convention the supplier export documents. Root-fixed to
+  `top_limit > 0`; the router's `Query(ge=1)` keeps API callers from ever
+  sending 0, both conventions are documented in the docstrings.
+- **Waste report counts each swept batch ONCE:** a re-activated expired batch
+  (permitted by `set_batch_status`) gets a second `expiry_writeoff` movement
+  from the next sweep; the waste aggregation now groups by `batch_id` before
+  summing, so its quantity/value can never silently double behind a count of 1.
+- **Email queue drain is reachable from production:** new CLI
+  `notifications-drain-email` (cron-able, the D6 pattern) plus a best-effort
+  boot hook after alert evaluation. The default Noop provider keeps every row
+  pending (nothing claimed, nothing lost); a configured provider marks
+  `sent_at` on the actual send.
+- **The notification bell and desktop toasts watch ALL branches:** the M8
+  banner rollup's rationale extended to notifications —
+  `GET /notifications/unread-count` takes an OPTIONAL `branch_id` and rolls up
+  across all branches when omitted (scoped calls keep the old shape); the
+  topbar consumes the rollup and feeds toasts per branch with the endpoint's
+  100-row cap.
+- **Soft-deleted medications leave the Phase-3 aggregates:** the stock-level
+  summary counts the same rows the items list and CSV show (deleted
+  medications' surviving cache rows excluded), and the stock/expiry alert
+  evaluators no longer fire for items the catalog no longer carries. The
+  pre-Phase-3 read models (`expiry_alerts`, `batch_status_report`,
+  `drift_check`) are deliberately untouched.
+
+Proving tests: M5 CSV injection (also proved the empty-CSV defect), M3
+re-swept-batch waste consistency, M2 summary/items/CSV consistency, M6 deleted
+meds fire nothing, M7 unread rollup + CLI drain through the real handler +
+boot-drain wiring. Frontend changes verified by prettier/eslint/tsc/build (the
+repo has no JS test runner); a manual multi-branch bell/toast smoke folds into
+the standing device-pilot checklist.
+
 ## Honest scope notes (pending providers / deferred, per the plan)
 
 - **Email channel:** queued behind the provider gateway (`sent_at` stays NULL

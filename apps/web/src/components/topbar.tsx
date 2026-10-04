@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge, Button } from '@pharmaos/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 
@@ -15,22 +15,31 @@ import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
 import { useOnline } from '@/lib/use-online';
 
-/** Polls the branch's newest rows and fires an OS toast (Notification API —
- * native on the Electron desktop shell, permission-gated in browsers) for
- * NEW desktop-channel rows. First load only seeds the seen-set: history never
- * replays as toasts. */
-function useDesktopToasts(branchId: string | undefined, enabled: boolean) {
+/** Polls every branch's newest rows and fires an OS toast (Notification API —
+ * native on the Electron desktop shell, permission-gated in browsers) for NEW
+ * desktop-channel rows. One feed per branch: desktop rows are branch-scoped
+ * (the list endpoint requires a branch_id), so watching only one branch would
+ * silently drop the others'. The limit rides the endpoint's 100-row cap so a
+ * first-evaluation alert burst never outgrows the window between polls. First
+ * load only seeds the seen-set: history never replays as toasts. */
+function useDesktopToasts(branchIds: string[], enabled: boolean) {
   const seenIds = useRef<Set<string> | null>(null);
-  const rowsQuery = useQuery({
-    queryKey: ['notifications-desktop-feed', branchId],
-    queryFn: () => listNotifications({ branchId: branchId as string, limit: 10 }),
-    enabled: enabled && !!branchId,
-    refetchInterval: 30_000,
+  const feeds = useQueries({
+    queries: branchIds.map((branchId) => ({
+      queryKey: ['notifications-desktop-feed', branchId],
+      queryFn: () => listNotifications({ branchId, limit: 100 }),
+      enabled,
+      refetchInterval: 30_000,
+    })),
   });
+  // Changed only when a feed fetch actually lands — not on every render.
+  const feedStamp = feeds.map((feed) => feed.dataUpdatedAt).join(',');
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined' || typeof Notification === 'undefined') return;
-    const rows = rowsQuery.data?.notifications ?? [];
+    const rows = feeds
+      .flatMap((feed) => feed.data?.notifications ?? [])
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
     if (seenIds.current === null) {
       seenIds.current = new Set(rows.map((r) => r.id));
       return;
@@ -45,13 +54,16 @@ function useDesktopToasts(branchId: string | undefined, enabled: boolean) {
         new Notification(t(row.title_key), { body });
       }
     }
-  }, [rowsQuery.data, enabled]);
+    // `feeds` is captured fresh on each render; feedStamp changes only when a
+    // fetch lands, so this effect runs per poll rather than per render.
+  }, [feedStamp, enabled]);
 }
 
 /** Top bar: persistent online/offline status + notification bell (P3-M7) +
- * current user/role + sign out. The bell polls the unread counter every 30s
- * (TanStack Query) for viewers holding notifications.view; it links to the
- * /notifications center. */
+ * current user/role + sign out. The bell polls the ALL-BRANCH unread counter
+ * every 30s (TanStack Query) for viewers holding notifications.view — the same
+ * rollup rationale as the alert banner (a second branch's unread must not hide
+ * behind a first-branch-only query); it links to the /notifications center. */
 export function Topbar() {
   const router = useRouter();
   const online = useOnline();
@@ -66,15 +78,15 @@ export function Topbar() {
     queryFn: listInventoryBranches,
     enabled: canNotifications,
   });
-  const firstBranch = branchesQuery.data?.[0]?.id;
+  const branchIds = (branchesQuery.data ?? []).map((b) => b.id);
   const unreadQuery = useQuery({
-    queryKey: ['notifications-unread', firstBranch],
-    queryFn: () => getUnreadCount({ branchId: firstBranch as string }),
-    enabled: !!firstBranch,
+    queryKey: ['notifications-unread'],
+    queryFn: () => getUnreadCount(),
+    enabled: canNotifications,
     refetchInterval: 30_000,
   });
   const unread = unreadQuery.data?.unread ?? 0;
-  useDesktopToasts(firstBranch, canNotifications);
+  useDesktopToasts(branchIds, canNotifications);
 
   const onLogout = async () => {
     try {

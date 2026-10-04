@@ -363,6 +363,22 @@ async def _alerts_evaluate() -> int:
     return 0
 
 
+async def _notifications_drain_email() -> int:
+    """Drain queued email notifications through the configured provider
+    (P3-M7, ratified D5/D6 — cron-able on the device like alerts-evaluate).
+    The NoopEmailProvider default keeps every row pending (nothing claimed,
+    nothing lost); a configured provider marks sent_at only on an actual
+    send."""
+    import json as _json
+
+    from pharmaos_api.services import notification_service
+
+    async with get_session_factory()() as session:
+        out = await notification_service.dispatch_pending_email(session)
+    print(_json.dumps(out, indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="pharmaos-api")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -407,6 +423,10 @@ def main(argv: list[str] | None = None) -> int:
         "alerts-evaluate",
         help="Evaluate ALERT_RULES idempotently for every branch (P3-M6, cron-able).",
     )
+    sub.add_parser(
+        "notifications-drain-email",
+        help="Send queued email notifications via the configured provider (P3-M7, cron-able).",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "bootstrap-admin":
@@ -432,6 +452,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_inventory_maintenance(cmd))
     if args.command == "alerts-evaluate":
         return asyncio.run(_alerts_evaluate())
+    if args.command == "notifications-drain-email":
+        return asyncio.run(_notifications_drain_email())
     if args.command == "catalog-seed":
         return asyncio.run(_catalog_seed(args.file, args.source))
     if args.command == "skeleton-sale":

@@ -152,6 +152,32 @@ async def test_stock_level_report_flags_and_summary(
     assert summary["out_of_stock_count"] == 1
 
 
+async def test_stock_level_summary_excludes_deleted_medications(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """soft_delete_medication has no stock guard (a pre-existing catalog
+    behavior), so a deleted medication's branch_inventory cache row survives.
+    The summary must count the SAME rows the items list and the CSV show — a
+    deleted medication leaks into neither, and the manager's totals cannot
+    exceed what the report can ever page through."""
+    med_id = await _stock_med(db_session, actor, branch.id, tablets=1000)
+    med = await db_session.get(Medication, med_id)
+    assert med is not None
+    med.is_deleted = True
+    await db_session.commit()
+
+    report = await inventory_service.stock_level_report(db_session, branch_id=branch.id)
+    assert report["items"] == []
+    assert report["summary"] == {
+        "total_skus": 0,
+        "low_stock_count": 0,
+        "out_of_stock_count": 0,
+    }
+
+    csv_text = await inventory_service.stock_level_report_csv(db_session, branch_id=branch.id)
+    assert med.trade_name not in csv_text
+
+
 async def test_stock_level_report_low_stock_only_filter(
     db_session: AsyncSession, actor: User, branch: Branch
 ) -> None:

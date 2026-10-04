@@ -692,3 +692,43 @@ async def test_supplier_and_customer_csv_export_permissions(
         "customer,phone,invoice_count,net_spend,last_purchase,recency_days,loyalty_points"
     )
     assert len(clines) == 1  # walk-in sale only → no customer rows
+
+
+async def test_supplier_and_customer_csv_neutralize_formula_injection(
+    db_session: AsyncSession, actor: User, branch: Branch
+) -> None:
+    """The same cross-role vector test_reports_m2 pins for the stock-level CSV,
+    from the M5 exports: supplier names and customer names/phones are free text
+    created by roles narrower than reports.export (any cashier can create a
+    customer), and a leading =/+/-/@ would execute as a formula in Excel/Sheets
+    on open. Every free-text cell must come back single-quote-prefixed —
+    including a leading '+' phone, which is ordinary international formatting,
+    not even malicious input."""
+    barcode, med_id, tablet_pkg = await _make_med(db_session, branch.id)
+
+    evil_supplier = Supplier(name="=SUM(A1:A2)")
+    db_session.add(evil_supplier)
+    await db_session.commit()
+    po, items = await _po(
+        db_session, actor, branch, evil_supplier, med_id, tablet_pkg, lines=[("10", "1.00")]
+    )
+    await purchase_service.submit(db_session, actor=actor, po=po)  # type: ignore[arg-type]
+    await purchase_service.approve(db_session, actor=actor, po=po)  # type: ignore[arg-type]
+    await _receive_lines(db_session, actor, po, items, receipts=[(0, "10")])
+
+    evil_customer = Customer(name="@cmd|calc", phone="+201000000000")
+    db_session.add(evil_customer)
+    await db_session.commit()
+    await _sell(db_session, actor, branch, barcode, strips=1, customer_id=evil_customer.id)
+
+    today = dt.date.today()
+    sup_csv = await reporting_service.supplier_performance_csv(
+        db_session, branch_id=branch.id, date_from=today, date_to=today
+    )
+    assert "'=SUM(A1:A2)" in sup_csv
+
+    cust_csv = await reporting_service.customer_analytics_csv(
+        db_session, branch_id=branch.id, date_from=today, date_to=today
+    )
+    assert "'@cmd|calc" in cust_csv
+    assert "'+201000000000" in cust_csv

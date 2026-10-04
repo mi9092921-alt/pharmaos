@@ -26,6 +26,7 @@ from pharmaos_api.audit import AuditAction
 from pharmaos_api.errors import ApiError, ErrorCode
 from pharmaos_api.models import Branch, Medication, MedicationBatch, StockMovement, User
 from pharmaos_api.services import audit_service, pack_serial_service
+from pharmaos_api.services.csv_safe import csv_safe
 
 _BATCH_STATUSES = {"active", "quarantined", "expired", "recalled", "depleted"}
 # Statuses whose stock is held OUT of sale but still on the shelf (capital locked
@@ -678,7 +679,8 @@ async def stock_level_report(
                         AND bi.cached_quantity <= {_LOW_THRESHOLD}) AS low_stock,
                     COUNT(*) AS total_skus
                 FROM branch_inventory bi
-                WHERE bi.branch_id = :b AND NOT bi.is_deleted
+                JOIN medications m ON m.id = bi.medication_id
+                WHERE bi.branch_id = :b AND NOT bi.is_deleted AND NOT m.is_deleted
                 """).bindparams(b=branch_id))).one()  # noqa: S608 (fragments are constant)
 
     return {
@@ -693,18 +695,11 @@ async def stock_level_report(
     }
 
 
-def _csv_safe(value: str) -> str:
-    """Neutralize CSV formula injection (OWASP): a free-text field
-    (trade_name/trade_name_ar have no character restriction — Field(min_length=1,
-    max_length=255) is the only constraint, per routers/catalog.py) could start
-    with =, +, -, or @ and be interpreted as a formula by Excel/Sheets on open.
-    A data_entry role can create medications (inventory.add); a branch_manager
-    exports this CSV (reports.export) — a malicious trade_name is a real,
-    if low-probability, cross-role injection vector this export introduces
-    that M1's numeric-only CSV never had. Prefixing with a single quote is
-    the standard mitigation; spreadsheet apps render it as forced-text and
-    drop the quote from display."""
-    return f"'{value}" if value and value[0] in "=+-@" else value
+def _csv_safe(value: str | None) -> str:
+    """CSV formula-injection neutralization — the shared mitigation lives in
+    services.csv_safe (trade_name/trade_name_ar are free text, so a leading
+    =/+/-/@ would execute as a formula in Excel/Sheets on open)."""
+    return csv_safe(value)
 
 
 async def stock_level_report_csv(
@@ -948,7 +943,11 @@ async def expiry_waste_report(
     movement_report — that would always be zero. It is instead the swept
     batches' own stored `quantity x purchase_price`, joined from the movement
     (which still carries an accurate created_at per batch) to the batch (which
-    still carries the real quantity). Deliberately NOT filtered by the batch's
+    still carries the real quantity). The aggregation groups by batch_id BEFORE
+    summing, so a batch with more than one expiry_writeoff movement in the
+    range (a manual re-activation of an expired batch lets the next sweep
+    write a second one) still contributes its quantity/value ONCE — the batch's
+    physical units did not double. Deliberately NOT filtered by the batch's
     CURRENT status — the movement log is the historical record of what
     happened during the period; a batch's status filter would let a later
     reclassification retroactively rewrite history.
@@ -961,14 +960,18 @@ async def expiry_waste_report(
 
     waste_row = (
         await session.execute(text("""
-                SELECT COUNT(DISTINCT sm.batch_id) AS n,
-                       COALESCE(SUM(b.quantity), 0) AS qty,
-                       COALESCE(SUM(b.quantity * b.purchase_price), 0) AS value
-                FROM stock_movements sm
-                JOIN medication_batches b ON b.id = sm.batch_id
-                WHERE sm.branch_id = :b AND NOT sm.is_deleted AND NOT b.is_deleted
-                  AND sm.movement_type = 'expiry_writeoff'
-                  AND sm.created_at >= :f AND sm.created_at < :t_excl
+                SELECT COUNT(*) AS n,
+                       COALESCE(SUM(qty), 0) AS qty,
+                       COALESCE(SUM(qty * price), 0) AS value
+                FROM (
+                    SELECT sm.batch_id, MAX(b.quantity) AS qty, MAX(b.purchase_price) AS price
+                    FROM stock_movements sm
+                    JOIN medication_batches b ON b.id = sm.batch_id
+                    WHERE sm.branch_id = :b AND NOT sm.is_deleted AND NOT b.is_deleted
+                      AND sm.movement_type = 'expiry_writeoff'
+                      AND sm.created_at >= :f AND sm.created_at < :t_excl
+                    GROUP BY sm.batch_id
+                ) sub
                 """).bindparams(b=branch_id, f=date_from, t_excl=date_to + dt.timedelta(days=1)))
     ).one()
 
