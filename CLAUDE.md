@@ -1027,7 +1027,19 @@ Phase 3 — Analytics (التحليلات):
   [ ] Customer Purchase History
   [ ] نظام الإشعارات الكامل
 
-Phase 4 — Enterprise (المؤسسية):
+Phase 4 — الحماية والترخيص (Licensing & Protection) — v1.2 (2026-10-05):
+  [ ] P4-M1: نواة الترخيص — توقيع Ed25519 + بصمة الجهاز + سلسلة أحداث الساعة
+      (التفاصيل الكاملة: docs/phase4-execution-plan-licensing.md)
+  [ ] P4-M2: فرض الترخيص في الـ API (بوابة + سلم متدرج + كشف ترجيع الساعة)
+  [ ] P4-M3: واجهة التفعيل والواجهة المحمية
+  [ ] P4-M4: بوابة Electron (التحقق المزدوج)
+  ملاحظة: موجة التغليف (PyInstaller/bytenode/installer) تالية خارج P4 وتُدمج مع P5-M5.
+
+Phase 5 — Offline (النطاق المعدَّل: محلي خالص، فرع واحد، بلا سحابة، بلا جوال) — v1.2:
+  [ ] P5-M1..M8 — الخطة: docs/phase5-execution-plan-offline.md (بانتظار موافقة المالك)
+  (عقد الـ offline + النسخ والتعافي بلا سحابة + الصحة + تصريف الامتثال + التغليف + بوابات الأمان/الأداء)
+
+Phase 6 — Enterprise (المؤسسية — مؤجَّلة):
   [ ] Multi-Branch Management
   [ ] Cloud Sync كامل ثنائي الاتجاه (Outbox + LWW + مراجعة يدوية)
   [ ] Mobile App (React Native) — مؤجل حتى ثبات النواة
@@ -1333,7 +1345,7 @@ enum Priority {
 ✗ تصنيع/تركيب مستحضرات
 ✗ تكامل موردين آلي (EDI) في النسخ الأولى
 ✗ ذكاء اصطناعي تنبؤي للطلب (بعد اكتمال التحليلات الأساسية فقط)
-✗ دعم iOS/Android قبل Phase 4
+✗ دعم iOS/Android قبل Phase 6
 ```
 
 ---
