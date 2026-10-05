@@ -53,3 +53,6 @@ Thumbs.db
 
 # Python editable-install metadata
 *.egg-info/
+
+# Session tooling (zcode plans/workspace artifacts)
+.zcode/
