@@ -8,6 +8,7 @@ there is no data gap when PharmaOS goes live.
 """
 
 import datetime as dt
+import logging
 import uuid
 from collections.abc import Sequence
 
@@ -17,7 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pharmaos_api.audit import AuditAction
 from pharmaos_api.models import PackSerial, TtEvent, User
 from pharmaos_api.services import audit_service
-from pharmaos_api.services.compliance import eda_tt_adapter
+from pharmaos_api.services.compliance import eda_tt_adapter, fail_closed
+
+logger = logging.getLogger(__name__)
 
 MAX_PAGE_SIZE = 100
 _NEEDS_WORK = ("pending", "failed")
@@ -81,6 +84,10 @@ async def process_one(
     if event.status == "reported":
         return event
     adapter = eda_tt_adapter.get_adapter()
+    # Fail-closed (installer decision 8): production + simulator raises BEFORE
+    # the event is touched — a scheduled drain can never mark simulated events
+    # as reported. drain() catches this per event and leaves it pending.
+    fail_closed.ensure_allowed(simulator=adapter.is_simulator)
     event.report_attempts = event.report_attempts + 1
     payload = _build_payload(event)
     try:
@@ -146,14 +153,29 @@ async def drain(
         .scalars()
         .all()
     )
-    reported = failed = 0
+    reported = failed = skipped = 0
     for event in events:
-        processed = await process_one(session, event=event, actor=actor)
+        try:
+            processed = await process_one(session, event=event, actor=actor)
+        except fail_closed.ComplianceFailClosedError:
+            skipped += 1
+            continue
         if processed.status == "reported":
             reported += 1
         else:
             failed += 1
-    return {"processed": len(events), "reported": reported, "failed": failed}
+    if skipped:
+        logger.warning(
+            "fail-closed: %d track-and-trace event(s) left untouched — production "
+            "is not configured with real EDA credentials",
+            skipped,
+        )
+    return {
+        "processed": len(events),
+        "reported": reported,
+        "failed": failed,
+        "skipped_fail_closed": skipped,
+    }
 
 
 async def import_events(

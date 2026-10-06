@@ -7,9 +7,24 @@ The super_admin ROLE row is upserted here by code (the same code-defined
 role the M7 seeder maintains) — never created by hand in the DB.
 Credentials come from arguments/environment — never hardcoded (forbidden #4).
 
-backup create / backup restore-drill / backup export-key: operational entry
-points for the encrypted-backup subsystem (M9). export-key prints the backup
-key ONCE for the owner to store OFFLINE — it is the recovery root.
+backup create / backup restore-drill / backup export-key / backup import-key /
+backup restore: operational entry points for the encrypted-backup subsystem.
+export-key prints the backup key ONCE for the owner to store OFFLINE — it is
+the recovery root; import-key brings it back on a fresh device (never as a
+command-line argument — process lists/shell history must not see it); restore
+is the safe cluster-level path (staging -> verify -> promote, decision 11).
+
+migrate: apply pending SQL migrations + re-apply code-defined seeds with the
+EXACT semantics of packages/db/scripts/apply-migrations.sh (the bash script
+stays the CI path; the device has no bash/psql — asyncpg only).
+
+compliance-drain: branch-wide ETA/EDA outbox drain for the scheduled task —
+no actor (audit rows carry NULL actor = system, by design) and FAIL-CLOSED in
+production when only the local simulator is configured.
+
+Every maintenance command (backup/restore/migrate/catalog-seed and the
+first-run flow) holds the device-wide maintenance mutex — a 02:00 scheduled
+backup can never collide with a manual restore.
 
 Usage:
     python -m pharmaos_api.cli bootstrap-admin --username <name> --full-name <name>
@@ -17,11 +32,16 @@ Usage:
     python -m pharmaos_api.cli backup create [--backup-dir PATH] [--no-cloud]
     python -m pharmaos_api.cli backup restore-drill --file PATH --drill-database-url URL
     python -m pharmaos_api.cli backup export-key
+    python -m pharmaos_api.cli backup import-key [--stdin]
+    python -m pharmaos_api.cli backup restore --file PATH [--pgdata DIR]
+    python -m pharmaos_api.cli migrate
+    python -m pharmaos_api.cli compliance-drain
 """
 
 import argparse
 import asyncio
 import getpass
+import json as _json
 import os
 import sys
 from pathlib import Path
@@ -29,11 +49,16 @@ from pathlib import Path
 from sqlalchemy import select
 
 from pharmaos_api.db import get_session_factory
+from pharmaos_api.maintenance import MaintenanceBusyError, maintenance_lock
 from pharmaos_api.models import Role, User
 from pharmaos_api.security.passwords import hash_password, validate_password_policy
 
 SUPER_ADMIN_ROLE_CODE = "super_admin"
 SUPER_ADMIN_ROLE_NAME_AR = "مالك النظام"
+
+# Exit code for "another maintenance operation is running" — schedulers can
+# distinguish it from a real failure (StartWhenAvailable retries later).
+MAINTENANCE_BUSY_EXIT = 5
 
 
 async def _bootstrap_admin(username: str, full_name: str, password: str) -> int:
@@ -100,6 +125,93 @@ def _backup_export_key() -> int:
         "Without it, backups cannot be restored after device loss.",
         file=sys.stderr,
     )
+    return 0
+
+
+def _backup_import_key(*, use_stdin: bool) -> int:
+    """Import the offline recovery key — NEVER from a command-line argument
+    (process lists, shell history and scheduler logs would capture it)."""
+    from pharmaos_api.services import backup_service
+
+    key = sys.stdin.read() if use_stdin else getpass.getpass("offline backup key (hex): ")
+    try:
+        backup_service.import_backup_key(key)
+    except ValueError as exc:
+        print(f"invalid backup key: {exc}", file=sys.stderr)
+        return 2
+    print("backup key imported (marked owner-provided) — keep the paper copy safe.")
+    return 0
+
+
+def _backup_restore(backup_file: Path, pgdata: Path, live_port: int, staging_port: int) -> int:
+    """Safe cluster-level restore: staging -> verify -> promote (decision 11).
+    Any failure rolls the device back to exactly its pre-restore state."""
+    from pharmaos_api.services import backup_service
+
+    try:
+        report = backup_service.restore_to_cluster(
+            backup_file,
+            pgdata_dir=pgdata,
+            live_port=live_port,
+            staging_port=staging_port,
+        )
+    except Exception as exc:
+        print(f"restore failed: {exc}", file=sys.stderr)
+        return 1
+    print("restore promoted and verified:")
+    print(_json.dumps(report, indent=2, default=str))
+    return 0
+
+
+def _migrate(database_url: str | None, migrations_dir: str | None, seeds_dir: str | None) -> int:
+    """Device migration path (decision 7) — bash-script semantics, asyncpg."""
+    from pharmaos_api.config import get_settings
+    from pharmaos_api.migrations_runner import MigrationError, run_migrations
+
+    dsn = database_url or get_settings().resolved_database_url
+    try:
+        report = run_migrations(
+            dsn,
+            migrations_dir=Path(migrations_dir) if migrations_dir else None,
+            seeds_dir=Path(seeds_dir) if seeds_dir else None,
+        )
+    except MigrationError as exc:
+        print(f"migrate failed: {exc}", file=sys.stderr)
+        return 1
+    print(
+        _json.dumps(
+            {
+                "applied": report["applied"],
+                "skipped": len(report["skipped"]),  # type: ignore[arg-type]
+                "seeds": report["seeds"],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+async def _compliance_drain() -> int:
+    """Branch-wide ETA/EDA outbox drain (decisions 8): every active branch,
+    actor=None (audit actor_user_id NULL = system, by design), fail-closed in
+    production when only the local simulator is configured. Designed for the
+    15-minute scheduled task — no interactive context, no branch argument."""
+    from pharmaos_api.models import Branch
+    from pharmaos_api.services.compliance import ereceipt_service, tt_service
+
+    out: dict[str, object] = {}
+    async with get_session_factory()() as session:
+        branches = (
+            (await session.execute(select(Branch).where(Branch.is_deleted.is_(False))))
+            .scalars()
+            .all()
+        )
+        for branch in branches:
+            out[str(branch.id)] = {
+                "ereceipts": await ereceipt_service.drain(session, branch_id=branch.id),
+                "tt_events": await tt_service.drain(session, branch_id=branch.id),
+            }
+    print(_json.dumps({"branches": out}, indent=2, default=str))
     return 0
 
 
@@ -309,8 +421,6 @@ async def _skeleton_sale(barcode: str, qty: str, print_host: str | None, out_fil
 
 async def _catalog_seed(file_path: str, price_source: str) -> int:
     """P1-M6: seed/import the catalog from CSV (CC0 dataset) or XLSX (staff template)."""
-    import json as _json
-
     from pharmaos_api.services.seed_service import seed_catalog
 
     async with get_session_factory()() as session:
@@ -390,12 +500,35 @@ def main(argv: list[str] | None = None) -> int:
     backup = sub.add_parser("backup", help="Encrypted backup operations.")
     backup_sub = backup.add_subparsers(dest="backup_command", required=True)
     b_create = backup_sub.add_parser("create", help="Create an encrypted backup now.")
-    b_create.add_argument("--backup-dir", default=os.environ.get("BACKUP_PATH", "./backups"))
+    b_create.add_argument(
+        "--backup-dir",
+        default=None,
+        help="Default: BACKUP_PATH env, or <data dir>/backups on a production device.",
+    )
     b_create.add_argument("--no-cloud", action="store_true")
     b_drill = backup_sub.add_parser("restore-drill", help="Restore into a scratch DB and verify.")
     b_drill.add_argument("--file", required=True)
     b_drill.add_argument("--drill-database-url", required=True)
     backup_sub.add_parser("export-key", help="Print the backup key for OFFLINE safekeeping.")
+    b_import = backup_sub.add_parser(
+        "import-key",
+        help="Import the offline recovery key (hidden prompt or --stdin; never an argument).",
+    )
+    b_import.add_argument(
+        "--stdin", action="store_true", help="Read the key from stdin (automation)."
+    )
+    b_restore = backup_sub.add_parser(
+        "restore",
+        help="Safe full restore: staging cluster -> verify -> promote (rollback on failure).",
+    )
+    b_restore.add_argument("--file", required=True)
+    b_restore.add_argument(
+        "--pgdata",
+        default=None,
+        help="Live cluster data dir (default: <data dir>/pgdata).",
+    )
+    b_restore.add_argument("--live-port", type=int, default=5433)
+    b_restore.add_argument("--staging-port", type=int, default=55433)
 
     b_branch = sub.add_parser("bootstrap-branch", help="Create the first branch.")
     b_branch.add_argument("--name", required=True)
@@ -427,8 +560,43 @@ def main(argv: list[str] | None = None) -> int:
         "notifications-drain-email",
         help="Send queued email notifications via the configured provider (P3-M7, cron-able).",
     )
+    sub.add_parser(
+        "compliance-drain",
+        help="Branch-wide ETA/EDA outbox drain (installer decision 8; cron-able, actor=None).",
+    )
+    m_cmd = sub.add_parser(
+        "migrate",
+        help="Apply pending SQL migrations + re-apply seeds (device path, asyncpg).",
+    )
+    m_cmd.add_argument("--database-url", default=None)
+    m_cmd.add_argument("--migrations-dir", default=None)
+    m_cmd.add_argument("--seeds-dir", default=None)
 
     args = parser.parse_args(argv)
+
+    # One device-wide maintenance lock around every maintenance command —
+    # a scheduled backup can never collide with a restore/migrate/seed (ق13).
+    # Non-maintenance commands (bootstrap-*, skeleton-*) run without it.
+    maintenance_commands = {
+        "backup",
+        "migrate",
+        "catalog-seed",
+        "inventory",
+        "alerts-evaluate",
+        "compliance-drain",
+        "notifications-drain-email",
+    }
+    try:
+        if args.command in maintenance_commands:
+            with maintenance_lock():
+                return _dispatch(args)
+        return _dispatch(args)
+    except MaintenanceBusyError as exc:
+        print(f"busy: {exc}", file=sys.stderr)
+        return MAINTENANCE_BUSY_EXIT
+
+
+def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch)
     if args.command == "bootstrap-admin":
         password = os.environ.get("PHARMAOS_ADMIN_PASSWORD") or getpass.getpass(
             "super_admin password: "
@@ -436,11 +604,21 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_bootstrap_admin(args.username, args.full_name, password))
     if args.command == "backup":
         if args.backup_command == "create":
-            return _backup_create(Path(args.backup_dir), cloud=not args.no_cloud)
+            from pharmaos_api.services.backup_service import default_backup_dir
+
+            backup_dir = Path(args.backup_dir) if args.backup_dir else default_backup_dir()
+            return _backup_create(backup_dir, cloud=not args.no_cloud)
         if args.backup_command == "restore-drill":
             return _backup_restore_drill(Path(args.file), args.drill_database_url)
         if args.backup_command == "export-key":
             return _backup_export_key()
+        if args.backup_command == "import-key":
+            return _backup_import_key(use_stdin=args.stdin)
+        if args.backup_command == "restore":
+            from pharmaos_api.config import default_data_dir
+
+            pgdata = Path(args.pgdata) if args.pgdata else default_data_dir() / "pgdata"
+            return _backup_restore(Path(args.file), pgdata, args.live_port, args.staging_port)
     if args.command == "bootstrap-branch":
         return asyncio.run(_bootstrap_branch(args.name))
     if args.command == "skeleton-demo-data":
@@ -454,6 +632,10 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_alerts_evaluate())
     if args.command == "notifications-drain-email":
         return asyncio.run(_notifications_drain_email())
+    if args.command == "compliance-drain":
+        return asyncio.run(_compliance_drain())
+    if args.command == "migrate":
+        return _migrate(args.database_url, args.migrations_dir, args.seeds_dir)
     if args.command == "catalog-seed":
         return asyncio.run(_catalog_seed(args.file, args.source))
     if args.command == "skeleton-sale":

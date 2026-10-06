@@ -34,6 +34,13 @@ JWT_PUBLIC_KEY_NAME = "JWT_PUBLIC_KEY"
 ENCRYPTION_KEY_NAME = "ENCRYPTION_KEY"
 BACKUP_KEY_NAME = "BACKUP_ENCRYPTION_KEY"
 CLOCK_HMAC_KEY_NAME = "LICENSE_CLOCK_HMAC_KEY"
+# Device database password (installer decision 1): lives ONLY here — never in
+# .env. Generated once by the first-run wizard, bundled (encrypted) inside
+# every backup's keys.json so cross-device recovery is self-contained.
+DB_PASSWORD_NAME = "DB_PASSWORD"  # noqa: S105  (a keystore entry NAME, not a password)
+# Marker distinguishing an OWNER-IMPORTED recovery key from one auto-generated
+# by a local backup: restore refuses to guess between them (decision 10).
+BACKUP_KEY_IMPORTED_FLAG = "BACKUP_KEY_IMPORTED"
 
 _DEV_STORE_DIR = Path(".pharmaos-devkeys")
 
@@ -128,7 +135,11 @@ def ensure_encryption_key() -> bytes:
 
 def ensure_backup_key() -> bytes:
     """Return the INDEPENDENT 32-byte backup-encryption key (CLAUDE.md:
-    backups are always encrypted with a key separate from the field key)."""
+    backups are always encrypted with a key separate from the field key).
+
+    Generating on first backup is legitimate; RESTORE paths must never call
+    this — they use get_backup_key() so a missing key fails loudly instead of
+    silently creating one that can never decrypt the backup (decision 10)."""
     stored = get_secret(BACKUP_KEY_NAME)
     if stored:
         return bytes.fromhex(stored)
@@ -136,6 +147,44 @@ def ensure_backup_key() -> bytes:
     set_secret(BACKUP_KEY_NAME, key.hex())
     logger.info("Generated new AES-256 backup-encryption key and stored it in the keystore.")
     return key
+
+
+def get_backup_key() -> bytes | None:
+    """Non-generating read of the backup-encryption key (restore paths)."""
+    stored = get_secret(BACKUP_KEY_NAME)
+    return bytes.fromhex(stored) if stored else None
+
+
+def mark_backup_key_imported() -> None:
+    """Record that the current backup key came from the owner's offline copy."""
+    set_secret(BACKUP_KEY_IMPORTED_FLAG, "1")
+
+
+def backup_key_imported() -> bool:
+    return get_secret(BACKUP_KEY_IMPORTED_FLAG) == "1"
+
+
+def get_db_password() -> str | None:
+    """The device database password — absent until the first-run wizard
+    provisions it. The runtime builds DATABASE_URL from it (decision 1)."""
+    return get_secret(DB_PASSWORD_NAME)
+
+
+def set_db_password(password: str) -> None:
+    set_secret(DB_PASSWORD_NAME, password)
+
+
+def delete_secret(name: str) -> None:
+    """Remove a secret (restore rollback: undo an import after a failed swap)."""
+    try:
+        keyring.delete_password(SERVICE_NAME, name)
+        return
+    except KeyringError:
+        pass
+    if not get_settings().is_production:
+        path = _dev_store_path(name)
+        if path.is_file():
+            path.unlink()
 
 
 def get_clock_hmac_key() -> bytes | None:

@@ -1,5 +1,10 @@
 """Celery application (CLAUDE.md stack: Celery 5 + Redis 7).
 
+Cloud-worker path ONLY — the desktop device runtime does not install
+celery/redis (moved to the `cloud` optional extra; the device schedules the
+daily backup via Windows Task Scheduler + the CLI instead). The API never
+imports this module, so PyInstaller never bundles it.
+
 Runs the DAILY encrypted backup (+ one-way cloud copy) via beat.
 The backup hour is configuration (default 02:00 local device time).
 """
@@ -11,11 +16,13 @@ from pathlib import Path
 from celery import Celery
 from celery.schedules import crontab
 
-from pharmaos_api.config import get_settings
-
 logger = logging.getLogger(__name__)
 
-celery = Celery("pharmaos", broker=get_settings().redis_url, backend=None)
+# REDIS_URL lives here (not in config.py): nothing in the desktop runtime
+# references Redis, so the setting belongs to the cloud worker only.
+celery = Celery(
+    "pharmaos", broker=os.environ.get("REDIS_URL", "redis://localhost:6379"), backend=None
+)
 celery.conf.timezone = os.environ.get("PHARMAOS_TZ", "Africa/Cairo")
 
 BACKUP_HOUR = int(os.environ.get("BACKUP_HOUR", "2"))

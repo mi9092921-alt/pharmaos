@@ -85,16 +85,17 @@ jobs:
           cache-dependency-path: apps/api/pyproject.toml
       # The ubuntu runner ships pg_dump/pg_restore 16, but the service DB is 17 —
       # pg_dump refuses to dump a NEWER server (the backup_service tests fail with
-      # "server version mismatch"). Install the PGDG client 17 and put it first on
-      # PATH so pg_dump/pg_restore/psql all match the PostgreSQL 17 server.
-      - name: Match PostgreSQL client to the 17 server (backup pg_dump/pg_restore)
+      # "server version mismatch"). Install the PGDG client 17 AND server 17
+      # (initdb/pg_ctl for the cluster-level restore tests) and put it first on
+      # PATH so everything matches the PostgreSQL 17 the device bundles.
+      - name: Match PostgreSQL client+server to 17 (backup/restore tests)
         run: |
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
             | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
           echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
+          sudo apt-get install -y postgresql-client-17 postgresql-17
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
           /usr/lib/postgresql/17/bin/pg_dump --version
       - run: python -m pip install -e ".[dev]"

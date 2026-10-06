@@ -16,13 +16,19 @@ dependencies = [
     "PyJWT==2.13.0",
     "cryptography==49.0.0",
     "keyring==25.7.0",
-    "celery==5.6.3",
-    "redis==8.0.1",
     "httpx==0.28.1",
     "openpyxl==3.1.5",
 ]
 
 [project.optional-dependencies]
+# Desktop device runtime (PyInstaller): celery/redis are NOT part of it —
+# Redis was only the Celery broker and the device schedules the daily backup
+# via Windows Task Scheduler + the CLI instead (installer decision 2). They
+# remain available for a future cloud worker via this extra.
+cloud = [
+    "celery==5.6.3",
+    "redis==8.0.1",
+]
 dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
@@ -67,9 +73,18 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 
 # Celery ships no type stubs (no py.typed marker) — its decorators are treated
-# as untyped by mypy. Scoped exception for the task module only.
+# as untyped by mypy. Scoped exception for the task module only. The modules
+# stay analyzable even though celery/redis moved to the `cloud` extra.
 [[tool.mypy.overrides]]
 module = "celery.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "redis.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

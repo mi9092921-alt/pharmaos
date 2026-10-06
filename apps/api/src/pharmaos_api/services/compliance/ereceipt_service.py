@@ -8,6 +8,7 @@ simulator by default), and records the returned UUID + QR. Submission is audited
 """
 
 import datetime as dt
+import logging
 import uuid
 
 from sqlalchemy import func, select
@@ -23,7 +24,9 @@ from pharmaos_api.models import (
     User,
 )
 from pharmaos_api.services import audit_service
-from pharmaos_api.services.compliance import eta_adapter
+from pharmaos_api.services.compliance import eta_adapter, fail_closed
+
+logger = logging.getLogger(__name__)
 
 ETA_SYSTEM = "eta_ereceipt"
 MAX_PAGE_SIZE = 100
@@ -107,6 +110,10 @@ async def process_one(
         await session.execute(select(Invoice).where(Invoice.id == row.invoice_id))
     ).scalar_one()
     adapter = eta_adapter.get_adapter()
+    # Fail-closed (installer decision 8): production + simulator raises BEFORE
+    # the row is touched — a scheduled drain can never mark simulated rows as
+    # accepted. drain() catches this per row and leaves it pending.
+    fail_closed.ensure_allowed(simulator=adapter.is_simulator)
     row.submission_attempts = row.submission_attempts + 1
     try:
         payload = await build_payload(session, invoice)
@@ -174,14 +181,29 @@ async def drain(
         .scalars()
         .all()
     )
-    accepted = failed = 0
+    accepted = failed = skipped = 0
     for row in rows:
-        processed = await process_one(session, row=row, actor=actor)
+        try:
+            processed = await process_one(session, row=row, actor=actor)
+        except fail_closed.ComplianceFailClosedError:
+            skipped += 1
+            continue
         if processed.status == "accepted":
             accepted += 1
         elif processed.status in ("failed", "rejected"):
             failed += 1
-    return {"processed": len(rows), "accepted": accepted, "failed": failed}
+    if skipped:
+        logger.warning(
+            "fail-closed: %d e-receipt(s) left untouched — production is not "
+            "configured with real ETA credentials",
+            skipped,
+        )
+    return {
+        "processed": len(rows),
+        "accepted": accepted,
+        "failed": failed,
+        "skipped_fail_closed": skipped,
+    }
 
 
 def _out(row: EReceiptQueue) -> dict[str, object]:
