@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>PharmaOS - الإعداد الأول</title>
+    <style>
+      body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f5f7fa; margin: 0; padding: 24px; color: #1a2332; }
+      .card { max-width: 520px; margin: 24px auto; background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      p.hint { color: #5a6a7e; font-size: 13px; margin: 0 0 18px; }
+      label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+      input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #ccd4de; border-radius: 8px; font-size: 14px; }
+      .row { display: flex; gap: 10px; } .row > div { flex: 1; }
+      button { margin-top: 20px; width: 100%; padding: 11px; background: #0e7c66; color: #fff; border: 0; border-radius: 8px; font-size: 15px; cursor: pointer; }
+      button:disabled { background: #9ab5af; }
+      .step { display: none; } .step.active { display: block; }
+      .key { background: #0f1b2d; color: #7ef0c8; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; direction: ltr; text-align: left; }
+      .warn { background: #fff7e6; border: 1px solid #f0d8a8; padding: 10px; border-radius: 8px; font-size: 12px; margin-top: 12px; }
+      .err { color: #b3261e; font-size: 13px; margin-top: 10px; min-height: 16px; }
+      .ok { color: #0e7c66; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <!-- STEP 1: the pharmacy identity (admin + branch) -->
+      <div class="step active" id="step1">
+        <h1>مرحباً بك في PharmaOS</h1>
+        <p class="hint">إعداد لمرة واحدة: أنشئ مالك النظام وفرع الصيدلية. البيانات تبقى على هذا الجهاز.</p>
+        <label>اسم المستخدم (مالك النظام)</label>
+        <input id="username" placeholder="owner" autocomplete="off" />
+        <label>الاسم الكامل</label>
+        <input id="fullName" placeholder="د. محمد أحمد" />
+        <div class="row">
+          <div>
+            <label>كلمة مرور المالك</label>
+            <input id="password" type="password" placeholder="8+ أحرف، حرف كبير، رقم، رمز" />
+          </div>
+          <div>
+            <label>تأكيد كلمة المرور</label>
+            <input id="password2" type="password" />
+          </div>
+        </div>
+        <label>اسم الفرع</label>
+        <input id="branchName" placeholder="صيدلية النور - فرع المركز" />
+        <label>كلمة مرور ويندوز (لتسجيل النسخ الاحتياطي التلقائي حتى بدون تسجيل دخول)</label>
+        <input id="winPassword" type="password" autocomplete="off" />
+        <p class="hint">لا تُخزَّن كلمة مرور ويندوز: تُستخدم مرة واحدة لتسجيل مهمة النسخ الاحتياطي اليومي (02:00) باسم حسابك، ثم تُحذف من الذاكرة.</p>
+        <div class="err" id="err1"></div>
+        <button id="btn1">إنشاء وإنهاء الإعداد</button>
+      </div>
+
+      <!-- STEP 2: the backup recovery key, shown ONCE -->
+      <div class="step" id="step2">
+        <h1>مفتاح استعادة النسخ الاحتياطي</h1>
+        <p class="hint">اكتب هذا المفتاح على ورقة واحفظها في مكان آمن <b>خارج الجهاز</b>. بدونها لا يمكن استعادة النسخ الاحتياطية إذا تعطّل الجهاز.</p>
+        <div class="key" id="backupKey">...</div>
+        <div class="warn">هذه آخر مرة يُعرض فيها المفتاح. لن تتمكن من رؤيته مرة أخرى بعد الإنهاء.</div>
+        <div class="err" id="err2"></div>
+        <button id="btn2">حفظته على ورقة - إنهاء الإعداد</button>
+      </div>
+
+      <!-- STEP 3: done -->
+      <div class="step" id="step3">
+        <h1 class="ok">تم الإعداد بنجاح ✓</h1>
+        <p class="hint">سيُفتح النظام الآن. النسخ الاحتياطي اليومي وتصريف طوابير الامتثال مسجّلان تلقائياً.</p>
+      </div>
+    </div>
+
+    <script>
+      const api = window.pharmaosSetup;
+      const $ = (id) => document.getElementById(id);
+
+      $('btn1').onclick = async () => {
+        $('err1').textContent = '';
+        const username = $('username').value.trim();
+        const fullName = $('fullName').value.trim();
+        const password = $('password').value;
+        const password2 = $('password2').value;
+        const branchName = $('branchName').value.trim();
+        const winPassword = $('winPassword').value;
+        if (!username || !fullName || !branchName) { $('err1').textContent = 'أكمل جميع الحقول.'; return; }
+        if (password !== password2) { $('err1').textContent = 'كلمتا المرور غير متطابقتين.'; return; }
+        $('btn1').disabled = true;
+        $('btn1').textContent = 'جارٍ الإنشاء...';
+        try {
+          const result = await api.completeSetup({ username, fullName, password, branchName, winPassword });
+          if (!result.ok) throw new Error(result.error || 'فشل الإعداد');
+          $('step1').classList.remove('active');
+          $('step2').classList.add('active');
+          $('backupKey').textContent = result.backupKey;
+        } catch (e) {
+          $('err1').textContent = e.message || String(e);
+          $('btn1').disabled = false;
+          $('btn1').textContent = 'إنشاء وإنهاء الإعداد';
+        }
+      };
+
+      $('btn2').onclick = async () => {
+        const result = await api.finishSetup();
+        if (!result.ok) { $('err2').textContent = result.error; return; }
+        $('step2').classList.remove('active');
+        $('step3').classList.add('active');
+        setTimeout(() => window.close(), 1500);
+      };
+    </script>
+  </body>
+</html>

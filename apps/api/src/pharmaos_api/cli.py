@@ -46,7 +46,7 @@ import os
 import sys
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from pharmaos_api.db import get_session_factory
 from pharmaos_api.maintenance import MaintenanceBusyError, maintenance_lock
@@ -518,6 +518,50 @@ def _device_init(pgdata: str | None) -> int:
     return 0
 
 
+def _setup_status_cmd() -> int:
+    import json as _json
+
+    from pharmaos_api.models import Branch
+
+    async def _collect() -> dict[str, object]:
+        from pharmaos_api.services import installation_state
+
+        async with get_session_factory()() as session:
+            users = int(
+                (await session.execute(select(func.count()).select_from(User))).scalar_one()
+            )
+            branches = int(
+                (await session.execute(select(func.count()).select_from(Branch))).scalar_one()
+            )
+            state = await installation_state.get_all(session)
+        return {
+            "users": users,
+            "branches": branches,
+            "setup_complete": state.get("setup_complete") == "1",
+            "last_completed_step": state.get("last_completed_step", "none"),
+        }
+
+    print(_json.dumps(asyncio.run(_collect()), indent=2))
+    return 0
+
+
+def _setup_complete() -> int:
+    """Flip installation_state.setup_complete (the LAST wizard step - after
+    this, a restored device skips the wizard, decision 7)."""
+    from pharmaos_api.services import installation_state
+
+    async def _mark() -> None:
+        async with get_session_factory()() as session:
+            await installation_state.set_values(
+                session,
+                {"setup_complete": "1", "last_completed_step": "complete"},
+            )
+
+    asyncio.run(_mark())
+    print("setup marked complete.")
+    return 0
+
+
 def _device_reset() -> int:
     """Delete the device keystore secrets (smoke-test/debug tool). DANGEROUS on
     a device with real data: the encrypted fields become undecryptable unless
@@ -618,6 +662,11 @@ def main(argv: list[str] | None = None) -> int:
         help="First-run provisioning: DB password, initdb (SCRAM + builtin C.UTF-8), secrets.",
     )
     dev_init.add_argument("--pgdata", default=None, help="Default: <data dir>/pgdata.")
+    sub.add_parser(
+        "setup-status",
+        help="First-run wizard state (users/branches/setup_complete) as JSON.",
+    )
+    sub.add_parser("setup-complete", help="Mark first-run setup complete.")
     dev_reset = sub.add_parser(
         "device-reset",
         help="Delete device keystore secrets (debug tool; --yes required).",
@@ -684,6 +733,10 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch
             print("refusing: pass --yes (this deletes the device secrets).", file=sys.stderr)
             return 2
         return _device_reset()
+    if args.command == "setup-status":
+        return _setup_status_cmd()
+    if args.command == "setup-complete":
+        return _setup_complete()
     if args.command == "device-init":
         return _device_init(args.pgdata)
     if args.command == "bootstrap-branch":
