@@ -1,0 +1,25 @@
+﻿{
+  "generated_at": "2026-10-06T13:52:53.8129389Z",
+  "postgresql": {
+    "version": "17.11",
+    "source": "https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip",
+    "source_sha256": "6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3",
+    "postgres_exe_sha256": "4125c1e963072d929f6468a449ad184b26d3be7d97cae3181c3d613dace49c8d",
+    "version_output": "postgres (PostgreSQL) 17.11"
+  },
+  "node": {
+    "version": "v22.23.3",
+    "source": "https://nodejs.org/dist/v22.23.3/node-v22.23.3-win-x64.zip",
+    "source_sha256": "2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71",
+    "node_exe_sha256": "9c9245166b4a8e182e0b797da9c20136117ff24368eaff1fec8343a123c8db0e",
+    "version_output": "v22.23.3"
+  },
+  "vcredist": {
+    "required": false,
+    "verdict": "none",
+    "scanned_bin_dir": "D:\\projects\\pharmaos\\installer\\vendor\\pg\\bin"
+  },
+  "pyinstaller": {
+    "version": "6.16.0"
+  }
+}

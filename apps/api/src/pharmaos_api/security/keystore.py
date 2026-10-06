@@ -15,6 +15,7 @@ This fallback REFUSES to run in production (the spec forbids plaintext keys
 on production devices).
 """
 
+import contextlib
 import logging
 import os
 from pathlib import Path
@@ -45,6 +46,26 @@ BACKUP_KEY_IMPORTED_FLAG = "BACKUP_KEY_IMPORTED"
 _DEV_STORE_DIR = Path(".pharmaos-devkeys")
 
 
+def _configure_keyring_persist() -> None:
+    """keyring's Windows backend defaults to CRED_PERSIST_ENTERPRISE, whose
+    credential blob is capped at 256 bytes - SMALLER THAN A PEM KEY, so the
+    JWT keypair write dies with CredWrite 1783 (found by the M2 smoke gate).
+    A single-device app has no roaming use for ENTERPRISE: switch to
+    LOCAL_MACHINE (blob limit 5*512 = 2560 bytes). No-op off Windows."""
+    if os.name != "nt":
+        return
+    try:
+        from win32ctypes.pywin32 import win32cred  # type: ignore[import-untyped]
+
+        backend = keyring.get_keyring()
+        backend._persist = win32cred.CRED_PERSIST_LOCAL_MACHINE  # type: ignore[attr-defined]
+    except Exception:  # non-Windows keystore / fail backend - nothing to tune
+        logger.debug("keyring persist override skipped", exc_info=True)
+
+
+_configure_keyring_persist()
+
+
 class KeystoreUnavailableError(RuntimeError):
     """No secure keystore available in production."""
 
@@ -70,7 +91,7 @@ def _dev_set(name: str, value: str) -> None:
 def get_secret(name: str) -> str | None:
     """Read a secret from the OS keystore, falling back to the dev store."""
     try:
-        value = keyring.get_password(SERVICE_NAME, name)
+        value = _keyring_read(name)
         if value is not None:
             return value
     except KeyringError:
@@ -83,16 +104,71 @@ def get_secret(name: str) -> str | None:
 def set_secret(name: str, value: str) -> None:
     """Write a secret to the OS keystore (dev-store fallback outside production)."""
     try:
-        keyring.set_password(SERVICE_NAME, name, value)
+        _keyring_write(name, value)
         return
     except KeyringError:
+        pass
+    except Exception as exc:  # win32ctypes raises raw pywintypes.error, not KeyringError
         if get_settings().is_production:
-            raise KeystoreUnavailableError(
-                "No OS keystore available — refusing to store secrets in plaintext "
-                "on a production device."
-            ) from None
-        logger.warning("OS keyring unavailable — using 0600 dev-store for %s", name)
+            raise KeystoreUnavailableError(f"keystore write failed: {exc}") from exc
+        logger.warning("OS keyring write failed (%s) - using 0600 dev-store for %s", exc, name)
         _dev_set(name, value)
+        return
+    if get_settings().is_production:
+        raise KeystoreUnavailableError(
+            "No OS keystore available - refusing to store secrets in plaintext "
+            "on a production device."
+        ) from None
+    logger.warning("OS keyring unavailable - using 0600 dev-store for %s", name)
+    _dev_set(name, value)
+
+
+# Windows Credential Manager rejects CredWrite blobs above a practical limit
+# we measured at 1280 bytes (found by the M2 smoke gate: the JWT private-key
+# PEM is ~1679 chars). Larger secrets are split across sibling credentials
+# ("NAME.parts" holds the count; "NAME.part0..N-1" the chunks) transparently.
+_KEYRING_CHUNK_SIZE = 1000
+
+
+def _keyring_read(name: str) -> str | None:
+    parts = keyring.get_password(SERVICE_NAME, f"{name}.parts")
+    if parts is None:
+        return keyring.get_password(SERVICE_NAME, name)
+    count = int(parts)
+    chunks = []
+    for i in range(count):
+        chunk = keyring.get_password(SERVICE_NAME, f"{name}.part{i}")
+        if chunk is None:
+            raise KeystoreUnavailableError(
+                f"keystore credential {name} is incomplete (part {i} missing)"
+            )
+        chunks.append(chunk)
+    return "".join(chunks)
+
+
+def _keyring_write(name: str, value: str) -> None:
+    chunks = [value[i : i + _KEYRING_CHUNK_SIZE] for i in range(0, len(value), _KEYRING_CHUNK_SIZE)]
+    if len(chunks) > 1:
+        keyring.set_password(SERVICE_NAME, f"{name}.parts", str(len(chunks)))
+        for i, chunk in enumerate(chunks):
+            keyring.set_password(SERVICE_NAME, f"{name}.part{i}", chunk)
+        # Rewrite from small to large: drop the single-credential copy.
+        with contextlib.suppress(KeyringError):
+            keyring.delete_password(SERVICE_NAME, name)
+    else:
+        # Single-credential layout: clear any previous chunk marker.
+        with contextlib.suppress(KeyringError):
+            keyring.delete_password(SERVICE_NAME, f"{name}.parts")
+        keyring.set_password(SERVICE_NAME, name, value)
+
+
+def _keyring_clear(name: str) -> None:
+    # Chunked layout keeps at most a handful of parts for our secrets
+    # (largest is the ~1.7KB PEM = 2 chunks); sweep a generous fixed range.
+    targets = (name, f"{name}.parts") + tuple(f"{name}.part{i}" for i in range(8))
+    for target in targets:
+        with contextlib.suppress(KeyringError):
+            keyring.delete_password(SERVICE_NAME, target)
 
 
 def ensure_jwt_keypair() -> tuple[str, str]:
@@ -177,7 +253,7 @@ def set_db_password(password: str) -> None:
 def delete_secret(name: str) -> None:
     """Remove a secret (restore rollback: undo an import after a failed swap)."""
     try:
-        keyring.delete_password(SERVICE_NAME, name)
+        _keyring_clear(name)
         return
     except KeyringError:
         pass

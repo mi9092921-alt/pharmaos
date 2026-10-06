@@ -397,10 +397,25 @@ def _wait_ready(port: int, *, timeout: int = _READY_TIMEOUT_SECONDS) -> None:
 
 
 def _stop_cluster(pgdata: Path, *, tolerate_not_running: bool) -> None:
-    if tolerate_not_running and not (pgdata / "postmaster.pid").is_file():
-        logger.info("cluster at %s is not running", pgdata)
+    if tolerate_not_running and not (pgdata / "PG_VERSION").is_file():
+        # Destroyed/empty dir (disaster restore) or never-provisioned path -
+        # pg_ctl would only say "not a database cluster directory".
+        logger.info("no cluster at %s - nothing to stop", pgdata)
         return
-    _pg_ctl(pgdata, "stop", "-m", "fast")
+    try:
+        _pg_ctl(pgdata, "stop", "-m", "fast")
+    except BackupError as exc:
+        msg = str(exc)
+        stale = (
+            "No such process" in msg  # force-killed server left a stale pidfile
+            or "not running" in msg
+            or "does not exist" in msg
+        )
+        if tolerate_not_running and stale:
+            (pgdata / "postmaster.pid").unlink(missing_ok=True)
+            logger.info("cluster at %s was not running (stale pidfile removed)", pgdata)
+            return
+        raise
 
 
 def _init_staging(

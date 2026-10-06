@@ -489,6 +489,55 @@ async def _notifications_drain_email() -> int:
     return 0
 
 
+def _device_init(pgdata: str | None) -> int:
+    """First-run device provisioning (installer decisions 1/12) - runs in the
+    DAILY USER's session so DPAPI keys are minted by the account that will
+    read them forever. Generates the DB password in memory, initdb's the
+    cluster with the runtime contract (SCRAM + builtin C.UTF-8), stores
+    DB_PASSWORD in the keystore, and securely deletes the transient pwfile.
+    Idempotent: refuses to run twice (a second run would create a cluster the
+    keystore cannot authenticate to)."""
+    from pathlib import Path as _Path
+
+    from pharmaos_api.config import default_data_dir, get_settings
+    from pharmaos_api.security import keystore
+    from pharmaos_api.services import backup_service
+
+    if keystore.get_db_password() is not None:
+        print("device already provisioned (DB_PASSWORD present) - nothing to do.", file=sys.stderr)
+        return 1
+    s = get_settings()
+    pgdata_dir = _Path(pgdata) if pgdata else default_data_dir() / "pgdata"
+    password = os.urandom(24).hex()  # URL-safe hex; strong (192 bits)
+    backup_service._init_staging(
+        pgdata_dir, db_user=s.db_user, db_password=password, port=s.db_port
+    )
+    keystore.set_db_password(password)
+    print(f"device cluster provisioned: {pgdata_dir}")
+    print("next: pharmaos-api migrate")
+    return 0
+
+
+def _device_reset() -> int:
+    """Delete the device keystore secrets (smoke-test/debug tool). DANGEROUS on
+    a device with real data: the encrypted fields become undecryptable unless
+    the keys were bundled in a backup. Requires --yes."""
+    from pharmaos_api.security import keystore
+
+    names = [
+        keystore.DB_PASSWORD_NAME,
+        keystore.JWT_PRIVATE_KEY_NAME,
+        keystore.JWT_PUBLIC_KEY_NAME,
+        keystore.ENCRYPTION_KEY_NAME,
+        keystore.BACKUP_KEY_NAME,
+        keystore.BACKUP_KEY_IMPORTED_FLAG,
+    ]
+    for name in names:
+        keystore.delete_secret(name)
+    print(f"deleted {len(names)} keystore entries (service '{keystore.SERVICE_NAME}').")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="pharmaos-api")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -564,6 +613,16 @@ def main(argv: list[str] | None = None) -> int:
         "compliance-drain",
         help="Branch-wide ETA/EDA outbox drain (installer decision 8; cron-able, actor=None).",
     )
+    dev_init = sub.add_parser(
+        "device-init",
+        help="First-run provisioning: DB password, initdb (SCRAM + builtin C.UTF-8), secrets.",
+    )
+    dev_init.add_argument("--pgdata", default=None, help="Default: <data dir>/pgdata.")
+    dev_reset = sub.add_parser(
+        "device-reset",
+        help="Delete device keystore secrets (debug tool; --yes required).",
+    )
+    dev_reset.add_argument("--yes", action="store_true")
     m_cmd = sub.add_parser(
         "migrate",
         help="Apply pending SQL migrations + re-apply seeds (device path, asyncpg).",
@@ -578,6 +637,7 @@ def main(argv: list[str] | None = None) -> int:
     # a scheduled backup can never collide with a restore/migrate/seed (ق13).
     # Non-maintenance commands (bootstrap-*, skeleton-*) run without it.
     maintenance_commands = {
+        "device-init",
         "backup",
         "migrate",
         "catalog-seed",
@@ -619,6 +679,13 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch
 
             pgdata = Path(args.pgdata) if args.pgdata else default_data_dir() / "pgdata"
             return _backup_restore(Path(args.file), pgdata, args.live_port, args.staging_port)
+    if args.command == "device-reset":
+        if not args.yes:
+            print("refusing: pass --yes (this deletes the device secrets).", file=sys.stderr)
+            return 2
+        return _device_reset()
+    if args.command == "device-init":
+        return _device_init(args.pgdata)
     if args.command == "bootstrap-branch":
         return asyncio.run(_bootstrap_branch(args.name))
     if args.command == "skeleton-demo-data":

@@ -56,3 +56,4 @@ Thumbs.db
 
 # Session tooling (zcode plans/workspace artifacts)
 .zcode/
+installer/vendor/

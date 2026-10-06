@@ -33,12 +33,25 @@ class MigrationError(RuntimeError):
     """A migration failed; the transaction (and version row) rolled back."""
 
 
+def _frozen_data_dir() -> Path | None:
+    """PyInstaller onedir data root (sys._MEIPASS = <install>
+    esourcespi    _internal) when frozen; None in dev/CI."""
+    import sys
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass) / "pharmaos-data"
+    return None
+
+
 def default_migrations_dir() -> Path:
-    """Repo layout in dev/CI; on a device PHARMAOS_MIGRATIONS_DIR points at
-    the bundled copy (PyInstaller data files, wired in M2)."""
+    """Frozen device bundle -> PHARMAOS_MIGRATIONS_DIR -> repo layout."""
     env = os.environ.get("PHARMAOS_MIGRATIONS_DIR")
     if env:
         return Path(env)
+    frozen = _frozen_data_dir()
+    if frozen is not None:
+        return frozen / "migrations"
     # .../apps/api/src/pharmaos_api/migrations_runner.py -> repo root
     repo_root = Path(__file__).resolve().parents[4]
     return repo_root / "supabase" / "migrations"
@@ -48,6 +61,9 @@ def default_seeds_dir() -> Path:
     env = os.environ.get("PHARMAOS_SEEDS_DIR")
     if env:
         return Path(env)
+    frozen = _frozen_data_dir()
+    if frozen is not None:
+        return frozen / "seeds"
     repo_root = Path(__file__).resolve().parents[4]
     return repo_root / "packages" / "db" / "seeds"
 
@@ -65,11 +81,33 @@ def _load_seeds(seeds_dir: Path) -> list[tuple[str, str]]:
     ]
 
 
+async def _ensure_database_async(dsn: str) -> None:
+    """Create the target database when the cluster is fresh (device-init
+    provisioned the CLUSTER; the app database is created on first migrate)."""
+    import asyncpg as _ap
+
+    try:
+        conn = await _ap.connect(dsn)
+        await conn.close()
+        return
+    except _ap.InvalidCatalogNameError:
+        pass
+    dbname = dsn.rsplit("/", 1)[1].split("?")[0]
+    admin_dsn = dsn.rsplit("/", 1)[0] + "/postgres"
+    conn = await _ap.connect(admin_dsn)
+    try:
+        await conn.execute(f'CREATE DATABASE "{dbname}"')
+    finally:
+        await conn.close()
+
+
 async def run_migrations_async(
     dsn: str, *, migrations: list[tuple[str, str]], seeds: list[tuple[str, str]]
 ) -> dict[str, object]:
     """Apply pre-loaded migrations + seeds. ``migrations``/``seeds`` carry
     (version-or-filename, sql) — loaded synchronously by run_migrations()."""
+    await _ensure_database_async(dsn)
+
     applied: list[str] = []
     skipped: list[str] = []
     seed_names: list[str] = []
