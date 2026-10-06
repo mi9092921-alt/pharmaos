@@ -1,0 +1,18 @@
+[project]
+name = "pharmaos-license-cli"
+version = "0.1.0"
+description = "PharmaOS vendor-side license issuing tool (NEVER shipped to customers)."
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography==49.0.0",
+    "pydantic==2.13.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+
+[project.scripts]
+pharmaos-license = "pharmaos_license_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -12,6 +12,7 @@ from pharmaos_api.models.catalog import (
 from pharmaos_api.models.compliance import EReceiptQueue, TtEvent
 from pharmaos_api.models.customer import Customer, LoyaltyTransaction
 from pharmaos_api.models.finance import Expense, ExpenseCategory
+from pharmaos_api.models.license import LicenseState
 from pharmaos_api.models.operations import (
     Alert,
     CashSession,
@@ -47,6 +48,7 @@ __all__ = [
     "ExpenseCategory",
     "Invoice",
     "InvoiceItem",
+    "LicenseState",
     "LoyaltyTransaction",
     "MandatoryColumnsMixin",
     "Medication",

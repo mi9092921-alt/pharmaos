@@ -98,6 +98,10 @@ jobs:
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
           /usr/lib/postgresql/17/bin/pg_dump --version
       - run: python -m pip install -e ".[dev]"
+      # P4-M1: the vendor license tool (tools/license-cli) rides the python job —
+      # its cross-vector tests import pharmaos_api, so the API install above
+      # must come first.
+      - run: python -m pip install -e ../../tools/license-cli
       - run: python -m ruff check src tests
       - run: python -m black --check src tests
       - run: python -m mypy src
@@ -105,6 +109,9 @@ jobs:
         working-directory: .
         run: DATABASE_URL="$TEST_DATABASE_URL" bash packages/db/scripts/apply-migrations.sh
       - name: pytest (full suite against the migrated database)
+        run: python -m pytest tests
+      - name: pytest (license-cli tool suite — includes the API cross-vectors)
+        working-directory: tools/license-cli
         run: python -m pytest tests
 
   migrations:

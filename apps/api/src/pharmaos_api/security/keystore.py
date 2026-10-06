@@ -33,6 +33,7 @@ JWT_PRIVATE_KEY_NAME = "JWT_PRIVATE_KEY"
 JWT_PUBLIC_KEY_NAME = "JWT_PUBLIC_KEY"
 ENCRYPTION_KEY_NAME = "ENCRYPTION_KEY"
 BACKUP_KEY_NAME = "BACKUP_ENCRYPTION_KEY"
+CLOCK_HMAC_KEY_NAME = "LICENSE_CLOCK_HMAC_KEY"
 
 _DEV_STORE_DIR = Path(".pharmaos-devkeys")
 
@@ -135,3 +136,21 @@ def ensure_backup_key() -> bytes:
     set_secret(BACKUP_KEY_NAME, key.hex())
     logger.info("Generated new AES-256 backup-encryption key and stored it in the keystore.")
     return key
+
+
+def get_clock_hmac_key() -> bytes | None:
+    """Return the 32-byte license clock-HMAC key, or None when absent.
+
+    The P4 §3 virgin check lives in pharmaos_api.licensing (it must inspect the
+    chain/external stores before deciding): missing key + existing state is
+    `key_lost` (E-LIC-008) and must NEVER regenerate here."""
+    stored = get_secret(CLOCK_HMAC_KEY_NAME)
+    if stored is None:
+        return None
+    return bytes.fromhex(stored)
+
+
+def set_clock_hmac_key(key: bytes) -> None:
+    """Store a 32-byte license clock-HMAC key (first-run generation, backup
+    `import-keys`, or owner-initiated key rotation — P4 §3)."""
+    set_secret(CLOCK_HMAC_KEY_NAME, key.hex())

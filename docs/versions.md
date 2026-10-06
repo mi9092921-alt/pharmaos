@@ -123,3 +123,8 @@ Wave adjustments at this gate (compatibility-first, then newest):
 - **2026-07 — Initial matrix (v1.1).** Adopted the CLAUDE.md v1.1 matrix as the project baseline.
   Provisional JS toolchain pins committed in P0-M1 (validation gate: first networked install).
   Python matrix resolved, installed and verified against PostgreSQL 17.8 in P0-M6..M9.
+
+- **2026-10 — P4-M1 (licensing core): zero new dependencies.** The licensing module reuses the
+  already-pinned `cryptography==49.0.0` (Ed25519 verify/sign, AES-256-GCM, HKDF, scrypt) and
+  `keyring==25.7.0` (OS-keystore clock-HMAC key). `tools/license-cli` pins the exact same
+  versions in its own pyproject — no lockfile drift, no new transitive surface.

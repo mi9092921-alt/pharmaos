@@ -37,6 +37,18 @@ class ErrorCode:
     PRESCRIPTION_EXCEEDED = "E-RX-002"
     PRESCRIPTION_INVALID = "E-RX-003"
     NOT_FOUND = "E-GEN-001"
+    # P4-M1 (licensing) — statuses/HTTP mapping live in the gate (M2) and
+    # docs/phase4-execution-plan-licensing.md §7. Same commit closes the E-SYS-001
+    # precedent (used as a literal in main.py, defined in TS only until now).
+    UNEXPECTED = "E-SYS-001"
+    LICENSE_REQUIRED = "E-LIC-001"
+    LICENSE_READ_ONLY = "E-LIC-002"
+    LICENSE_INVALID_SIGNATURE = "E-LIC-003"
+    LICENSE_DEVICE_MISMATCH = "E-LIC-004"
+    LICENSE_EXPIRED = "E-LIC-005"
+    LICENSE_TAMPER_DETECTED = "E-LIC-006"
+    LICENSE_STATE_ERROR = "E-LIC-007"
+    LICENSE_KEY_LOST = "E-LIC-008"
 
 
 # Fallback messages in English (the neutral request-language fallback; the
@@ -66,6 +78,17 @@ _FALLBACK_MESSAGES: dict[str, str] = {
     ErrorCode.PRESCRIPTION_EXCEEDED: "Quantity exceeds what remains on the prescription.",
     ErrorCode.PRESCRIPTION_INVALID: "Prescription item does not match this medication.",
     ErrorCode.NOT_FOUND: "The requested resource was not found.",
+    ErrorCode.UNEXPECTED: "Unexpected error.",
+    ErrorCode.LICENSE_REQUIRED: "License activation required.",
+    ErrorCode.LICENSE_READ_ONLY: "License expired — the system is in read-only mode.",
+    ErrorCode.LICENSE_INVALID_SIGNATURE: "The license file is invalid.",
+    ErrorCode.LICENSE_DEVICE_MISMATCH: "This license is bound to a different device.",
+    ErrorCode.LICENSE_EXPIRED: "This license has expired.",
+    ErrorCode.LICENSE_TAMPER_DETECTED: "License integrity check failed — contact support.",
+    ErrorCode.LICENSE_STATE_ERROR: "License state is temporarily unavailable — retrying.",
+    ErrorCode.LICENSE_KEY_LOST: (
+        "License key is missing from this device — restore it or contact support."
+    ),
 }
 
 

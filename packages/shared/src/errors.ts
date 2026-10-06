@@ -32,6 +32,16 @@ export const ERROR_CODES = {
   PRESCRIPTION_INVALID: 'E-RX-003', // بند الوصفة غير مطابق لهذا الصنف
   NOT_FOUND: 'E-GEN-001', // مسار/مورد غير موجود (404/405) — مغلف موحد حتى هنا
   UNEXPECTED: 'E-SYS-001',
+  // P4-M1 (licensing) — mirrors errors.py; statuses/HTTP mapping in the gate (M2)
+  // per docs/phase4-execution-plan-licensing.md §7.
+  LICENSE_REQUIRED: 'E-LIC-001', // مطلوب تفعيل الترخيص
+  LICENSE_READ_ONLY: 'E-LIC-002', // انتهت فترة السماح — وضع القراءة فقط
+  LICENSE_INVALID_SIGNATURE: 'E-LIC-003', // ملف الترخيص غير صالح (توقيع/بنية)
+  LICENSE_DEVICE_MISMATCH: 'E-LIC-004', // الترخيص مربوط بجهاز آخر
+  LICENSE_EXPIRED: 'E-LIC-005', // الترخيص منتهي
+  LICENSE_TAMPER_DETECTED: 'E-LIC-006', // فشل فحص السلامة — تواصل مع الدعم
+  LICENSE_STATE_ERROR: 'E-LIC-007', // حالة الترخيص غير متاحة مؤقتاً — إعادة محاولة
+  LICENSE_KEY_LOST: 'E-LIC-008', // مفتاح الترخيص مفقود من الجهاز — استعادته أو الدعم
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
