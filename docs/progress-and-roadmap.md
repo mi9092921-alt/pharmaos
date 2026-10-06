@@ -41,6 +41,69 @@ Integrated pharmacy management, ready for production
 
 - 📊 PHASE 5 EXECUTION PLAN DRAFTED — OFFLINE-SCOPE REVISION (2026-10-05, renumbered same day): owner decision defines the offline-only scope (single branch, NO cloud, NO mobile) as **Phase 5** after the phase reconciliation. Deferred explicitly: multi-branch (schema `branch_id` kept, app locked to seeded branch), cloud sync engine (Outbox/LWW/manual-review), mobile app, insurance integration, SAR/ZATCA+AED country profiles; SMS stays deferred. Standing repo housekeeping items Supabase link (D2) + backup cloud bucket (D5) are CLOSED-BY-DECISION (intentionally unconfigured — local-only by design, to be documented in acceptance). Supersedes pharmaos.md §Phase-6 (Enterprise, renumbered) / CLAUDE.md checklist scope (spec pair rule: deviation recorded here + in the plan). Plan: `docs/phase5-execution-plan-offline.md` — 8 milestones P5-M1..M8 (offline contract + no-network E2E day → cloudless backup/DR (secondary destination + Task Scheduler + retention) → crash-resilience + /health page → opportunistic ETA/EDA queue drain → installer/tray/USB-update/support-bundle → OWASP + hardware perf gate → single-branch lock + data lifecycle + i18n parity (checker built in P4-M3, consumed here) → acceptance + pilot). Migrations from **…003000** only if needed (expect 0–2; …002900 belongs to the licensing wave P4-M1); likely new perm `system.health`; alert rule `disk_space_low` proposed; decisions D1–D9 open (backup destination, scheduling, retention, queue-drain policy, monitoring without Sentry, branch lock, code signing ~$100–400/yr at M5). AWAITING approval + decisions before any code.
 
+- ✅ P4-M1 (LICENSING CORE) SHIPPED & CI-GREEN 2026-10-06 — remote main `4eeb314`
+  (feat(licensing): P4-M1 licensing core — Ed25519 licenses, HWID binding, clock ledger).
+  **CI VERIFIED** (run 37434941864): all 3 jobs green — python (361 pytest incl. 52 new licensing
+  tests + the license-cli tool suite on the same job), js (prettier/eslint/tsc/build with the
+  E-LIC registry + i18n changes), migrations (up/down/re-up ×29 + seed freshness + idempotent
+  double-apply, incl. …2900 and its paired down). Local gates also green: ruff/black/mypy strict
+  (both win32 AND linux platforms — the winreg access needed platform-neutral getattr/guard
+  treatment), prettier, tool pytest (9 incl. API cross-vectors).
+
+  - Migration …2900 (+paired down): `license_state` singleton (DB-enforced: singleton_key
+    CHECK+UNIQUE — a second row is impossible) + `license_clock_events` append-only ledger
+    (seq PK CHECK>0; prev_hash NULL exactly once at genesis; hash hex CHECK). Structure enforced
+    by triggers under pg_advisory_xact_lock(740029001): immutability (UPDATE/DELETE/TRUNCATE
+    forbidden for every role), chain linkage validation (seq = last+1, prev_hash = last hash —
+    trigger re-acquires the lock and VALIDATES ONLY, never rewrites). REVOKE
+    INSERT/UPDATE/DELETE/TRUNCATE FROM app_user. Hash AUTHENTICITY is app-side: verify_chain
+    recomputes every entry_hash (LOCK-1b split — the trigger cannot see the keystore key).
+  - LOCK-1 (literal HMAC input): domain || u64be(seq) || prev_hash_bytes || canonical_event_bytes;
+    test vectors assembled independently in the tests (not via the production function).
+  - LOCK-2 (external-store MAC): HMAC-SHA256 over HKDF-SHA256(clock key,
+    info=pharmaos.clock.ext.v1); providers: Windows (ProgramData file + HKCU registry —
+    platform-guarded, winreg accessed platform-neutrally for mypy on both hosts) + POSIX
+    state-file shim for dev/CI.
+  - Container/payload: strict {format,kid,payload,signature}, duplicate-key rejection
+    (object_pairs_hook), canonical payload bytes only, 64 KiB pre-parse cap, closed features
+    registry (stored, no gating in v1), numeric activation rank (year, number). Vendor key
+    bake-in point (licensing/vendor_key.py) is fail-closed until the owner runs license-cli init.
+  - State machine: unlicensed/active(14d warning)/grace(30d)/read_only/clock_error/key_lost/
+    error/tamper. high-water := max(sources, NOW) with rollback detection BEFORE folding now in
+    (a boot's own clock must never mask a rollback — caught during self-review); per-source
+    regression anomalies (≥3 ⇒ tamper); wiped-store detection via external_sync_state (fresh
+    installs never false-positive — found while testing: the discriminator is the sync snapshot,
+    not store existence); memory-only immutable runtime state via runtime.set_state atomic swap;
+    ENV-BLIND (zero pharmaos_env branches in the licensing module).
+  - activation: new-vs-old rank = max(DB last-activation event, MAC'd stores) — may LOWER the
+    high-water (the forward-poison cure); idempotent old files never clear flags; future-dated
+    rejection (effective_now+24h ⇒ E-LIC-003/issued_at_in_future); key_lost acceptance
+    (issued_at ≥ last chain row high_water ⇒ rotation + re-seal; older ⇒ E-LIC-008) — deleting
+    the keystore entry is NOT a reset.
+  - tools/license-cli (owner-side only): PLKEY1 encrypted key file (scrypt 32768/8/1 +
+    AES-256-GCM; passphrase via PHARMAOS_LICENSE_PASSPHRASE or TTY), init/issue (trial 14d /
+    monthly / annual / emergency 7d / --months)/list --expiring-soon/verify/export/import +
+    JSONL ledger; smoke-tested end-to-end (Arabic customer names included); cross-vector tests
+    prove byte-identity with the API verifier.
+  - E-LIC-001..008 in BOTH registries + E-SYS-001 finally added to the Python registry (closing
+    the TS-only precedent); i18n ar/en error strings in sync.
+  - Tests (52 new; scratch DBs are INSTANT clones of a session-migrated TEMPLATE — per-test
+    worlds without re-running migrations): N=50 concurrent appends ⇒ exactly 50 rows, seq 1..50,
+    no gaps; mid-transaction crash leaves no gap; forged rows (valid linkage, fake HMAC)
+    DETECTED and healed by re-seal; full tamper/reconciliation matrix (truncated tail, wiped
+    store, source regression ×3 ⇒ tamper, clock rollback); activation matrix (mismatch/expired/
+    future/key_lost/forward-poison cure); HWID failure matrix (empty components → MachineGuid,
+    cache never trusted on MAC mismatch). Full suite: 361 pytest.
+  - ⭐ SELF-REVIEW CATCHES: (1) evaluate_license was missing the high-water := max(old, now)
+    update rule — the forward-poison scenario silently did nothing; (2) fresh installs
+    false-positived tamper on boot #2 (empty externals + chain) — fixed with the sync_state
+    discriminator + post-append-head seeding; (3) middleware-loop mismatches: scratch-DB tests
+    need CLONED per-test DBs (the chain forbids DELETE/TRUNCATE) — template-clone fixture.
+  - Remaining in P4: M2 (gate middleware pure-ASGI + boot/periodic jobs + /license endpoints +
+    backup import-keys + real restore + licensing.view), M3 (activation UI + parity checker),
+    M4 (Electron gate). Reviewer verdicts on the reconciliation + ratification commits were the
+    green light for this milestone.
+
 - 📊 PHASE 4 EXECUTION PLAN RATIFIED — LICENSING & PROTECTION (2026-10-05): offline offline-only scope renumbered to Phase 5 (see entry above); **Phase 4 = Licensing & Protection (P4-M1..M4)** — plan ratified after an independent multi-round review (R1→R17) against `main` @ `b90762b`. Plan doc: `docs/phase4-execution-plan-licensing.md` (§0–§9: threat model, Ed25519 signed license files + HWID binding, HMAC-chained clock-event ledger with DB-enforced append invariants + INSERT privilege boundary, license gate middleware (pure ASGI, env-blind, fail-closed), graded ladder 14d warning → 30d grace → read-only, clock-rollback detection with MAC'd external stores, vendor CLI `tools/license-cli`, `backup import-keys` + real-restore semantics, E-LIC-001..008). Zero new dependencies (`cryptography==49.0.0`, `keyring==25.7.0` reused). Migrations: `20260711002900_license_state` is P4-M1's. Phase reconciliation (P4 licensing / P5 offline / P6 enterprise) applied across CLAUDE.md + pharmaos.md + this doc in the same docs commit. Historical phase-3 plan/acceptance docs keep their original "Phase 4" mentions verbatim (pre-renumbering records — the renumbering note lives in pharmaos.md §Phase-6). NEXT: independent review of the reconciliation commit, then P4-M1.
 
 - ✅ PHASE 3 KICKOFF + P3-M1 (SALES REPORTS, backend) SHIPPED & CI-GREEN 2026-07-14 — remote main `485d55f` (local bookkeeping 450c341; pushed via GitHub integration push_files, verified byte-intact — migration blob SHA 3c0fa7e matches local git hash-object). CI run #33: js + python (236 pytest) + migrations (25) ALL GREEN.
