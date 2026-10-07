@@ -1,0 +1,53 @@
+# installer decision: electron-builder NSIS, per-machine, extraResources carry
+# the ENTIRE frozen runtime (API exe + PostgreSQL 17.11 + web bundle) so the
+# pharmacy machine needs NOTHING installed (no Docker/Python/Node/PG).
+appId: com.pharmaos.desktop
+productName: PharmaOS
+copyright: PharmaOS
+
+directories:
+  output: ../../installer/dist/installer
+  buildResources: resources
+
+files:
+  - dist/**/*
+  - package.json
+
+# The frozen runtimes ride OUTSIDE the asar as real files (PostgreSQL and
+# PyInstaller trees must be executable as-is).
+asar: true
+extraResources:
+  - from: ../../installer/dist/api
+    to: api
+  - from: ../../installer/dist/web
+    to: web
+    filter:
+      - '**/*'
+      - '!web.log'
+  - from: ../../installer/vendor/pg
+    to: pg
+  - from: resources/watchdog.ps1
+    to: watchdog.ps1
+  - from: resources/setup.html
+    to: setup.html
+  - from: ../../installer/install-steps.ps1
+    to: install-steps.ps1
+  - from: ../../installer/uninstall-steps.ps1
+    to: uninstall-steps.ps1
+
+nsis:
+  # Per-machine (Program Files + ProgramData data dir) - decision: admin
+  # installs once, the DAILY USER runs PharmaOS without elevation.
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: PharmaOS
+  # The uninstaller must stop running components and drop the scheduled
+  # tasks; DATA (pgdata/backups) is kept unless the user opts out.
+  include: ../../installer/installer.nsh
+  artifactName: PharmaOS-Setup-${version}.${ext}
+# VC++ redistributable: NOT bundled - check-vcredist.ps1 measured the EDB
+# 17.11 binaries as statically linked (verdict: none). Re-run that script if
+# the pinned PG version changes; ship vc_redist only when the verdict flips.
