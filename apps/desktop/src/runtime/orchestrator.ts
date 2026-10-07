@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The orchestrator (installer M4): starts/stops the device stack in order -
  *   preflight ports -> PostgreSQL (device-init on first run) -> API
  *   (wait /api/v1/health) -> migrate (idempotent) -> web (wait /) ->
@@ -67,6 +67,18 @@ export class Orchestrator {
   async boot(): Promise<BootResult> {
     const env = childEnv(this.p);
     try {
+      // ---- 0. clean OUR leftovers from a crashed/abandoned session ------
+      // (a relaunch after a crash must recover, not fight its own ghosts;
+      // scoped by path inside the watchdog - foreign processes are untouched)
+      log('boot: cleaning leftovers from previous sessions');
+      await runCapture(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', this.p.watchdogScript, '-Cleanup'],
+        this.p.dataDir,
+        60000,
+      );
+      await new Promise((r) => setTimeout(r, 1000));
+
       // ---- preflight: every port must be free BEFORE anything starts ----
       log('boot: preflight ports');
       const checks = await preflightPorts({

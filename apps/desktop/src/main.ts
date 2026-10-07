@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Electron main process - the DEVICE ORCHESTRATOR (installer M4).
  *
  * Boot order: single-instance lock -> port preflight -> PostgreSQL
@@ -148,7 +148,9 @@ async function runSetupWizard(): Promise<void> {
           ['bootstrap-branch', '--name', input.branchName],
           p.dataDir,
         );
-        if (branch.code !== 0) throw new Error(branch.stderr || 'فشل إنشاء الفرع.');
+        if (branch.code !== 0 && !branch.stderr.includes('already exists')) {
+          throw new Error(branch.stderr || 'فشل إنشاء الفرع.');
+        }
         // 3. scheduled tasks under THE DAILY USER (decision 2) - "run whether
         //    logged on or not" so the 02:00 backup survives logout.
         await registerScheduledTasks(input.winPassword);

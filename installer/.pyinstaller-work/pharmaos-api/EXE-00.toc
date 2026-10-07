@@ -73,7 +73,7 @@
  [],
  False,
  False,
- 1791310323,
+ 1791360168,
  [('run.exe',
    'D:\\projects\\pharmaos\\.venv\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\run.exe',
    'EXECUTABLE')],

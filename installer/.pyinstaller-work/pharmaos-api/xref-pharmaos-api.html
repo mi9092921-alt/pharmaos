@@ -27243,12 +27243,14 @@ imports:
  &#8226;   <a href="#pharmaos_api.services.compliance">pharmaos_api.services.compliance</a>
  &#8226;   <a href="#pharmaos_api.services.compliance.ereceipt_service">pharmaos_api.services.compliance.ereceipt_service</a>
  &#8226;   <a href="#pharmaos_api.services.compliance.tt_service">pharmaos_api.services.compliance.tt_service</a>
+ &#8226;   <a href="#pharmaos_api.services.installation_state">pharmaos_api.services.installation_state</a>
  &#8226;   <a href="#pharmaos_api.services.inventory_service">pharmaos_api.services.inventory_service</a>
  &#8226;   <a href="#pharmaos_api.services.notification_service">pharmaos_api.services.notification_service</a>
  &#8226;   <a href="#pharmaos_api.services.sales_service">pharmaos_api.services.sales_service</a>
  &#8226;   <a href="#pharmaos_api.services.seed_service">pharmaos_api.services.seed_service</a>
  &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
  &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#uuid">uuid</a>
 
   </div>
   <div class="import">
@@ -28778,6 +28780,7 @@ imports:
  &#8226;   <a href="#pharmaos_api.services.config_service">pharmaos_api.services.config_service</a>
  &#8226;   <a href="#pharmaos_api.services.controlled_substance_service">pharmaos_api.services.controlled_substance_service</a>
  &#8226;   <a href="#pharmaos_api.services.expense_service">pharmaos_api.services.expense_service</a>
+ &#8226;   <a href="#pharmaos_api.services.installation_state">pharmaos_api.services.installation_state</a>
  &#8226;   <a href="#pharmaos_api.services.notification_service">pharmaos_api.services.notification_service</a>
  &#8226;   <a href="#pharmaos_api.services.pack_serial_service">pharmaos_api.services.pack_serial_service</a>
  &#8226;   <a href="#pharmaos_api.services.payment_service">pharmaos_api.services.payment_service</a>
@@ -28825,6 +28828,7 @@ imported by:
  &#8226;   <a href="#pharmaos_api.services.csv_safe">pharmaos_api.services.csv_safe</a>
  &#8226;   <a href="#pharmaos_api.services.customer_service">pharmaos_api.services.customer_service</a>
  &#8226;   <a href="#pharmaos_api.services.expense_service">pharmaos_api.services.expense_service</a>
+ &#8226;   <a href="#pharmaos_api.services.installation_state">pharmaos_api.services.installation_state</a>
  &#8226;   <a href="#pharmaos_api.services.inventory_service">pharmaos_api.services.inventory_service</a>
  &#8226;   <a href="#pharmaos_api.services.notification_service">pharmaos_api.services.notification_service</a>
  &#8226;   <a href="#pharmaos_api.services.pack_serial_service">pharmaos_api.services.pack_serial_service</a>
@@ -29310,6 +29314,25 @@ imports:
   <div class="import">
 imported by:
     <a href="#pharmaos_api.routers.finance">pharmaos_api.routers.finance</a>
+ &#8226;   <a href="#pharmaos_api.services">pharmaos_api.services</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pharmaos_api.services.installation_state"></a>
+  <a target="code" href="///D:/projects/pharmaos/apps/api/src/pharmaos_api/services/installation_state.py" type="text/plain"><tt>pharmaos_api.services.installation_state</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#pharmaos_api.services">pharmaos_api.services</a>
+ &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
+ &#8226;   <a href="#sqlalchemy.ext.asyncio">sqlalchemy.ext.asyncio</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#pharmaos_api.cli">pharmaos_api.cli</a>
  &#8226;   <a href="#pharmaos_api.services">pharmaos_api.services</a>
 
   </div>
@@ -47747,6 +47770,7 @@ imported by:
  &#8226;   <a href="#pharmaos_api.services.controlled_substance_service">pharmaos_api.services.controlled_substance_service</a>
  &#8226;   <a href="#pharmaos_api.services.customer_service">pharmaos_api.services.customer_service</a>
  &#8226;   <a href="#pharmaos_api.services.expense_service">pharmaos_api.services.expense_service</a>
+ &#8226;   <a href="#pharmaos_api.services.installation_state">pharmaos_api.services.installation_state</a>
  &#8226;   <a href="#pharmaos_api.services.inventory_service">pharmaos_api.services.inventory_service</a>
  &#8226;   <a href="#pharmaos_api.services.notification_service">pharmaos_api.services.notification_service</a>
  &#8226;   <a href="#pharmaos_api.services.pack_serial_service">pharmaos_api.services.pack_serial_service</a>
@@ -51119,6 +51143,7 @@ imported by:
  &#8226;   <a href="#pharmaos_api.services.controlled_substance_service">pharmaos_api.services.controlled_substance_service</a>
  &#8226;   <a href="#pharmaos_api.services.customer_service">pharmaos_api.services.customer_service</a>
  &#8226;   <a href="#pharmaos_api.services.expense_service">pharmaos_api.services.expense_service</a>
+ &#8226;   <a href="#pharmaos_api.services.installation_state">pharmaos_api.services.installation_state</a>
  &#8226;   <a href="#pharmaos_api.services.inventory_service">pharmaos_api.services.inventory_service</a>
  &#8226;   <a href="#pharmaos_api.services.notification_service">pharmaos_api.services.notification_service</a>
  &#8226;   <a href="#pharmaos_api.services.pack_serial_service">pharmaos_api.services.pack_serial_service</a>
@@ -59855,6 +59880,7 @@ imported by:
     <a href="#asyncpg.pgproto.pgproto">asyncpg.pgproto.pgproto</a>
  &#8226;   <a href="#click.types">click.types</a>
  &#8226;   <a href="#fastapi.encoders">fastapi.encoders</a>
+ &#8226;   <a href="#pharmaos_api.cli">pharmaos_api.cli</a>
  &#8226;   <a href="#pharmaos_api.deps">pharmaos_api.deps</a>
  &#8226;   <a href="#pharmaos_api.models.audit">pharmaos_api.models.audit</a>
  &#8226;   <a href="#pharmaos_api.models.base">pharmaos_api.models.base</a>

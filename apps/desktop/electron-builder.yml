@@ -26,6 +26,12 @@ extraResources:
       - '!web.log'
   - from: ../../installer/vendor/pg
     to: pg
+    filter:
+      # The EDB zip carries pgAdmin 4 (715MB!), docs and StackBuilder we never
+      # use - ship ONLY the server + client runtime (bin/lib/share ~139MB).
+      - 'bin/**/*'
+      - 'lib/**/*'
+      - 'share/**/*'
   - from: resources/watchdog.ps1
     to: watchdog.ps1
   - from: resources/setup.html

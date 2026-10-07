@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Port pre-flight (installer M4): a busy port must produce a NAMED error
  * before any component starts - never a silent hang.
  */
@@ -28,8 +28,8 @@ export async function preflightPorts(p: {
   webPort: number;
 }): Promise<PortCheck[]> {
   return [
-    { port: p.pgPort, label: 'PostgreSQL 5433', free: await isPortFree(p.pgPort) },
-    { port: p.apiPort, label: 'API 8000', free: await isPortFree(p.apiPort) },
-    { port: p.webPort, label: 'Web 3000', free: await isPortFree(p.webPort) },
+    { port: p.pgPort, label: 'PostgreSQL (5433)', free: await isPortFree(p.pgPort) },
+    { port: p.apiPort, label: 'API (8000)', free: await isPortFree(p.apiPort) },
+    { port: p.webPort, label: 'الواجهة (3000)', free: await isPortFree(p.webPort) },
   ];
 }

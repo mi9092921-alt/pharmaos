@@ -44,6 +44,7 @@ import getpass
 import json as _json
 import os
 import sys
+import uuid
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -68,6 +69,19 @@ async def _bootstrap_admin(username: str, full_name: str, password: str) -> int:
         return 2
 
     async with get_session_factory()() as session:
+        existing_user = (
+            await session.execute(
+                select(func.count()).select_from(User).where(User.is_deleted.is_(False))
+            )
+        ).scalar_one()
+        if existing_user > 0:
+            print(
+                "a user already exists on this device - the first-run step is "
+                "already done (open PharmaOS and log in).",
+                file=sys.stderr,
+            )
+            return 1
+
         role = (
             await session.execute(select(Role).where(Role.code == SUPER_ADMIN_ROLE_CODE))
         ).scalar_one_or_none()
@@ -503,12 +517,27 @@ def _device_init(pgdata: str | None) -> int:
     from pharmaos_api.security import keystore
     from pharmaos_api.services import backup_service
 
-    if keystore.get_db_password() is not None:
-        print("device already provisioned (DB_PASSWORD present) - nothing to do.", file=sys.stderr)
-        return 1
     s = get_settings()
     pgdata_dir = _Path(pgdata) if pgdata else default_data_dir() / "pgdata"
-    password = os.urandom(24).hex()  # URL-safe hex; strong (192 bits)
+    stored = keystore.get_db_password()
+    cluster_ready = (pgdata_dir / "PG_VERSION").is_file()
+
+    if stored and cluster_ready:
+        print(
+            "device already provisioned (keystore + cluster present) - nothing to do.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The DPAPI-stored password is the recovery root for the CLUSTER: when the
+    # keystore survived but pgdata was wiped (or the reverse), re-create the
+    # cluster WITH the stored password instead of failing - the device heals.
+    password = stored or os.urandom(24).hex()  # URL-safe hex; strong (192 bits)
+    if not cluster_ready and pgdata_dir.exists() and any(pgdata_dir.iterdir()):
+        # initdb requires an empty/nonexistent dir; park whatever is there.
+        parked = pgdata_dir.with_name(f"pgdata.broken-{uuid.uuid4().hex[:8]}")
+        pgdata_dir.rename(parked)
+        print(f"parked unusable pgdata at {parked}", file=sys.stderr)
     backup_service._init_staging(
         pgdata_dir, db_user=s.db_user, db_password=password, port=s.db_port
     )
