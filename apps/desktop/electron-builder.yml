@@ -36,6 +36,8 @@ extraResources:
     to: watchdog.ps1
   - from: resources/setup.html
     to: setup.html
+  - from: resources/splash.html
+    to: splash.html
   - from: ../../installer/install-steps.ps1
     to: install-steps.ps1
   - from: ../../installer/uninstall-steps.ps1

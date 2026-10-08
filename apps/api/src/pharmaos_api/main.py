@@ -5,6 +5,7 @@
 - The local API binds to 127.0.0.1 only (see run()).
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -113,12 +114,49 @@ async def _boot_email_drain() -> None:
         logger.exception("email drain at boot skipped (non-fatal)")
 
 
-@asynccontextmanager
-async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def _run_boot_migrations() -> None:
+    """Run database migrations in-process at boot (decision 7) so no separate CLI process is needed."""
+    from pharmaos_api.config import get_settings
+
+    if get_settings().pharmaos_env == "test":
+        return
+    try:
+        from pharmaos_api.migrations_runner import (
+            _load_migrations,
+            _load_seeds,
+            default_migrations_dir,
+            default_seeds_dir,
+            run_migrations_async,
+        )
+
+        s = get_settings()
+        report = await run_migrations_async(
+            s.resolved_database_url,
+            migrations=_load_migrations(default_migrations_dir()),
+            seeds=_load_seeds(default_seeds_dir()),
+        )
+        applied = report.get("applied")
+        if applied:
+            logger.info("boot migrations applied: %s", applied)
+    except Exception:
+        logger.exception("boot migrations failed (non-fatal)")
+
+
+async def _run_background_boot_maintenance() -> None:
+    """Non-blocking background boot maintenance: inventory healing, alert evaluation, and email drain."""
     await _boot_inventory_maintenance()
     await _boot_alert_evaluation()
     await _boot_email_drain()
-    yield
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    await _run_boot_migrations()
+    task = asyncio.create_task(_run_background_boot_maintenance())
+    try:
+        yield
+    finally:
+        task.cancel()
 
 
 def create_app() -> FastAPI:
@@ -205,6 +243,43 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/health")
     async def health() -> dict[str, object]:
         return success_envelope({"status": "ok"})
+
+    @app.get("/api/v1/system/setup-status")
+    async def system_setup_status() -> dict[str, object]:
+        from sqlalchemy import func, select
+
+        from pharmaos_api.db import get_session_factory
+        from pharmaos_api.models import Branch, User
+        from pharmaos_api.services import installation_state
+
+        async with get_session_factory()() as session:
+            users = int(
+                (await session.execute(select(func.count()).select_from(User))).scalar_one()
+            )
+            branches = int(
+                (await session.execute(select(func.count()).select_from(Branch))).scalar_one()
+            )
+            state = await installation_state.get_all(session)
+        return success_envelope(
+            {
+                "users": users,
+                "branches": branches,
+                "setup_complete": state.get("setup_complete") == "1",
+                "last_completed_step": state.get("last_completed_step", "none"),
+            }
+        )
+
+    @app.post("/api/v1/system/setup-complete")
+    async def system_setup_complete() -> dict[str, object]:
+        from pharmaos_api.db import get_session_factory
+        from pharmaos_api.services import installation_state
+
+        async with get_session_factory()() as session:
+            await installation_state.set_values(
+                session,
+                {"setup_complete": "1", "last_completed_step": "complete"},
+            )
+        return success_envelope({"status": "complete"})
 
     return app
 

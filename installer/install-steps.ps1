@@ -29,5 +29,8 @@ icacls $data /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' '*S-1-5-32-54
 # (check-vcredist.ps1 verdict: none - statically-linked CRT). Re-run that
 # script if the PG pin changes; ship vc_redist only when the verdict flips.
 
+# Performance: exclude PharmaOS directories from Windows Defender real-time scanning
+Add-MpPreference -ExclusionPath (Join-Path $env:ProgramFiles 'PharmaOS'), $data -ErrorAction SilentlyContinue
+
 # Tasks are registered by FIRST-RUN (daily user, decision 2).
 exit 0

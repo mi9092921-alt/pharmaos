@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PharmaOS</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", Tahoma, sans-serif;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 24px;
+      width: 100%;
+    }
+
+    .logo-box {
+      width: 72px;
+      height: 72px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 95, 70, 0.3) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.25);
+      animation: pulse-glow 2.5s infinite ease-in-out;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% {
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        transform: scale(1);
+      }
+      50% {
+        box-shadow: 0 0 35px rgba(16, 185, 129, 0.4);
+        transform: scale(1.03);
+      }
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      fill: none;
+      stroke: #10b981;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .brand-title {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-subtitle {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+      font-weight: 400;
+    }
+
+    .progress-track {
+      width: 260px;
+      height: 5px;
+      background: rgba(51, 65, 85, 0.6);
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 14px;
+    }
+
+    .progress-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 40%;
+      background: linear-gradient(90deg, #10b981, #34d399, #06b6d4);
+      border-radius: 999px;
+      animation: indeterminate 1.6s infinite cubic-bezier(0.65, 0.815, 0.735, 0.395);
+    }
+
+    @keyframes indeterminate {
+      0% {
+        left: -40%;
+        width: 30%;
+      }
+      50% {
+        width: 60%;
+      }
+      100% {
+        left: 100%;
+        width: 30%;
+      }
+    }
+
+    .status-text {
+      font-size: 12px;
+      color: #64748b;
+      min-height: 18px;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .version-tag {
+      position: absolute;
+      bottom: 12px;
+      left: 16px;
+      font-size: 11px;
+      color: #475569;
+      font-family: monospace;
+      direction: ltr;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-box">
+      <svg class="logo-icon" viewBox="0 0 24 24">
+        <!-- Medical Cross & Capsule Symbol -->
+        <path d="M12 4v16m-8-8h16" />
+        <circle cx="12" cy="12" r="9" stroke="rgba(16, 185, 129, 0.4)" stroke-width="1.5" stroke-dasharray="3 3" />
+      </svg>
+    </div>
+    <div class="brand-title">PharmaOS</div>
+    <div class="brand-subtitle">نظام إدارة الصيدليات الذكي</div>
+    <div class="progress-track">
+      <div class="progress-bar"></div>
+    </div>
+    <div class="status-text" id="status-text">جاري بدء تشغيل النظام...</div>
+  </div>
+  <div class="version-tag">v1.1.0</div>
+
+  <script>
+    if (window.splashApi && window.splashApi.onStatus) {
+      window.splashApi.onStatus(function(data) {
+        var el = document.getElementById('status-text');
+        if (el && data && data.message) {
+          el.textContent = data.message;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

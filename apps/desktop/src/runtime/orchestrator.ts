@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The orchestrator (installer M4): starts/stops the device stack in order -
  *   preflight ports -> PostgreSQL (device-init on first run) -> API
  *   (wait /api/v1/health) -> migrate (idempotent) -> web (wait /) ->
@@ -64,22 +64,10 @@ export class Orchestrator {
 
   constructor(private p: OrchestratorPaths) {}
 
-  async boot(): Promise<BootResult> {
+  async boot(onProgress?: (stage: string, message: string) => void): Promise<BootResult> {
     const env = childEnv(this.p);
     try {
-      // ---- 0. clean OUR leftovers from a crashed/abandoned session ------
-      // (a relaunch after a crash must recover, not fight its own ghosts;
-      // scoped by path inside the watchdog - foreign processes are untouched)
-      log('boot: cleaning leftovers from previous sessions');
-      await runCapture(
-        'powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', this.p.watchdogScript, '-Cleanup'],
-        this.p.dataDir,
-        60000,
-      );
-      await new Promise((r) => setTimeout(r, 1000));
-
-      // ---- preflight: every port must be free BEFORE anything starts ----
+      onProgress?.('preflight', 'جاري فحص المنافذ...');
       log('boot: preflight ports');
       const checks = await preflightPorts({
         pgPort: PG_PORT,
@@ -87,20 +75,46 @@ export class Orchestrator {
         webPort: WEB_PORT,
       });
       const busy = checks.filter((c) => !c.free);
+
+      // Only invoke PowerShell cleanup if previous session left orphaned processes
       if (busy.length > 0) {
-        const detail = busy.map((b) => `${b.label} is in use`).join('; ');
-        return {
-          ok: false,
-          stage: 'preflight',
-          error: `Ports busy - ${detail}. Close the program using them and reopen PharmaOS.`,
-        };
+        log(
+          `boot: busy ports detected (${busy.map((b) => b.label).join(', ')}), cleaning leftovers`,
+        );
+        onProgress?.('cleanup', 'جاري إخلاء المنافذ السابقة...');
+        await runCapture(
+          'powershell.exe',
+          ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', this.p.watchdogScript, '-Cleanup'],
+          this.p.dataDir,
+          15000,
+        );
+        await new Promise((r) => setTimeout(r, 400));
+
+        const postCleanup = await preflightPorts({
+          pgPort: PG_PORT,
+          apiPort: API_PORT,
+          webPort: WEB_PORT,
+        });
+        const stillBusy = postCleanup.filter((c) => !c.free);
+        if (stillBusy.length > 0) {
+          const detail = stillBusy.map((b) => `${b.label} is in use`).join('; ');
+          return {
+            ok: false,
+            stage: 'preflight',
+            error: `Ports busy - ${detail}. Close the program using them and reopen PharmaOS.`,
+          };
+        }
+      } else {
+        log('boot: all ports free, skipping cleanup');
       }
 
       // ---- PostgreSQL: device-init on first run, then pg_ctl start --------
+      onProgress?.('postgres', 'جاري تشغيل قاعدة البيانات...');
       log('boot: postgres');
       fs.mkdirSync(this.p.logsDir, { recursive: true });
       if (!fs.existsSync(path.join(this.p.pgData, 'PG_VERSION'))) {
         log('boot: device-init (first run - initdb + keystore)');
+        onProgress?.('postgres', 'جاري تهيئة قاعدة البيانات لأول مرة...');
         const init = await runCapture(this.p.apiExe, ['device-init'], this.p.dataDir, 300000);
         if (init.code !== 0) {
           return {
@@ -125,7 +139,7 @@ export class Orchestrator {
           error: `pg_ctl start failed: ${pgStart.stderr || pgStart.stdout}`,
         };
       }
-      // pg_isready (bundled binary) - the DB must answer before the API boots.
+      // pg_isready (bundled binary) - the DB must answer before the services boot.
       const ready = await runCapture(
         path.join(this.p.pgBin, 'pg_isready.exe'),
         ['-h', '127.0.0.1', '-p', String(PG_PORT)],
@@ -136,8 +150,10 @@ export class Orchestrator {
         return { ok: false, stage: 'postgres', error: `PostgreSQL not ready: ${ready.stdout}` };
       }
 
-      // ---- API: frozen exe + /api/v1/health poll ---------------------------
-      log('boot: api');
+      // ---- Parallel Boot: spawn API and Web concurrently -------------------
+      onProgress?.('services', 'جاري تشغيل الخدمات وواجهة المستخدم...');
+      log('boot: spawning api & web in parallel');
+
       const api = spawnDetached(
         this.p.apiExe,
         [],
@@ -145,21 +161,7 @@ export class Orchestrator {
         path.join(this.p.logsDir, 'api.log'),
       );
       this.procs.push({ name: 'api', child: api, pid: api.pid });
-      await waitHttp(`http://127.0.0.1:${API_PORT}/api/v1/health`, 90000, 'API');
 
-      // ---- migrate: idempotent, bundled SQL (decision 7) -------------------
-      log('boot: migrate');
-      const mig = await runCapture(this.p.apiExe, ['migrate'], this.p.dataDir, 300000);
-      if (mig.code !== 0) {
-        return {
-          ok: false,
-          stage: 'migrate',
-          error: `migrate failed: ${mig.stderr || mig.stdout}`,
-        };
-      }
-
-      // ---- web: bundled node.exe + Next standalone -------------------------
-      log('boot: web');
       const web = spawnDetached(
         this.p.nodeExe,
         [this.p.webServerJs],
@@ -173,21 +175,40 @@ export class Orchestrator {
         },
       );
       this.procs.unshift({ name: 'web', child: web, pid: web.pid });
-      await waitHttp(`http://127.0.0.1:${WEB_PORT}/`, 90000, 'Web UI');
+
+      // Wait for both API health and Web UI readiness in parallel
+      await Promise.all([
+        waitHttp(`http://127.0.0.1:${API_PORT}/api/v1/health`, 90000, 'API'),
+        waitHttp(`http://127.0.0.1:${WEB_PORT}/`, 90000, 'Web UI'),
+      ]);
 
       // ---- watchdog: cleans the tree if THIS process dies (decision 14) ----
       log('boot: watchdog');
       spawnWatchdog(this.p.watchdogScript, process.pid, this.p.dataDir);
 
-      // ---- first-run state (the wizard decides what to show) --------------
+      // ---- first-run state: query over fast HTTP (falls back to CLI) -------
+      onProgress?.('setup', 'جاري فحص حالة النظام...');
       log('boot: setup-status');
-      const status = await runCapture(this.p.apiExe, ['setup-status'], this.p.dataDir);
       let setup: BootResult['setup'];
       try {
-        setup = JSON.parse(status.stdout) as NonNullable<BootResult['setup']>;
-      } catch {
-        setup = undefined;
+        const res = await fetch(`http://127.0.0.1:${API_PORT}/api/v1/system/setup-status`);
+        if (res.ok) {
+          const json = (await res.json()) as { success?: boolean; data?: BootResult['setup'] };
+          setup = json.data;
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (e) {
+        log(`boot: setup-status HTTP query failed, falling back to CLI: ${e}`);
+        const status = await runCapture(this.p.apiExe, ['setup-status'], this.p.dataDir);
+        try {
+          setup = JSON.parse(status.stdout) as NonNullable<BootResult['setup']>;
+        } catch {
+          setup = undefined;
+        }
       }
+
+      onProgress?.('ready', 'تم تشغيل النظام بنجاح');
       return { ok: true, stage: 'ready', setup };
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
