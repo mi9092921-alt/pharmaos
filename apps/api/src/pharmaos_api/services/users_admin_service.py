@@ -214,7 +214,11 @@ async def reset_user_password(
 
 async def delete_user(session: AsyncSession, *, actor: User, user: User) -> None:
     if user.id == actor.id:
-        raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="You cannot delete your own account.")
+        raise ApiError(
+            ErrorCode.VALIDATION_FAILED,
+            422,
+            message="You cannot delete your own account.",
+        )
     user.is_deleted = True
     user.is_active = False
     user.updated_by = actor.id

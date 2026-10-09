@@ -115,7 +115,10 @@ async def _boot_email_drain() -> None:
 
 
 async def _run_boot_migrations() -> None:
-    """Run database migrations in-process at boot (decision 7) so no separate CLI process is needed."""
+    """Run database migrations in-process at boot (decision 7).
+
+    Ensures no separate CLI process is needed.
+    """
     from pharmaos_api.config import get_settings
 
     if get_settings().pharmaos_env == "test":
@@ -143,7 +146,10 @@ async def _run_boot_migrations() -> None:
 
 
 async def _run_background_boot_maintenance() -> None:
-    """Non-blocking background boot maintenance: inventory healing, alert evaluation, and email drain."""
+    """Non-blocking background boot maintenance.
+
+    Performs inventory healing, alert evaluation, and email drain.
+    """
     await _boot_inventory_maintenance()
     await _boot_alert_evaluation()
     await _boot_email_drain()
