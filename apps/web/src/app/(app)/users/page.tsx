@@ -16,16 +16,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import {
-  ApiRequestError,
   changeUserRole,
   createUser,
+  deleteUser,
   listUsers,
   resetUserPassword,
   setUserActive,
+  updateUserProfile,
   type CreateUserInput,
   type ManagedUser,
 } from '@/lib/api';
-import { t } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth-store';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
 const ROLE_CODES = Object.values(SystemRole);
@@ -40,14 +42,34 @@ const EMPTY_FORM: CreateUserInput = {
 
 export default function UsersPage() {
   const qc = useQueryClient();
+  const currentUser = useAuth((s) => s.user);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateUserInput>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<ManagedUser | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [editTarget, setEditTarget] = useState<ManagedUser | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null);
 
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers });
   const invalidate = () => qc.invalidateQueries({ queryKey: ['users'] });
+
+  const editMut = useMutation({
+    mutationFn: () =>
+      updateUserProfile(editTarget!.id, {
+        full_name: editFullName.trim(),
+        phone: editPhone.trim() || null,
+        set_phone: true,
+      }),
+    onSuccess: () => {
+      setEditTarget(null);
+      invalidate();
+      toast.success(t('users.updated_ok'));
+    },
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
+  });
 
   const createMut = useMutation({
     mutationFn: () => createUser({ ...form, phone: form.phone || null }),
@@ -58,18 +80,22 @@ export default function UsersPage() {
       invalidate();
       toast.success(t('users.created_ok'));
     },
-    onError: (e) => setFormError(e instanceof ApiRequestError ? e.code : 'E-SYS-001'),
+    onError: (e) => {
+      const msg = formatApiErrorMessage(e);
+      setFormError(msg);
+      toast.error(msg);
+    },
   });
 
   const roleMut = useMutation({
     mutationFn: (v: { id: string; role: string }) => changeUserRole(v.id, v.role),
     onSuccess: invalidate,
-    onError: (e) => toast.error(t(`errors.${e instanceof ApiRequestError ? e.code : 'E-SYS-001'}`)),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
   const activeMut = useMutation({
     mutationFn: (v: { id: string; active: boolean }) => setUserActive(v.id, v.active),
     onSuccess: invalidate,
-    onError: (e) => toast.error(t(`errors.${e instanceof ApiRequestError ? e.code : 'E-SYS-001'}`)),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
   const resetMut = useMutation({
     mutationFn: (v: { id: string; pw: string }) => resetUserPassword(v.id, v.pw),
@@ -78,7 +104,16 @@ export default function UsersPage() {
       setNewPassword('');
       toast.success(t('users.reset_done'));
     },
-    onError: (e) => toast.error(t(`errors.${e instanceof ApiRequestError ? e.code : 'E-SYS-001'}`)),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
+  });
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteUser(id),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      invalidate();
+      toast.success(t('users.deleted_ok'));
+    },
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
 
   return (
@@ -175,42 +210,79 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {(usersQuery.data ?? []).map((u) => (
-                  <tr key={u.id} className="border-b border-border/60">
-                    <td className="p-2 font-medium text-slate-800">{u.username}</td>
-                    <td className="p-2 text-slate-700">{u.full_name}</td>
-                    <td className="p-2">
-                      <Select
-                        className="h-8"
-                        value={u.role ?? ''}
-                        onChange={(e) => roleMut.mutate({ id: u.id, role: e.target.value })}
-                      >
-                        {ROLE_CODES.map((code) => (
-                          <option key={code} value={code}>
-                            {t(`role.${code}`)}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="p-2">
-                      <Badge tone={u.is_active ? 'success' : 'neutral'}>
-                        {u.is_active ? t('users.active') : t('users.inactive')}
-                      </Badge>
-                    </td>
-                    <td className="flex flex-wrap gap-2 p-2">
-                      <Button
-                        size="sm"
-                        variant={u.is_active ? 'outline' : 'primary'}
-                        onClick={() => activeMut.mutate({ id: u.id, active: !u.is_active })}
-                      >
-                        {u.is_active ? t('users.deactivate') : t('users.activate')}
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setResetTarget(u)}>
-                        {t('users.reset_password')}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {(usersQuery.data ?? []).map((u) => {
+                  const isSelf = u.id === currentUser?.id || u.username === currentUser?.username;
+                  return (
+                    <tr key={u.id} className="border-b border-border/60">
+                      <td className="p-2 font-medium text-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span>{u.username}</span>
+                          {isSelf && (
+                            <Badge tone="primary" className="text-[10px]">
+                              {t('users.current_user')}
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 text-slate-700">{u.full_name}</td>
+                      <td className="p-2">
+                        <Select
+                          className="h-8"
+                          value={u.role ?? ''}
+                          disabled={isSelf}
+                          title={isSelf ? t('users.cannot_modify_self') : undefined}
+                          onChange={(e) => roleMut.mutate({ id: u.id, role: e.target.value })}
+                        >
+                          {ROLE_CODES.map((code) => (
+                            <option key={code} value={code}>
+                              {t(`role.${code}`)}
+                            </option>
+                          ))}
+                        </Select>
+                      </td>
+                      <td className="p-2">
+                        <Badge tone={u.is_active ? 'success' : 'neutral'}>
+                          {u.is_active ? t('users.active') : t('users.inactive')}
+                        </Badge>
+                      </td>
+                      <td className="flex flex-wrap gap-2 p-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditTarget(u);
+                            setEditFullName(u.full_name);
+                            setEditPhone(u.phone ?? '');
+                          }}
+                        >
+                          {t('users.edit')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={u.is_active ? 'outline' : 'primary'}
+                          disabled={isSelf}
+                          title={isSelf ? t('users.cannot_modify_self') : undefined}
+                          onClick={() => activeMut.mutate({ id: u.id, active: !u.is_active })}
+                        >
+                          {u.is_active ? t('users.deactivate') : t('users.activate')}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setResetTarget(u)}>
+                          {t('users.reset_password')}
+                        </Button>
+                        {!isSelf && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-danger hover:bg-red-50 hover:text-danger"
+                            onClick={() => setDeleteTarget(u)}
+                          >
+                            {t('users.delete')}
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -253,6 +325,85 @@ export default function UsersPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Edit user profile modal */}
+      <Modal
+        open={editTarget !== null}
+        onClose={() => setEditTarget(null)}
+        title={`${t('users.edit_profile')} — ${editTarget?.username ?? ''}`}
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (editTarget) {
+              editMut.mutate();
+            }
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-name">{t('users.full_name')}</Label>
+            <Input
+              id="edit-name"
+              value={editFullName}
+              onChange={(e) => setEditFullName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-phone">{t('users.phone')}</Label>
+            <Input
+              id="edit-phone"
+              value={editPhone}
+              onChange={(e) => setEditPhone(e.target.value)}
+              className="numeric"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+              {t('users.cancel')}
+            </Button>
+            <Button type="submit" disabled={editMut.isPending}>
+              {t('common.save')}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete user confirmation modal */}
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title={t('users.delete')}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-700">{t('users.delete_confirm')}</p>
+          <div className="rounded-[var(--radius-md)] bg-slate-50 p-3 text-sm">
+            <p className="font-semibold text-slate-900">{deleteTarget?.full_name}</p>
+            <p className="font-mono text-xs text-slate-500">@{deleteTarget?.username}</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleteMut.isPending}
+              onClick={() => setDeleteTarget(null)}
+            >
+              {t('users.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={deleteMut.isPending}
+              onClick={() => {
+                if (deleteTarget) deleteMut.mutate(deleteTarget.id);
+              }}
+            >
+              {deleteMut.isPending ? t('users.creating') : t('users.delete')}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

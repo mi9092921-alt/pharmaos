@@ -271,23 +271,31 @@ async function runSetupWizard(): Promise<void> {
   ipcMain.handle('setup:skip', async () => {
     try {
       let users = 0;
+      let branches = 0;
       try {
         const res = await fetch('http://127.0.0.1:8000/api/v1/system/setup-status');
         if (res.ok) {
-          const json = (await res.json()) as { data?: { users?: number } };
+          const json = (await res.json()) as { data?: { users?: number; branches?: number } };
           users = json.data?.users ?? 0;
+          branches = json.data?.branches ?? 0;
         } else {
           throw new Error(`HTTP ${res.status}`);
         }
       } catch {
         const st = await runCapture(p.apiExe, ['setup-status'], p.dataDir);
         if (st.code !== 0) throw new Error(st.stderr || 'تعذر قراءة حالة الإعداد.');
-        const parsed = JSON.parse(st.stdout) as { users?: number };
+        const parsed = JSON.parse(st.stdout) as { users?: number; branches?: number };
         users = parsed.users ?? 0;
+        branches = parsed.branches ?? 0;
       }
 
       if (users <= 0) {
         return { ok: false, error: 'لا يوجد حساب على هذا الجهاز بعد — أكمل الإعداد أولاً.' };
+      }
+
+      if (branches <= 0) {
+        log('setup:skip - bootstrapping default branch');
+        await runCapture(p.apiExe, ['bootstrap-branch', '--name', 'الفرع الرئيسي'], p.dataDir);
       }
 
       const resDone = await fetch('http://127.0.0.1:8000/api/v1/system/setup-complete', {

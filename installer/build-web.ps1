@@ -45,8 +45,7 @@ if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
 # (styled-jsx, @swc/helpers...) no longer resolve from its siblings - so for
 # every direct dep of the web app we ALSO merge its .pnpm node_modules
 # content (the package + everything it requires) into apps/web/node_modules.
-$appNodeModules = Join-Path $Out "apps\web
-ode_modules"
+$appNodeModules = Join-Path $Out "apps\web\node_modules"
 Get-ChildItem (Join-Path $Web "node_modules") -Directory | ForEach-Object {
     if ($_.LinkType -ne "Junction" -and $_.LinkType -ne "SymbolicLink") { return }
     $real = $_.Target
@@ -59,7 +58,26 @@ Get-ChildItem (Join-Path $Web "node_modules") -Directory | ForEach-Object {
     }
 }
 
-# 5. the bundled Node runtime (decision: no Node on the device)
+# 2. .next/static: the standalone output does NOT include the client chunks -
+#    without them every /_next/static/* URL 404s, React never hydrates, and
+#    the device UI sits on "loading" forever (the M3 gate only checked HTML +
+#    the API proxy, so this shipped broken). MUST come from the SAME build.
+$StaticSrc = Join-Path $Web ".next\static"
+$StaticDst = Join-Path $Out "apps\web\.next\static"
+if (-not (Test-Path $StaticSrc)) { throw ".next/static missing - did the Next build succeed?" }
+robocopy $StaticSrc $StaticDst /E /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy static failed with $LASTEXITCODE" }
+
+# 3. public/: the standalone server serves it from its own directory in the
+#    BUNDLE (skip when the app has no public dir).
+$PublicSrc = Join-Path $Web "public"
+if (Test-Path $PublicSrc) {
+    $OutServerDir = Join-Path $Out (Split-Path $ServerRel -Parent)
+    robocopy $PublicSrc (Join-Path $OutServerDir "public") /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy public failed with $LASTEXITCODE" }
+}
+
+# 4. the bundled Node runtime (decision: no Node on the device)
 Copy-Item $NodeExe (Join-Path $Out "node.exe") -Force
 
 if (-not (Test-Path (Join-Path $Out "node.exe"))) { throw "node.exe missing after assembly" }

@@ -214,8 +214,18 @@ function CreateReturnTab({ branchId }: { branchId: string }) {
                 {t('returns.invoice_number')}:{' '}
                 <span className="font-mono">{invoice.invoice_number}</span>
               </div>
-              <Badge tone={invoice.status === 'completed' ? 'success' : 'neutral'}>
-                {invoice.status}
+              <Badge
+                tone={
+                  invoice.status === 'completed'
+                    ? 'success'
+                    : invoice.status === 'cancelled'
+                      ? 'danger'
+                      : 'neutral'
+                }
+              >
+                {t(`returns.status_${invoice.status}`) !== `returns.status_${invoice.status}`
+                  ? t(`returns.status_${invoice.status}`)
+                  : invoice.status}
               </Badge>
             </div>
 

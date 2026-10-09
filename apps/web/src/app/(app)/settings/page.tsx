@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import {
-  ApiRequestError,
+  createBranch,
   getSettings,
   getTaxProfile,
   listBranches,
@@ -24,7 +24,7 @@ import {
   type BranchSettings,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
 type Form = Omit<BranchSettings, 'id' | 'branch_id'>;
@@ -48,10 +48,21 @@ export default function SettingsPage() {
   const qc = useQueryClient();
   const canEdit = useAuth((s) => s.hasPermission('settings.edit'));
   const [form, setForm] = useState<Form>(BLANK);
+  const [newBranchName, setNewBranchName] = useState('');
 
   const branchesQuery = useQuery({ queryKey: ['branches'], queryFn: listBranches });
   const branch = branchesQuery.data?.[0]; // Phase 1: single branch
   const branchId = branch?.id;
+
+  const createBranchMut = useMutation({
+    mutationFn: () => createBranch(newBranchName.trim()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['branches'] });
+      setNewBranchName('');
+      toast.success(t('common.saved'));
+    },
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
+  });
 
   const settingsQuery = useQuery({
     queryKey: ['settings', branchId],
@@ -72,7 +83,7 @@ export default function SettingsPage() {
       toast.success(t('common.saved'));
       qc.invalidateQueries({ queryKey: ['settings', branchId] });
     },
-    onError: (e) => toast.error(t(`errors.${e instanceof ApiRequestError ? e.code : 'E-SYS-001'}`)),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
 
   if (branchesQuery.isLoading) {
@@ -82,8 +93,41 @@ export default function SettingsPage() {
       </div>
     );
   }
+
+  if (branchesQuery.isError) {
+    return (
+      <div className="mx-auto max-w-md py-12 text-center space-y-4">
+        <p className="text-danger font-medium">{formatApiErrorMessage(branchesQuery.error)}</p>
+        <Button variant="outline" onClick={() => branchesQuery.refetch()}>
+          {t('common.retry') || 'إعادة المحاولة'}
+        </Button>
+      </div>
+    );
+  }
+
   if (!branch) {
-    return <p className="text-slate-500">{t('settings.no_branch')}</p>;
+    return (
+      <div className="mx-auto max-w-md py-12 text-center space-y-4">
+        <p className="text-slate-600 font-medium">{t('settings.no_branch')}</p>
+        {canEdit ? (
+          <div className="flex flex-col gap-3 max-w-xs mx-auto">
+            <Input
+              value={newBranchName}
+              placeholder="اسم الفرع الرئيسي"
+              onChange={(e) => setNewBranchName(e.target.value)}
+            />
+            <Button
+              disabled={createBranchMut.isPending || !newBranchName.trim()}
+              onClick={() => createBranchMut.mutate()}
+            >
+              {createBranchMut.isPending ? t('users.creating') : 'إنشاء الفرع'}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">{t('settings.readonly')}</p>
+        )}
+      </div>
+    );
   }
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -247,7 +291,7 @@ function TaxProfileCard({ branchId, canEdit }: { branchId: string; canEdit: bool
       toast.success(t('common.saved'));
       qc.invalidateQueries({ queryKey: ['tax-profile', branchId] });
     },
-    onError: (e) => toast.error(t(`errors.${e instanceof ApiRequestError ? e.code : 'E-SYS-001'}`)),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
 
   if (query.isLoading) return null;

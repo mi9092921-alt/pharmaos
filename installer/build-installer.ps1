@@ -1,4 +1,4 @@
-﻿# installer/build-installer.ps1 - M6: ONE command builds the offline installer.
+# installer/build-installer.ps1 - M6: ONE command builds the offline installer.
 #
 # Pipeline (every stage has its own gate; stop on first failure):
 #   1. fetch-binaries.ps1   - pinned PG 17.11 (EDB) + Node 22.23.3 + manifest
@@ -33,6 +33,8 @@ foreach ($step in $steps) {
 Write-Host ""
 Write-Host "==== electron-builder (NSIS) ====" -ForegroundColor Cyan
 Push-Location (Join-Path $RepoRoot "apps\desktop")
+& pnpm build
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "desktop build failed with $LASTEXITCODE" }
 & npx electron-builder --win nsis
 $Rc = $LASTEXITCODE
 Pop-Location

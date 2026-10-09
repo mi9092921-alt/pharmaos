@@ -65,16 +65,30 @@ export default function DashboardHome() {
           {t('dashboard.quick_actions')}
         </h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          {tiles.map((item) => (
-            <Card key={item.href} className={item.ready ? '' : 'opacity-60'}>
-              <CardHeader>
-                <CardTitle className="text-base">{t(item.labelKey)}</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 text-xs text-slate-500">
-                {item.ready ? '' : t('dashboard.coming_soon')}
-              </CardContent>
-            </Card>
-          ))}
+          {tiles.map((item) =>
+            item.ready ? (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="block rounded-[var(--radius-md)] focus-visible:outline-2 focus-visible:outline-primary-600"
+              >
+                <Card className="h-full cursor-pointer transition-colors hover:border-primary-500 hover:shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-base">{t(item.labelKey)}</CardTitle>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ) : (
+              <Card key={item.href} className="opacity-60">
+                <CardHeader>
+                  <CardTitle className="text-base">{t(item.labelKey)}</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 text-xs text-slate-500">
+                  {t('dashboard.coming_soon')}
+                </CardContent>
+              </Card>
+            ),
+          )}
         </div>
       </section>
     </div>

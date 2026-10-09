@@ -57,3 +57,7 @@ Thumbs.db
 # Session tooling (zcode plans/workspace artifacts)
 .zcode/
 installer/vendor/
+
+# Installer build artifacts & work directories
+.pyinstaller-work/
+installer/.venv-build/

@@ -1,5 +1,6 @@
 'use client';
 
+import { hasPermission } from '@pharmaos/shared';
 import { cn } from '@pharmaos/ui';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -15,9 +16,12 @@ import { NAV_ITEMS } from '@/lib/nav';
  */
 export function Sidebar() {
   const pathname = usePathname();
-  const hasPermission = useAuth((s) => s.hasPermission);
+  // Subscribe to the role value (not the stable store fn reference) so the
+  // sidebar re-renders when /me resolves after a reload — otherwise `visible`
+  // stays empty forever on the second visit (user starts as null).
+  const role = useAuth((s) => s.user?.role);
 
-  const visible = NAV_ITEMS.filter((item) => hasPermission(item.permission));
+  const visible = NAV_ITEMS.filter((item) => hasPermission(role, item.permission));
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-e border-border bg-white">

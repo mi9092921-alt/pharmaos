@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Card, CardContent, Input, Label, Select, Spinner } from '@pharmaos/ui';
+import { Badge, Card, CardContent, DateInput, Label, Select, Spinner } from '@pharmaos/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import {
@@ -241,20 +241,20 @@ function SalesTab({ branchId, canExport }: { branchId: string; canExport: boolea
         <CardContent className="flex flex-wrap items-end gap-3 pt-5">
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_from')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_from')}
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_to')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_to')}
             />
           </div>
           <div className="space-y-1.5">
@@ -430,20 +430,20 @@ function ProfitTab({ branchId, canExport }: { branchId: string; canExport: boole
         <CardContent className="flex flex-wrap items-end gap-3 pt-5">
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_from')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_from')}
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_to')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_to')}
             />
           </div>
           <div className="space-y-1.5">
@@ -671,20 +671,20 @@ function SuppliersTab({ branchId, canExport }: { branchId: string; canExport: bo
         <CardContent className="flex flex-wrap items-end gap-3 pt-5">
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_from')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_from')}
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_to')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_to')}
             />
           </div>
           {canExport && (
@@ -822,20 +822,20 @@ function CustomersTab({ branchId, canExport }: { branchId: string; canExport: bo
         <CardContent className="flex flex-wrap items-end gap-3 pt-5">
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_from')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_from')}
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_to')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_to')}
             />
           </div>
           {canExport && (
@@ -1142,20 +1142,20 @@ function MovementSubTab({ branchId }: { branchId: string }) {
         <CardContent className="flex flex-wrap items-end gap-3 pt-5">
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_from')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_from')}
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_to')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_to')}
             />
           </div>
         </CardContent>
@@ -1240,20 +1240,20 @@ function ExpiryWasteSubTab({ branchId }: { branchId: string }) {
         <CardContent className="flex flex-wrap items-end gap-3 pt-5">
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_from')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_from')}
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">{t('reports.date_to')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="h-9"
+              aria-label={t('reports.date_to')}
             />
           </div>
         </CardContent>

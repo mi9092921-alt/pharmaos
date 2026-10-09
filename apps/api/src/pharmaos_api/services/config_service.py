@@ -56,6 +56,35 @@ async def _currency_exists(session: AsyncSession, code: str) -> bool:
     ).scalar_one_or_none() is not None
 
 
+async def create_branch(
+    session: AsyncSession,
+    *,
+    actor: User,
+    name: str,
+    country_code: str = "EG",
+    currency_code: str = "EGP",
+) -> Branch:
+    branch = Branch(
+        name=name.strip(),
+        country_code=country_code.strip().upper(),
+        currency_code=currency_code.strip().upper(),
+    )
+    branch.created_by = actor.id
+    branch.updated_by = actor.id
+    session.add(branch)
+    await audit_service.record(
+        session,
+        AuditAction.SETTINGS_CHANGED,
+        actor=actor,
+        entity_type="branch",
+        entity_id=branch.id,
+        metadata={"action": "created", "name": branch.name},
+    )
+    await session.commit()
+    await session.refresh(branch)
+    return branch
+
+
 async def update_branch(
     session: AsyncSession,
     *,

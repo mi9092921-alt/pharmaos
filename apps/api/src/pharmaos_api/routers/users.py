@@ -178,3 +178,17 @@ async def reset_password(
     user = await svc.get_user(session, user_id)
     await svc.reset_user_password(session, actor=actor, user=user, new_password=body.new_password)
     return success_envelope({"reset": True})
+
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    actor: User = Depends(get_current_user),
+    _: None = _guard,
+) -> dict[str, object]:
+    enforce_csrf(request)
+    user = await svc.get_user(session, user_id)
+    await svc.delete_user(session, actor=actor, user=user)
+    return success_envelope({"deleted": True})

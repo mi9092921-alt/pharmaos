@@ -47,6 +47,7 @@
         <p class="hint">لا تُخزَّن كلمة مرور ويندوز: تُستخدم مرة واحدة لتسجيل مهمة النسخ الاحتياطي اليومي (02:00) باسم حسابك، ثم تُحذف من الذاكرة.</p>
         <div class="err" id="err1"></div>
         <button id="btn1">إنشاء وإنهاء الإعداد</button>
+        <button id="btnSkip" style="background:none;color:#0e7c66;font-size:13px;margin-top:8px;">لدي حساب بالفعل — تخطي إلى تسجيل الدخول</button>
       </div>
 
       <!-- STEP 2: the backup recovery key, shown ONCE -->
@@ -54,6 +55,7 @@
         <h1>مفتاح استعادة النسخ الاحتياطي</h1>
         <p class="hint">اكتب هذا المفتاح على ورقة واحفظها في مكان آمن <b>خارج الجهاز</b>. بدونها لا يمكن استعادة النسخ الاحتياطية إذا تعطّل الجهاز.</p>
         <div class="key" id="backupKey">...</div>
+        <div class="warn" id="tasksWarn" style="display:none"></div>
         <div class="warn">هذه آخر مرة يُعرض فيها المفتاح. لن تتمكن من رؤيته مرة أخرى بعد الإنهاء.</div>
         <div class="err" id="err2"></div>
         <button id="btn2">حفظته على ورقة - إنهاء الإعداد</button>
@@ -88,6 +90,11 @@
           $('step1').classList.remove('active');
           $('step2').classList.add('active');
           $('backupKey').textContent = result.backupKey;
+          if (result.tasksWarning) {
+            const w = $('tasksWarn');
+            w.style.display = 'block';
+            w.textContent = 'تنبيه: لم تُسجَّل مهام النسخ الاحتياطي التلقائي (' + result.tasksWarning + '). أكمل الإعداد الآن — يمكن تسجيلها لاحقاً بكلمة مرور ويندوز الصحيحة.';
+          }
         } catch (e) {
           $('err1').textContent = e.message || String(e);
           $('btn1').disabled = false;
@@ -101,6 +108,21 @@
         $('step2').classList.remove('active');
         $('step3').classList.add('active');
         setTimeout(() => window.close(), 1500);
+      };
+
+      $('btnSkip').onclick = async () => {
+        $('err1').textContent = '';
+        $('btnSkip').disabled = true;
+        $('btnSkip').textContent = 'جارٍ التحقق...';
+        try {
+          const result = await api.skipSetup();
+          if (!result.ok) throw new Error(result.error || 'تعذر التخطي');
+          // The main window (login) opens next; this wizard closes itself.
+        } catch (e) {
+          $('err1').textContent = e.message || String(e);
+          $('btnSkip').disabled = false;
+          $('btnSkip').textContent = 'لدي حساب بالفعل — تخطي إلى تسجيل الدخول';
+        }
       };
     </script>
   </body>

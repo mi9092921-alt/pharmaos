@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  DateInput,
   Input,
   Label,
   Modal,
@@ -12,11 +13,11 @@ import {
   Spinner,
 } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import {
   adjustBatch,
-  ApiRequestError,
   type Batch,
   type BatchStatus,
   checkDrift,
@@ -37,11 +38,10 @@ import {
   setBatchStatus,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
-const errCode = (e: unknown) => (e instanceof ApiRequestError ? e.code : 'E-SYS-001');
-const onErr = (e: unknown) => toast.error(t(`errors.${errCode(e)}`));
+const onErr = (e: unknown) => toast.error(formatApiErrorMessage(e));
 
 const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
   active: 'success',
@@ -166,11 +166,14 @@ function StockTab({
 
   return (
     <div className="space-y-6">
-      {canReceive && (
-        <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Link href="/catalog">
+          <Button variant="outline">{t('catalog.add')}</Button>
+        </Link>
+        {canReceive && (
           <Button onClick={() => setShowReceive(true)}>{t('inventory.receive')}</Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <IntegrityBar branchId={branchId} canAdjust={canAdjust} report={driftQuery.data} />
 
@@ -698,6 +701,18 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
                   ))}
                 </div>
               )}
+              {term.trim().length >= 2 && results.length === 0 && !searchQuery.isLoading && (
+                <div className="rounded-[var(--radius-md)] border border-dashed border-border p-3 text-center text-xs text-slate-500">
+                  <p>{t('inventory.med_not_found')}</p>
+                  <Link
+                    href="/catalog"
+                    className="mt-1.5 inline-block font-semibold text-primary-600 hover:underline"
+                    target="_blank"
+                  >
+                    + {t('catalog.add')}
+                  </Link>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -709,11 +724,11 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
           </div>
           <div className="space-y-1.5">
             <Label>{t('inventory.expiry')}</Label>
-            <Input
-              type="date"
+            <DateInput
               value={expiry}
               onChange={(e) => setExpiry(e.target.value)}
               required
+              aria-label={t('inventory.expiry')}
             />
           </div>
           <div className="space-y-1.5">

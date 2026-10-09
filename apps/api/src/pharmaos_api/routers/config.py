@@ -94,6 +94,31 @@ class TaxProfileIn(BaseModel):
     einvoice_system: str | None = Field(default=None, pattern="^(eta_ereceipt|zatca)$")
 
 
+class CreateBranchIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    country_code: str = Field(default="EG", min_length=2, max_length=2)
+    currency_code: str = Field(default="EGP", min_length=3, max_length=3)
+
+
+@router.post("/branches")
+async def create_branch(
+    body: CreateBranchIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    actor: User = Depends(get_current_user),
+    _: None = _edit,
+) -> dict[str, object]:
+    enforce_csrf(request)
+    branch = await svc.create_branch(
+        session,
+        actor=actor,
+        name=body.name,
+        country_code=body.country_code,
+        currency_code=body.currency_code,
+    )
+    return success_envelope(_branch(branch))
+
+
 @router.get("/branches")
 async def list_branches(
     session: AsyncSession = Depends(get_session), _: None = _view

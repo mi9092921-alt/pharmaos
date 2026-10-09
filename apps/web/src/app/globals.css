@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@source '../../../packages/ui';
 
 /*
  * PharmaOS Design System — fixed decisions from CLAUDE.md
@@ -60,11 +61,121 @@ body {
   color: #0f172a;
 }
 
+/* Core action button styles & design token guarantees */
+.bg-primary-600 {
+  background-color: var(--primary-600) !important;
+}
+.hover\:bg-primary-700:hover {
+  background-color: var(--primary-700) !important;
+}
+.bg-primary-50 {
+  background-color: var(--primary-50) !important;
+}
+.text-primary-700 {
+  color: var(--primary-700) !important;
+}
+.text-primary-600 {
+  color: var(--primary-600) !important;
+}
+.focus-visible\:ring-primary-500:focus-visible {
+  --tw-ring-color: var(--primary-500) !important;
+}
+.bg-danger {
+  background-color: var(--danger) !important;
+}
+.text-danger {
+  color: var(--danger) !important;
+}
+.border-border {
+  border-color: var(--border) !important;
+}
+.bg-surface {
+  background-color: var(--surface) !important;
+}
+
 /* CLAUDE.md UX rule: numbers & currency always tabular. */
 .numeric,
 [data-numeric] {
   font-family: var(--font-numbers);
   font-variant-numeric: tabular-nums;
+}
+
+/* =====================================================================
+ * BiDi-safe date fields (RTL-first Arabic UI).
+ *
+ * Root cause: inside `dir="rtl"` the Unicode Bidirectional Algorithm
+ * reorders neutral `/` `-` characters mixed with Latin `yyyy/mm/dd` tokens,
+ * corrupting placeholders/hints (e.g. `yyyy/رهش/موى`). Native
+ * `<input type="date">` values are ALWAYS LTR (ISO `yyyy-mm-dd`), so the
+ * input box itself must be an isolated LTR island inside the RTL page.
+ *
+ * Pattern (matches `DateInput` in @pharmaos/ui):
+ *   outer wrapper/label stays RTL — only the <input> is `dir="ltr"`.
+ *   <div dir="rtl"><label>من تاريخ</label><DateInput dir="ltr" /></div>
+ *
+ * Covers web (Chrome/Firefox/Safari) + Electron/Chromium identically.
+ * ===================================================================== */
+
+/* 1) Isolated LTR island for every date input — migrated (.bidi-date-input)
+      and legacy bare `input[type="date"]` alike. */
+.bidi-date-input,
+input[type='date'] {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+  text-align: left !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 2) Placeholder inside date/text fallback inputs: force LTR island so
+      `yyyy/mm/dd` (optionally LRM-prefixed by DateInput) never reorders.
+      Scoped — global placeholders elsewhere keep their inherited direction. */
+.bidi-date-input::placeholder {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+  text-align: left !important;
+  opacity: 1;
+}
+
+/* 3) Chromium/WebKit (Chrome, Edge, Safari, Electron) renders native dates
+      as shadow-DOM segments — each must inherit the LTR isolation,
+      otherwise day/month/year segments flip inside RTL pages. */
+.bidi-date-input::-webkit-datetime-edit,
+input[type='date']::-webkit-datetime-edit {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+}
+.bidi-date-input::-webkit-datetime-edit-fields-wrapper,
+input[type='date']::-webkit-datetime-edit-fields-wrapper {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+}
+.bidi-date-input::-webkit-datetime-edit-day-field,
+.bidi-date-input::-webkit-datetime-edit-month-field,
+.bidi-date-input::-webkit-datetime-edit-year-field,
+input[type='date']::-webkit-datetime-edit-day-field,
+input[type='date']::-webkit-datetime-edit-month-field,
+input[type='date']::-webkit-datetime-edit-year-field {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+}
+.bidi-date-input::-webkit-calendar-picker-indicator,
+input[type='date']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+/* 4) Generic helpers for mixed-direction fragments (hints, ranges, labels).
+      Use `<bdi dir="ltr">yyyy/mm/dd</bdi>` — never raw mixed text in RTL. */
+.bidi-isolate {
+  unicode-bidi: isolate !important;
+}
+.bidi-ltr {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+}
+.bidi-rtl {
+  direction: rtl !important;
+  unicode-bidi: isolate !important;
 }
 
 /* P1-M9 — browser-print fallback for receipts (A4/A5 paper, or no thermal

@@ -210,3 +210,21 @@ async def reset_user_password(
     user.updated_by = actor.id
     user.token_version = user.token_version + 1  # invalidate sessions (CLAUDE.md)
     await session.commit()
+
+
+async def delete_user(session: AsyncSession, *, actor: User, user: User) -> None:
+    if user.id == actor.id:
+        raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="You cannot delete your own account.")
+    user.is_deleted = True
+    user.is_active = False
+    user.updated_by = actor.id
+    user.token_version = user.token_version + 1
+    await audit_service.record(
+        session,
+        AuditAction.USER_DEACTIVATED,
+        actor=actor,
+        entity_type="user",
+        entity_id=user.id,
+        metadata={"username": user.username, "deleted": True},
+    )
+    await session.commit()

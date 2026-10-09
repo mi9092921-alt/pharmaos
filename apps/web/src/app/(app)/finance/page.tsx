@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  DateInput,
   Input,
   Label,
   Modal,
@@ -189,20 +190,20 @@ function ExpensesTab() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs">{t('finance.date_from')}</Label>
-            <Input
+            <DateInput
               className="h-9"
-              type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
+              aria-label={t('finance.date_from')}
             />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">{t('finance.date_to')}</Label>
-            <Input
+            <DateInput
               className="h-9"
-              type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
+              aria-label={t('finance.date_to')}
             />
           </div>
           {(categoryFilter || dateFrom || dateTo) && (
@@ -397,7 +398,11 @@ function ExpenseFormModal({
             <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Field label={t('finance.date')}>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              aria-label={t('finance.date')}
+            />
           </Field>
         </div>
         <Field label={t('finance.payment_method')}>

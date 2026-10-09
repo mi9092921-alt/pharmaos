@@ -265,6 +265,10 @@ export default function PosPage() {
   const pickResult = async (med: MedOption) => {
     try {
       const detail = await getMedication(med.id);
+      if (detail.packaging.length === 0) {
+        toast.error(t('pos.no_packaging'));
+        return;
+      }
       const sellable = detail.packaging
         .filter((p) => p.is_sellable)
         .sort((a, b) => a.level - b.level);

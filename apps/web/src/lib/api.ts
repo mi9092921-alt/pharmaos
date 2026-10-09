@@ -21,7 +21,29 @@ function readCsrfCookie(): string | null {
   return match?.[1] ?? null;
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch('/api/v1/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as ApiResponse<unknown>;
+      return !!data?.success;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const method = init?.method ?? 'GET';
   const headers = new Headers(init?.headers);
   if (!headers.has('Content-Type') && init?.body) headers.set('Content-Type', 'application/json');
@@ -31,9 +53,30 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   const response = await fetch(path, { ...init, headers, credentials: 'include' });
-  const body = (await response.json()) as ApiResponse<T>;
-  if (!body.success || body.data === undefined) {
-    throw new ApiRequestError(body.error?.code ?? 'E-SYS-001', body.error?.message ?? '');
+  let body: ApiResponse<T> | null = null;
+  try {
+    body = (await response.json()) as ApiResponse<T>;
+  } catch {
+    body = null;
+  }
+  const isAuthError = response.status === 401 || body?.error?.code === 'E-AUTH-001';
+  if (
+    !isRetry &&
+    isAuthError &&
+    !path.startsWith('/api/v1/auth/login') &&
+    !path.startsWith('/api/v1/auth/refresh')
+  ) {
+    const ok = await tryRefreshToken();
+    if (ok) {
+      return apiFetch<T>(path, init, true);
+    }
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login';
+    }
+  }
+
+  if (!body || !body.success || body.data === undefined) {
+    throw new ApiRequestError(body?.error?.code ?? 'E-SYS-001', body?.error?.message ?? '');
   }
   return body.data;
 }
@@ -105,10 +148,26 @@ export function setUserActive(id: string, active: boolean) {
   });
 }
 
+export function updateUserProfile(
+  id: string,
+  values: { full_name?: string; phone?: string | null; set_phone?: boolean },
+) {
+  return apiFetch<ManagedUser>(`/api/v1/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(values),
+  });
+}
+
 export function resetUserPassword(id: string, newPassword: string) {
   return apiFetch<{ reset: boolean }>(`/api/v1/users/${id}/reset-password`, {
     method: 'POST',
     body: JSON.stringify({ new_password: newPassword }),
+  });
+}
+
+export function deleteUser(id: string) {
+  return apiFetch<{ deleted: boolean }>(`/api/v1/users/${id}`, {
+    method: 'DELETE',
   });
 }
 
@@ -141,6 +200,13 @@ export interface BranchSettings {
 
 export function listBranches() {
   return apiFetch<BranchInfo[]>('/api/v1/branches');
+}
+
+export function createBranch(name: string) {
+  return apiFetch<BranchInfo>('/api/v1/branches', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
 }
 
 export function getSettings(branchId: string) {
@@ -1212,7 +1278,7 @@ export function listExpenses(
   branchId: string,
   opts: { categoryId?: string; dateFrom?: string; dateTo?: string } = {},
 ) {
-  const params = new URLSearchParams({ branch_id: branchId, limit: '200' });
+  const params = new URLSearchParams({ branch_id: branchId, limit: '100' });
   if (opts.categoryId) params.set('category_id', opts.categoryId);
   if (opts.dateFrom) params.set('date_from', opts.dateFrom);
   if (opts.dateTo) params.set('date_to', opts.dateTo);

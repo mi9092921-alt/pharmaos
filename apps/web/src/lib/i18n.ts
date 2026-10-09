@@ -93,6 +93,14 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'users.creating': 'جارٍ الإنشاء…',
     'users.cancel': 'إلغاء',
     'users.created_ok': 'تم إنشاء المستخدم',
+    'users.edit': 'تعديل',
+    'users.edit_profile': 'تعديل بيانات المستخدم',
+    'users.updated_ok': 'تم تحديث بيانات المستخدم',
+    'users.delete': 'حذف',
+    'users.delete_confirm': 'هل أنت متأكد من حذف هذا المستخدم؟ لن يتمكن من تسجيل الدخول مجدداً.',
+    'users.deleted_ok': 'تم حذف المستخدم بنجاح',
+    'users.current_user': 'حسابك الحالي',
+    'users.cannot_modify_self': 'لا يمكن تعطيل أو تغيير دور أو حذف حسابك الخاص',
     'common.save': 'حفظ',
     'common.saved': 'تم الحفظ',
     // Purchases — suppliers (P2-M1)
@@ -148,6 +156,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'po.remove': 'إزالة',
     'po.search_med': 'ابحث عن دواء لإضافته…',
     'po.no_results': 'لا نتائج',
+    'po.searching': 'جارٍ البحث…',
     'po.create': 'إنشاء الأمر',
     'po.creating': 'جارٍ الإنشاء…',
     'po.cancel': 'إلغاء',
@@ -253,6 +262,10 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.barcode_deleted': 'تم حذف الباركود',
     'catalog.save_levels': 'حفظ المستويات والأسعار',
     'catalog.select_unit': 'اختر الوحدة',
+    'catalog.err_unit_required': 'يجب اختيار وحدة لكل مستوى تغليف',
+    'catalog.err_name_required': 'اسم المستوى مطلوب',
+    'catalog.err_price_invalid': 'السعر غير صالح — أدخل قيمة صحيحة',
+    'catalog.err_one_default': 'يجب تحديد مستوى افتراضي واحد فقط لنقطة البيع',
     'catalog.close': 'إغلاق',
     // Inventory (M7)
     'inventory.title': 'المخزون',
@@ -267,6 +280,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.low': 'مخزون منخفض',
     'inventory.empty': 'لا يوجد مخزون في هذا الفرع',
     'inventory.no_branch': 'لا يوجد فرع — أنشئ فرعاً أولاً',
+    'inventory.med_not_found': 'لم يتم العثور على دواء بهذا الاسم في الكتالوج',
     'inventory.receive': 'استلام مخزون',
     'inventory.receive_title': 'استلام دفعة جديدة',
     'inventory.batch_number': 'رقم الدفعة',
@@ -341,7 +355,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'pos.title': 'نقطة البيع',
     'pos.scan_placeholder': 'امسح الباركود… أو اكتب اسم الدواء ثم F3',
     'pos.unknown_code': 'الكود غير معروف — جرّب البحث بالاسم (F3)',
-    'pos.no_sellable': 'لا يوجد مستوى بيع مفعّل لهذا الدواء',
+    'pos.no_sellable': 'لا يوجد مستوى بيع مفعّل — فعّل "قابل للبيع" في الكتالوج أولاً',
+    'pos.no_packaging': 'لم تُعدّ مستويات تغليف لهذا الدواء — أضفها من الكتالوج أولاً',
     'pos.no_results': 'لا نتائج — عدّل البحث',
     'pos.searching': 'جارٍ البحث…',
     'pos.empty_cart': 'السلة فارغة — امسح أول صنف',
@@ -424,6 +439,11 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'returns.invoice_number': 'رقم الفاتورة',
     'returns.search': 'بحث',
     'returns.not_completed': 'هذه الفاتورة غير مكتملة — لا يمكن إرجاعها',
+    'returns.status_completed': 'مكتملة',
+    'returns.status_draft': 'مسودة',
+    'returns.status_cancelled': 'ملغاة',
+    'returns.status_refunded': 'مستردة',
+    'returns.status_partially_refunded': 'مستردة جزئياً',
     'returns.medication': 'الدواء',
     'returns.sold': 'المباع',
     'returns.already_returned': 'مُرجَع سابقاً',
@@ -809,18 +829,32 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.rule_inventory_drift': 'انحراف مخزون',
     'alerts.msg_low_stock':
       '{name}: المتوفر {quantity} عند أو دون حد إعادة الطلب ({reorder_point})',
+    'alerts.msg.low_stock':
+      '{name}: المتوفر {quantity} عند أو دون حد إعادة الطلب ({reorder_point})',
     'alerts.msg_out_of_stock': '{name}: نفدت الكمية بالكامل',
+    'alerts.msg.out_of_stock': '{name}: نفدت الكمية بالكامل',
     'alerts.msg_expiry_critical': '{name}: كمية {quantity} تنتهي في {expiry_date} (خلال ٣٠ يوماً)',
+    'alerts.msg.expiry_critical': '{name}: كمية {quantity} تنتهي في {expiry_date} (خلال ٣٠ يوماً)',
     'alerts.msg_expiry_warning': '{name}: كمية {quantity} تنتهي في {expiry_date} (خلال ٩٠ يوماً)',
+    'alerts.msg.expiry_warning': '{name}: كمية {quantity} تنتهي في {expiry_date} (خلال ٩٠ يوماً)',
     'alerts.msg_expired': '{name}: دفعة منتهية ({expiry_date}) — كمية {quantity}',
+    'alerts.msg.expired': '{name}: دفعة منتهية ({expiry_date}) — كمية {quantity}',
     'alerts.msg_high_discount':
       'فاتورة {invoice_number}: خصم {discount} يتجاوز حد الفرع ({max_percent}%)',
+    'alerts.msg.high_discount':
+      'فاتورة {invoice_number}: خصم {discount} يتجاوز حد الفرع ({max_percent}%)',
     'alerts.msg_cash_discrepancy': 'فرق صندوق بمقدار {discrepancy} عند الإغلاق',
+    'alerts.msg.cash_discrepancy': 'فرق صندوق بمقدار {discrepancy} عند الإغلاق',
     'alerts.msg_ereceipt_backlog': '{count} إيصال إلكتروني معلّق أكثر من {hours} ساعة',
+    'alerts.msg.ereceipt_backlog': '{count} إيصال إلكتروني معلّق أكثر من {hours} ساعة',
     'alerts.msg_tt_report_failed': '{count} حدث تتبّع فاشل بعد أكثر من {retries} محاولات',
+    'alerts.msg.tt_report_failed': '{count} حدث تتبّع فاشل بعد أكثر من {retries} محاولات',
     'alerts.msg_sync_failed': 'فشل مزامنة البيانات مع السحابة',
+    'alerts.msg.sync_failed': 'فشل مزامنة البيانات مع السحابة',
     'alerts.msg_backup_overdue': 'آخر نسخة احتياطية أقدم من {hours} ساعة (أو لا توجد)',
+    'alerts.msg.backup_overdue': 'آخر نسخة احتياطية أقدم من {hours} ساعة (أو لا توجد)',
     'alerts.msg_inventory_drift': 'انحراف مخزون: الكاش {cached} مقابل حقيقة الدفعات {truth}',
+    'alerts.msg.inventory_drift': 'انحراف مخزون: الكاش {cached} مقابل حقيقة الدفعات {truth}',
 
     // P3-M7 — notifications (delivery; alerts = state)
     'notifications.title': 'الإشعارات',
@@ -915,6 +949,15 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'users.creating': 'Creating…',
     'users.cancel': 'Cancel',
     'users.created_ok': 'User created',
+    'users.edit': 'Edit',
+    'users.edit_profile': 'Edit user profile',
+    'users.updated_ok': 'User profile updated',
+    'users.delete': 'Delete',
+    'users.delete_confirm':
+      'Are you sure you want to delete this user? They will not be able to log in again.',
+    'users.deleted_ok': 'User deleted successfully',
+    'users.current_user': 'Your account',
+    'users.cannot_modify_self': 'You cannot deactivate, change role, or delete your own account',
     'common.save': 'Save',
     'common.saved': 'Saved',
     // Purchases — suppliers (P2-M1)
@@ -970,6 +1013,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'po.remove': 'Remove',
     'po.search_med': 'Search a medication to add…',
     'po.no_results': 'No results',
+    'po.searching': 'Searching…',
     'po.create': 'Create order',
     'po.creating': 'Creating…',
     'po.cancel': 'Cancel',
@@ -1076,6 +1120,10 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.barcode_deleted': 'Barcode removed',
     'catalog.save_levels': 'Save levels & prices',
     'catalog.select_unit': 'Select unit',
+    'catalog.err_unit_required': 'Select a unit for every packaging level',
+    'catalog.err_name_required': 'Level name is required',
+    'catalog.err_price_invalid': 'Invalid price — enter a valid number',
+    'catalog.err_one_default': 'Only one level can be the POS default',
     'catalog.close': 'Close',
     // Inventory (M7)
     'inventory.title': 'Inventory',
@@ -1090,6 +1138,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.low': 'Low stock',
     'inventory.empty': 'No stock in this branch',
     'inventory.no_branch': 'No branch — create one first',
+    'inventory.med_not_found': 'No medication found with this name in catalog',
     'inventory.receive': 'Receive stock',
     'inventory.receive_title': 'Receive a new batch',
     'inventory.batch_number': 'Batch number',
@@ -1164,7 +1213,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'pos.title': 'Point of Sale',
     'pos.scan_placeholder': 'Scan a barcode… or type a name then F3',
     'pos.unknown_code': 'Unknown code — try name search (F3)',
-    'pos.no_sellable': 'No sellable packaging level for this medication',
+    'pos.no_sellable': 'No sellable level — enable "Sellable" in the catalog first',
+    'pos.no_packaging': 'No packaging levels configured — add them in the catalog first',
     'pos.no_results': 'No results — refine the search',
     'pos.searching': 'Searching…',
     'pos.empty_cart': 'Cart is empty — scan the first item',
@@ -1247,6 +1297,11 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'returns.invoice_number': 'Invoice number',
     'returns.search': 'Search',
     'returns.not_completed': 'This invoice is not completed — it cannot be returned',
+    'returns.status_completed': 'Completed',
+    'returns.status_draft': 'Draft',
+    'returns.status_cancelled': 'Cancelled',
+    'returns.status_refunded': 'Refunded',
+    'returns.status_partially_refunded': 'Partially refunded',
     'returns.medication': 'Medication',
     'returns.sold': 'Sold',
     'returns.already_returned': 'Already returned',
@@ -1631,18 +1686,31 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.rule_backup_overdue': 'Backup overdue',
     'alerts.rule_inventory_drift': 'Inventory drift',
     'alerts.msg_low_stock': '{name}: {quantity} on hand, at/below reorder point ({reorder_point})',
+    'alerts.msg.low_stock': '{name}: {quantity} on hand, at/below reorder point ({reorder_point})',
     'alerts.msg_out_of_stock': '{name}: completely out of stock',
+    'alerts.msg.out_of_stock': '{name}: completely out of stock',
     'alerts.msg_expiry_critical': '{name}: {quantity} expiring {expiry_date} (within 30 days)',
+    'alerts.msg.expiry_critical': '{name}: {quantity} expiring {expiry_date} (within 30 days)',
     'alerts.msg_expiry_warning': '{name}: {quantity} expiring {expiry_date} (within 90 days)',
+    'alerts.msg.expiry_warning': '{name}: {quantity} expiring {expiry_date} (within 90 days)',
     'alerts.msg_expired': '{name}: batch expired {expiry_date} — {quantity} written off',
+    'alerts.msg.expired': '{name}: batch expired {expiry_date} — {quantity} written off',
     'alerts.msg_high_discount':
       'Invoice {invoice_number}: discount {discount} exceeds the branch limit ({max_percent}%)',
+    'alerts.msg.high_discount':
+      'Invoice {invoice_number}: discount {discount} exceeds the branch limit ({max_percent}%)',
     'alerts.msg_cash_discrepancy': 'Drawer closed with a {discrepancy} discrepancy',
+    'alerts.msg.cash_discrepancy': 'Drawer closed with a {discrepancy} discrepancy',
     'alerts.msg_ereceipt_backlog': '{count} e-receipt(s) pending for over {hours} hours',
+    'alerts.msg.ereceipt_backlog': '{count} e-receipt(s) pending for over {hours} hours',
     'alerts.msg_tt_report_failed': '{count} tracking event(s) failed after {retries}+ attempts',
+    'alerts.msg.tt_report_failed': '{count} tracking event(s) failed after {retries}+ attempts',
     'alerts.msg_sync_failed': 'Data sync to the cloud failed',
+    'alerts.msg.sync_failed': 'Data sync to the cloud failed',
     'alerts.msg_backup_overdue': 'Last backup older than {hours} hours (or none)',
+    'alerts.msg.backup_overdue': 'Last backup older than {hours} hours (or none)',
     'alerts.msg_inventory_drift': 'Inventory drift: cache {cached} vs batch truth {truth}',
+    'alerts.msg.inventory_drift': 'Inventory drift: cache {cached} vs batch truth {truth}',
 
     // P3-M7 — notifications (delivery; alerts = state)
     'notifications.title': 'Notifications',
@@ -1660,4 +1728,18 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 
 export function t(key: string, locale: Locale = i18nConfig.defaultLocale): string {
   return dictionaries[locale][key] ?? dictionaries[i18nConfig.defaultLocale][key] ?? key;
+}
+
+export function formatApiErrorMessage(e: unknown, fallbackKey = 'errors.E-SYS-001'): string {
+  if (typeof e === 'object' && e !== null) {
+    const err = e as { code?: string; message?: string };
+    if (err.message && err.message.trim() && err.message !== 'Validation error') {
+      return err.message;
+    }
+    if (err.code) {
+      const localized = t(`errors.${err.code}`);
+      if (localized && localized !== `errors.${err.code}`) return localized;
+    }
+  }
+  return t(fallbackKey);
 }

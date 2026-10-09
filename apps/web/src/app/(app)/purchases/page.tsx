@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  DateInput,
   Input,
   Label,
   Modal,
@@ -330,10 +331,10 @@ function CreateOrderModal({
             </Select>
           </Field>
           <Field label={t('po.expected_date')}>
-            <Input
-              type="date"
+            <DateInput
               value={expectedDate}
               onChange={(e) => setExpectedDate(e.target.value)}
+              aria-label={t('po.expected_date')}
             />
           </Field>
           <Field label={t('po.notes')}>
@@ -350,7 +351,9 @@ function CreateOrderModal({
           />
           {medTerm.trim().length >= 2 && (
             <div className="max-h-40 overflow-auto rounded-[var(--radius-md)] border border-border">
-              {(medQuery.data ?? []).length === 0 ? (
+              {medQuery.isLoading ? (
+                <p className="p-2 text-xs text-slate-500">{t('po.searching')}</p>
+              ) : (medQuery.data ?? []).length === 0 ? (
                 <p className="p-2 text-xs text-slate-500">{t('po.no_results')}</p>
               ) : (
                 (medQuery.data ?? []).map((m) => (
@@ -554,11 +557,11 @@ function OrderDetailModal({
                         />
                       </td>
                       <td className="p-2">
-                        <Input
-                          type="date"
+                        <DateInput
                           className="h-8"
                           value={rows[it.id]?.expiry ?? ''}
                           onChange={(e) => setRow(it.id, { expiry: e.target.value })}
+                          aria-label={t('po.expiry')}
                         />
                       </td>
                       <td className="p-2">

@@ -16,4 +16,5 @@ export interface SetupInput {
 contextBridge.exposeInMainWorld('pharmaosSetup', {
   completeSetup: (input: SetupInput) => ipcRenderer.invoke('setup:complete', input),
   finishSetup: () => ipcRenderer.invoke('setup:finish'),
+  skipSetup: () => ipcRenderer.invoke('setup:skip'),
 });

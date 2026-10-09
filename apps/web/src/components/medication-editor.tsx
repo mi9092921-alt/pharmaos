@@ -174,6 +174,21 @@ export function MedicationEditor({
     ]);
   };
 
+  /** Returns an i18n key describing the first validation problem, or null if OK. */
+  const levelsError = (): string | null => {
+    if (levels.length === 0) return null;
+    for (const lvl of levels) {
+      if (!lvl.unit_id) return 'catalog.err_unit_required';
+      if (!lvl.name_ar.trim()) return 'catalog.err_name_required';
+      if (lvl.selling_price === '' || Number(lvl.selling_price) < 0)
+        return 'catalog.err_price_invalid';
+    }
+    const defaults = levels.filter((l) => l.is_default_sale);
+    if (defaults.length > 1) return 'catalog.err_one_default';
+    return null;
+  };
+  const lvlErr = levelsError();
+
   const units = unitsQuery.data ?? [];
 
   return (
@@ -335,10 +350,17 @@ export function MedicationEditor({
                 ))}
               </div>
             )}
+            {lvlErr && <p className="text-xs text-danger">{t(lvlErr)}</p>}
             <Button
               size="sm"
-              onClick={() => saveLevels.mutate()}
-              disabled={saveLevels.isPending || levels.length === 0}
+              onClick={() => {
+                if (lvlErr) {
+                  toast.error(t(lvlErr));
+                  return;
+                }
+                saveLevels.mutate();
+              }}
+              disabled={saveLevels.isPending || levels.length === 0 || !!lvlErr}
             >
               {t('catalog.save_levels')}
             </Button>

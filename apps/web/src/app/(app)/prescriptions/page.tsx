@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  DateInput,
   Input,
   Label,
   Modal,
@@ -355,7 +356,11 @@ function CreatePrescriptionModal({
             <Input value={doctorLicense} onChange={(e) => setDoctorLicense(e.target.value)} />
           </Field>
           <Field label={t('prescriptions.date')}>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              aria-label={t('prescriptions.date')}
+            />
           </Field>
           <Field label={t('prescriptions.customer')}>
             {customerId ? (
