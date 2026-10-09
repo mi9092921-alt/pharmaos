@@ -143,8 +143,9 @@ def test_every_mutation_endpoint_enforces_csrf() -> None:
     ones: the scan reads the routers as written, not a hand-kept list."""
     routers_dir = pathlib.Path(pharmaos_api.__file__).resolve().parent / "routers"
     # Pre-auth endpoints: no session cookie exists yet for CSRF to protect;
-    # login is additionally rate-limited (5/min/IP).
-    exempt = {("auth", "/login"), ("auth", "/refresh")}
+    # login is additionally rate-limited (5/min/IP); license activation accepts
+    # raw signed .license container before authentication/licensing gate.
+    exempt = {("auth", "/login"), ("auth", "/refresh"), ("license", "/activate")}
     missing: list[str] = []
 
     for path in sorted(routers_dir.glob("*.py")):
