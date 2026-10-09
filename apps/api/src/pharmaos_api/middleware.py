@@ -282,20 +282,22 @@ class LicenseGateMiddleware:
 
         await self.app(scope, receive, send)
 
-    async def _send_json(
-        self, send: Send, status_code: int, data: dict[str, Any]
-    ) -> None:
+    async def _send_json(self, send: Send, status_code: int, data: dict[str, Any]) -> None:
         body = json.dumps(data).encode("utf-8")
         headers = [
             (b"content-type", b"application/json"),
             (b"content-length", str(len(body)).encode("ascii")),
         ]
-        await send({
-            "type": "http.response.start",
-            "status": status_code,
-            "headers": headers,
-        })
-        await send({
-            "type": "http.response.body",
-            "body": body,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status_code,
+                "headers": headers,
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": body,
+            }
+        )

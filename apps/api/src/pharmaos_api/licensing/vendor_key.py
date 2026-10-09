@@ -40,4 +40,3 @@ def vendor_public_key() -> Ed25519PublicKey:
 def vendor_accepted_kids() -> frozenset[str]:
     """The baked accepted key IDs."""
     return VENDOR_LICENSE_ACCEPTED_KIDS
-
