@@ -8,7 +8,7 @@
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import cast
 
@@ -91,7 +91,7 @@ async def _boot_alert_evaluation() -> None:
         async with get_session_factory()() as session:
             summary = await alerts_service.evaluate_all(session)
         results = cast("list[dict[str, object]]", summary["results"])
-        created = sum(int(cast("int", r["created"])) for r in results)
+        created = sum(cast("int", r["created"]) for r in results)
         logger.info(
             "alerts evaluated at boot: %s branch(es), %s created",
             summary["branches"],
@@ -216,7 +216,7 @@ async def _license_periodic_task() -> None:
 
 
 @asynccontextmanager
-async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def _lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     await _run_boot_migrations()
 
     # P4-M2: evaluate license at boot (fail-closed)
@@ -338,12 +338,10 @@ def create_app(license_scheduler: bool = True) -> FastAPI:
         from pharmaos_api.services import installation_state
 
         async with get_session_factory()() as session:
-            users = int(
-                (await session.execute(select(func.count()).select_from(User))).scalar_one()
-            )
-            branches = int(
-                (await session.execute(select(func.count()).select_from(Branch))).scalar_one()
-            )
+            users = (await session.execute(select(func.count()).select_from(User))).scalar_one()
+            branches = (
+                await session.execute(select(func.count()).select_from(Branch))
+            ).scalar_one()
             state = await installation_state.get_all(session)
         return success_envelope(
             {
