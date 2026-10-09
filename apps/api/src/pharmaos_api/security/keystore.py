@@ -55,7 +55,9 @@ def _configure_keyring_persist() -> None:
     if os.name != "nt":
         return
     try:
-        from win32ctypes.pywin32 import win32cred  # type: ignore[import-untyped]
+        import importlib
+
+        win32cred = importlib.import_module("win32ctypes.pywin32.win32cred")
 
         backend = keyring.get_keyring()
         backend._persist = win32cred.CRED_PERSIST_LOCAL_MACHINE  # type: ignore[attr-defined]

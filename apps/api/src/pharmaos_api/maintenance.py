@@ -53,7 +53,10 @@ def maintenance_lock() -> Iterator[None]:
 def _windows_lock() -> Iterator[None]:
     import ctypes
 
-    kernel32 = ctypes.windll.kernel32  # Windows-only; opaque to mypy
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        raise OSError("windll is only available on Windows")
+    kernel32 = windll.kernel32
     handle = kernel32.CreateMutexW(None, False, _WINDOWS_MUTEX_NAME)
     if not handle:
         raise OSError("CreateMutexW failed for the maintenance mutex")
