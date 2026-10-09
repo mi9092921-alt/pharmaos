@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,7 +18,11 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from pharmaos_api.errors import ApiError, ErrorCode, error_envelope, success_envelope
-from pharmaos_api.middleware import LoginRateLimitMiddleware, SecurityHeadersMiddleware
+from pharmaos_api.middleware import (
+    LicenseGateMiddleware,
+    LoginRateLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from pharmaos_api.routers import (
     alerts,
     auth,
@@ -35,6 +40,9 @@ from pharmaos_api.routers import (
     reports,
     returns,
     users,
+)
+from pharmaos_api.routers import (
+    license as license_router,
 )
 
 logger = logging.getLogger(__name__)
@@ -155,17 +163,83 @@ async def _run_background_boot_maintenance() -> None:
     await _boot_email_drain()
 
 
+async def _boot_license_evaluation() -> None:
+    """Boot: evaluate license state (fail-closed) (P4 §4)."""
+    from pharmaos_api.db import get_session_factory
+    from pharmaos_api.licensing import runtime
+    from pharmaos_api.licensing.external_stores import default_providers
+    from pharmaos_api.licensing.hwid import compute_hwid
+    from pharmaos_api.licensing.state import evaluate_license
+    from pharmaos_api.licensing.vendor_key import vendor_public_key
+
+    try:
+        public_key = vendor_public_key()
+    except Exception:
+        # vendor_key missing or broken -> error state (not tamper)
+        runtime.set_state(runtime.LicenseRuntimeState(status=runtime.STATUS_ERROR))
+        return
+
+    try:
+        await evaluate_license(
+            get_session_factory(),
+            public_key=public_key,
+            external_providers=default_providers(),
+            hwid=compute_hwid(),
+        )
+    except Exception:
+        logger.exception("boot license evaluation failed")
+        runtime.set_state(runtime.LicenseRuntimeState(status=runtime.STATUS_ERROR))
+
+
+async def _license_periodic_task() -> None:
+    """Periodically re-evaluate license state every 15 minutes (P4 §4).
+
+    Clean cancellation on shutdown; cycle failure sets STATUS_ERROR (never silent pass).
+    """
+    interval_seconds = 900  # 15 minutes
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            await _boot_license_evaluation()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("license periodic check failed")
+            from pharmaos_api.licensing import runtime
+
+            current = runtime.get_state()
+            if current is not None and current.status not in (
+                runtime.STATUS_TAMPER,
+                runtime.STATUS_KEY_LOST,
+            ):
+                runtime.set_state(runtime.LicenseRuntimeState(status=runtime.STATUS_ERROR))
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _run_boot_migrations()
+
+    # P4-M2: evaluate license at boot (fail-closed)
+    await _boot_license_evaluation()
+
     task = asyncio.create_task(_run_background_boot_maintenance())
+
+    # P4-M2: periodic license evaluation task
+    scheduler_task: asyncio.Task[None] | None = None
+    if getattr(_app.state, "license_scheduler", True):
+        scheduler_task = asyncio.create_task(_license_periodic_task())
+
     try:
         yield
     finally:
         task.cancel()
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await scheduler_task
 
 
-def create_app() -> FastAPI:
+def create_app(license_scheduler: bool = True) -> FastAPI:
     app = FastAPI(
         title="PharmaOS API",
         version="1.1.0",
@@ -177,10 +251,15 @@ def create_app() -> FastAPI:
         openapi_url=None,
         lifespan=_lifespan,
     )
+    app.state.license_scheduler = license_scheduler
 
-    app.add_middleware(SecurityHeadersMiddleware)
+    # Middleware LIFO order (outermost executed first):
+    # SecurityHeaders (1st) -> LicenseGate (2nd) -> LoginRateLimit (3rd) -> app
     app.add_middleware(LoginRateLimitMiddleware)
+    app.add_middleware(LicenseGateMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
+    app.include_router(license_router.router)
     app.include_router(auth.router)
     app.include_router(pos.router)
     app.include_router(users.router)
@@ -246,7 +325,7 @@ def create_app() -> FastAPI:
             content=error_envelope("E-SYS-001", "Unexpected error."),
         )
 
-    @app.get("/api/v1/health")
+    @app.api_route("/api/v1/health", methods=["GET", "HEAD"])
     async def health() -> dict[str, object]:
         return success_envelope({"status": "ok"})
 

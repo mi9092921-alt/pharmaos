@@ -78,13 +78,29 @@ async def seeded_user(db_session) -> dict[str, str]:  # type: ignore[no-untyped-
     return {"username": username, "password": password, "id": str(user.id)}
 
 
+@pytest.fixture(autouse=True)
+def _active_license(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing test suite assumes active license; gate tests override this."""
+    from pharmaos_api.licensing import runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "get_state",
+        lambda: runtime.LicenseRuntimeState(
+            status=runtime.STATUS_ACTIVE,
+            hwid="PHAR-TEST-0000-0000-0000",
+        ),
+    )
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[object]:
     import httpx
 
     from pharmaos_api.main import create_app
 
-    app = create_app()
+    app = create_app(license_scheduler=False)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
         yield c
+

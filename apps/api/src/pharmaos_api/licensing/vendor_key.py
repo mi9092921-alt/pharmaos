@@ -18,7 +18,13 @@ from pharmaos_api.licensing.errors import LicensingError
 
 logger = logging.getLogger(__name__)
 
-VENDOR_LICENSE_PUBLIC_KEY_PEM: str | None = None
+VENDOR_LICENSE_PUBLIC_KEY_PEM: str | None = """-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA+gFCEIVHHDuaSxcmqsG/X+O18YazX+bQPUQl/tqmKy4=
+-----END PUBLIC KEY-----
+"""
+
+
+VENDOR_LICENSE_ACCEPTED_KIDS: frozenset[str] = frozenset({"4ff86fbe", "testkid01"})
 
 
 def vendor_public_key() -> Ed25519PublicKey:
@@ -29,3 +35,9 @@ def vendor_public_key() -> Ed25519PublicKey:
     if not isinstance(key, Ed25519PublicKey):
         raise LicensingError(ErrorCode.LICENSE_STATE_ERROR, "vendor_key_not_ed25519")
     return key
+
+
+def vendor_accepted_kids() -> frozenset[str]:
+    """The baked accepted key IDs."""
+    return VENDOR_LICENSE_ACCEPTED_KIDS
+
