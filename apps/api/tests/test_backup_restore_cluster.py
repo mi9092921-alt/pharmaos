@@ -106,49 +106,52 @@ def test_full_cluster_restore_lifecycle(tmp_path: Path, monkeypatch: pytest.Monk
 
     live_dir = tmp_path / "pgdata"
     live_dir.mkdir()
-    _init_staging(live_dir, db_user="pharmaos", db_password=_DB_PASSWORD, port=_LIVE_PORT)
-    _pg_ctl_start(live_dir, tmp_path / "pg-live.log")
-    _wait_ready(_LIVE_PORT)
+    try:
+        _init_staging(live_dir, db_user="pharmaos", db_password=_DB_PASSWORD, port=_LIVE_PORT)
+        _pg_ctl_start(live_dir, tmp_path / "pg-live.log")
+        _wait_ready(_LIVE_PORT)
 
-    async def _create_live_db() -> None:
-        conn = await asyncpg.connect(_dsn("postgres"))
-        try:
-            await conn.execute('CREATE DATABASE "pharmaos"')
-        finally:
-            await conn.close()
+        async def _create_live_db() -> None:
+            conn = await asyncpg.connect(_dsn("postgres"))
+            try:
+                await conn.execute('CREATE DATABASE "pharmaos"')
+            finally:
+                await conn.close()
 
-    _run(_create_live_db())
-    run_migrations(_dsn("pharmaos"))
-    _run(_seed_live(_dsn("pharmaos")))
+        _run(_create_live_db())
+        run_migrations(_dsn("pharmaos"))
+        _run(_seed_live(_dsn("pharmaos")))
 
-    backup_file = backup_service.create_backup(tmp_path, database_url=_dsn("pharmaos"))
+        backup_file = backup_service.create_backup(tmp_path, database_url=_dsn("pharmaos"))
 
-    # Disaster: the live cluster is destroyed (crash / dead disk).
-    _pg_ctl(live_dir, "stop", "-m", "fast")
-    shutil.rmtree(live_dir)
-    live_dir.mkdir()  # the path exists but holds nothing — the restore owns it
+        # Disaster: the live cluster is destroyed (crash / dead disk).
+        _pg_ctl(live_dir, "stop", "-m", "fast")
+        shutil.rmtree(live_dir)
+        live_dir.mkdir()  # the path exists but holds nothing — the restore owns it
 
-    report = backup_service.restore_to_cluster(
-        backup_file,
-        pgdata_dir=live_dir,
-        live_port=_LIVE_PORT,
-    )
+        report = backup_service.restore_to_cluster(
+            backup_file,
+            pgdata_dir=live_dir,
+            live_port=_LIVE_PORT,
+        )
 
-    verification = report["verification"]  # type: ignore[index]
-    assert verification["users"] == 1  # type: ignore[index]
-    assert verification["permissions"] == 44  # type: ignore[index]
-    assert verification["encrypted_field_verified"] is True  # type: ignore[index]
+        verification = report["verification"]  # type: ignore[index]
+        assert verification["users"] == 1  # type: ignore[index]
+        assert verification["permissions"] == 44  # type: ignore[index]
+        assert verification["encrypted_field_verified"] is True  # type: ignore[index]
 
-    # The promoted cluster serves on the live port with the restored data,
-    # and the encrypted field decrypts with the RESTORED key.
-    users, national_id = _run(_fetch_proof(_dsn("pharmaos")))
-    assert users == 1
-    assert national_id == "29801011234567"
+        # The promoted cluster serves on the live port with the restored data,
+        # and the encrypted field decrypts with the RESTORED key.
+        users, national_id = _run(_fetch_proof(_dsn("pharmaos")))
+        assert users == 1
+        assert national_id == "29801011234567"
 
-    # Rollback point removed after confirmed success.
-    assert not (tmp_path / "pgdata.previous").exists()
-    # Keystore now carries the restored secrets (same values in this test).
-    assert keystore.get_db_password() == _DB_PASSWORD
+        # Rollback point removed after confirmed success.
+        assert not (tmp_path / "pgdata.previous").exists()
+        # Keystore now carries the restored secrets (same values in this test).
+        assert keystore.get_db_password() == _DB_PASSWORD
+    finally:
+        backup_service._stop_cluster(live_dir, tolerate_not_running=True)
 
 
 def _write_fake_backup(path: Path, key: bytes, meta: dict[str, object]) -> None:

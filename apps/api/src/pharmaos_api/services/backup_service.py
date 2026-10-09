@@ -328,6 +328,8 @@ def _pin_cluster_config(cluster_dir: Path, *, port: int) -> None:
     the requested port. Later lines win, so appending is sufficient."""
     with _conf_file(cluster_dir).open("a", encoding="utf-8") as fh:
         fh.write(f"\nlisten_addresses = '127.0.0.1'\nport = {port}\n")
+        if os.name != "nt":
+            fh.write("unix_socket_directories = '/tmp'\n")
 
 
 def _set_conf_port(cluster_dir: Path, *, port: int) -> None:
@@ -378,7 +380,15 @@ def _pg_ctl_start(pgdata: Path, logfile: Path) -> None:
         timeout=120,
     )
     if result.returncode != 0:
-        raise BackupError(f"pg_ctl start failed (rc={result.returncode}) — see {logfile}")
+        details = ""
+        if logfile.is_file():
+            try:
+                log_text = logfile.read_text(encoding="utf-8", errors="replace").strip()
+                if log_text:
+                    details = f":\n{log_text}"
+            except Exception:  # noqa: BLE001
+                logger.debug("could not read pg_ctl logfile %s", logfile, exc_info=True)
+        raise BackupError(f"pg_ctl start failed (rc={result.returncode}) — see {logfile}{details}")
 
 
 def _wait_ready(port: int, *, timeout: int = _READY_TIMEOUT_SECONDS) -> None:
