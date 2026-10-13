@@ -38,8 +38,14 @@ class ConfigError(RuntimeError):
 
 
 def process_env_name() -> str:
-    """The environment name, from the process environment only."""
-    return os.environ.get("PHARMAOS_ENV", "development")
+    """The environment name, from the process environment only.
+
+    Fail-closed: a missing PHARMAOS_ENV means production (no dev keystore,
+    no dev database fallback, fixed device paths). Local dev shells must
+    export PHARMAOS_ENV=development explicitly — a .env file value alone
+    does not affect path resolution (decision 3).
+    """
+    return os.environ.get("PHARMAOS_ENV", "production")
 
 
 def is_production_process() -> bool:
@@ -73,8 +79,9 @@ def runtime_env_file() -> Path:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
 
-    # Environment: development | test | production
-    pharmaos_env: str = "development"
+    # Environment: development | test | production.
+    # Fail-closed default: production. Dev shells export PHARMAOS_ENV explicitly.
+    pharmaos_env: str = "production"
 
     # Explicit DATABASE_URL override — dev/CI/docker only. Production REJECTS
     # it (fail-closed, decision 3); the device builds its URL from the

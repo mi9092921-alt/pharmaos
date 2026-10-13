@@ -95,3 +95,42 @@ def test_pg_bin_dir_setting_exposed(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setenv("PG_BIN_DIR", str(tmp_path / "pg" / "bin"))
     settings = Settings(database_url="")
     assert settings.pg_bin_dir == str(tmp_path / "pg" / "bin")
+
+
+def test_missing_pharmaos_env_is_fail_closed_production(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Go-Live Phase 1: a missing PHARMAOS_ENV must behave as production.
+
+    No dev-keystore fallback, no dev database fallback, fixed device paths —
+    manual runs without the variable fail loudly instead of silently using
+    development defaults.
+    """
+    monkeypatch.delenv("PHARMAOS_ENV", raising=False)
+    config.get_settings.cache_clear()
+    try:
+        assert config.process_env_name() == "production"
+        assert config.is_production_process() is True
+
+        settings = Settings(database_url="")
+        assert settings.is_production is True
+
+        # Production fixes paths: user-shell overrides are ignored.
+        expected = Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "PharmaOS"
+        assert config.default_data_dir() == expected
+        assert config.runtime_env_file() == expected / ".env"
+
+        # Dev-store fallback is refused even when a dev file exists on disk.
+        dev_dir = tmp_path / "devkeys"
+        dev_dir.mkdir(exist_ok=True)
+        (dev_dir / keystore.ENCRYPTION_KEY_NAME).write_text("00" * 32, encoding="utf-8")
+        monkeypatch.setattr(keystore, "_DEV_STORE_DIR", dev_dir)
+        monkeypatch.setattr(keystore.keyring, "get_password", lambda *a, **k: None)
+        assert keystore.get_secret(keystore.ENCRYPTION_KEY_NAME) is None
+
+        # No dev database fallback: missing keystore password fails loudly.
+        monkeypatch.setattr(keystore, "get_db_password", lambda: None)
+        with pytest.raises(ConfigError):
+            _ = settings.resolved_database_url
+    finally:
+        config.get_settings.cache_clear()

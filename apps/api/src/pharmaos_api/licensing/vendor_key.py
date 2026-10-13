@@ -24,7 +24,7 @@ MCowBQYDK2VwAyEATawUt5OUCHdb4mm89vKED12orZlOubuIvyDzd6nIou8=
 """
 
 
-VENDOR_LICENSE_ACCEPTED_KIDS: frozenset[str] = frozenset({"03a7a211", "testkid01"})
+VENDOR_LICENSE_ACCEPTED_KIDS: frozenset[str] = frozenset({"03a7a211"})
 
 
 def vendor_public_key() -> Ed25519PublicKey:
