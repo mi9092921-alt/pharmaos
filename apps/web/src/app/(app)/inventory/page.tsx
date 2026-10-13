@@ -36,6 +36,7 @@ import {
   runExpirySweep,
   searchMedications,
   setBatchStatus,
+  updateStockSettings,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
@@ -55,6 +56,7 @@ const statusLabel = (s: string) => t(`inventory.status_${s}`);
 export default function InventoryPage() {
   const canReceive = useAuth((s) => s.hasPermission('inventory.purchase'));
   const canAdjust = useAuth((s) => s.hasPermission('inventory.adjust'));
+  const canEdit = useAuth((s) => s.hasPermission('inventory.edit'));
   const [tab, setTab] = useState<'stock' | 'expiry' | 'report'>('stock');
   const [branchId, setBranchId] = useState('');
 
@@ -105,7 +107,12 @@ export default function InventoryPage() {
       </div>
 
       {tab === 'stock' && (
-        <StockTab branchId={branchId} canReceive={canReceive} canAdjust={canAdjust} />
+        <StockTab
+          branchId={branchId}
+          canReceive={canReceive}
+          canAdjust={canAdjust}
+          canEdit={canEdit}
+        />
       )}
       {tab === 'expiry' && <ExpiryAlertsTab branchId={branchId} canAdjust={canAdjust} />}
       {tab === 'report' && <BatchReportTab branchId={branchId} />}
@@ -140,20 +147,35 @@ function StockTab({
   branchId,
   canReceive,
   canAdjust,
+  canEdit,
 }: {
   branchId: string;
   canReceive: boolean;
   canAdjust: boolean;
+  canEdit: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [lowStock, setLowStock] = useState(false);
+  const [shelf, setShelf] = useState('');
+  const [shelfQuery, setShelfQuery] = useState('');
+  const [zone, setZone] = useState('');
+  const [zoneQuery, setZoneQuery] = useState('');
+  const [sort, setSort] = useState<'stock' | 'location'>('stock');
   const [showReceive, setShowReceive] = useState(false);
   const [batchesFor, setBatchesFor] = useState<{ id: string; name: string } | null>(null);
+  const [settingsFor, setSettingsFor] = useState<InventoryRow | null>(null);
 
   const invQuery = useQuery({
-    queryKey: ['inventory', branchId, query, lowStock],
-    queryFn: () => listInventory(branchId, { search: query, lowStock }),
+    queryKey: ['inventory', branchId, query, lowStock, shelfQuery, zoneQuery, sort],
+    queryFn: () =>
+      listInventory(branchId, {
+        search: query,
+        lowStock,
+        shelf: shelfQuery || undefined,
+        zone: zoneQuery || undefined,
+        sort,
+      }),
     enabled: !!branchId,
   });
   const driftQuery = useQuery({
@@ -182,6 +204,8 @@ function StockTab({
         onSubmit={(e) => {
           e.preventDefault();
           setQuery(search.trim());
+          setShelfQuery(shelf.trim().toUpperCase());
+          setZoneQuery(zone.trim().toUpperCase());
         }}
       >
         <Input
@@ -190,6 +214,20 @@ function StockTab({
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t('inventory.search')}
         />
+        <Input
+          className="max-w-28 tabular-nums"
+          value={shelf}
+          onChange={(e) => setShelf(e.target.value.toUpperCase())}
+          placeholder={t('inventory.shelf_filter')}
+          maxLength={10}
+        />
+        <Input
+          className="max-w-20 tabular-nums"
+          value={zone}
+          onChange={(e) => setZone(e.target.value.toUpperCase().slice(0, 1))}
+          placeholder={t('inventory.zone_filter')}
+          maxLength={1}
+        />
         <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -197,6 +235,14 @@ function StockTab({
             onChange={(e) => setLowStock(e.target.checked)}
           />
           {t('inventory.low_stock_only')}
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={sort === 'location'}
+            onChange={(e) => setSort(e.target.checked ? 'location' : 'stock')}
+          />
+          {t('inventory.sort_location')}
         </label>
       </form>
 
@@ -234,8 +280,21 @@ function StockTab({
                     <td className="p-2 tabular-nums text-slate-500">
                       {r.reorder_point ? fmt(r.reorder_point) : '—'}
                     </td>
-                    <td className="p-2 text-slate-500">{r.shelf_location ?? '—'}</td>
-                    <td className="p-2 text-end">
+                    <td className="p-2 text-slate-500">
+                      {r.shelf_location ? (
+                        <Badge tone="neutral" className="tabular-nums">
+                          {r.shelf_location}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-slate-400">{t('inventory.no_location')}</span>
+                      )}
+                    </td>
+                    <td className="flex flex-wrap justify-end gap-1 p-2">
+                      {canEdit && (
+                        <Button size="sm" variant="outline" onClick={() => setSettingsFor(r)}>
+                          {t('inventory.stock_settings')}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -265,6 +324,13 @@ function StockTab({
           medName={batchesFor.name}
           canAdjust={canAdjust}
           onClose={() => setBatchesFor(null)}
+        />
+      )}
+      {settingsFor && (
+        <StockSettingsModal
+          branchId={branchId}
+          row={settingsFor}
+          onClose={() => setSettingsFor(null)}
         />
       )}
     </div>
@@ -517,6 +583,100 @@ function BatchActionModal({
   );
 }
 
+// ------------------------------ stock settings modal ------------------------------
+
+function StockSettingsModal({
+  branchId,
+  row,
+  onClose,
+}: {
+  branchId: string;
+  row: InventoryRow;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [reorder, setReorder] = useState(row.reorder_point ?? '');
+  const [min, setMin] = useState(row.min_stock_level ?? '');
+  const [max, setMax] = useState('');
+  const [shelf, setShelf] = useState(row.shelf_location ?? '');
+
+  const mut = useMutation({
+    mutationFn: () =>
+      updateStockSettings({
+        branch_id: branchId,
+        medication_id: row.medication_id,
+        reorder_point: reorder.trim() === '' ? null : reorder.trim(),
+        min_stock_level: min.trim() === '' ? null : min.trim(),
+        max_stock_level: max.trim() === '' ? null : max.trim(),
+        shelf_location: shelf.trim() === '' ? null : shelf.trim(),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory', branchId] });
+      toast.success(t('inventory.settings_saved_ok'));
+      onClose();
+    },
+    onError: onErr,
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${t('inventory.stock_settings')} — ${row.trade_name_ar ?? row.trade_name}`}
+    >
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          mut.mutate();
+        }}
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>{t('inventory.reorder_point')}</Label>
+            <Input
+              inputMode="decimal"
+              value={reorder}
+              onChange={(e) => setReorder(e.target.value)}
+              placeholder="10"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('inventory.min_stock')}</Label>
+            <Input
+              inputMode="decimal"
+              value={min}
+              onChange={(e) => setMin(e.target.value)}
+              placeholder="5"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('inventory.max_stock')}</Label>
+            <Input
+              inputMode="decimal"
+              value={max}
+              onChange={(e) => setMax(e.target.value)}
+              placeholder="100"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('inventory.shelf')}</Label>
+            <Input value={shelf} onChange={(e) => setShelf(e.target.value)} placeholder="A-3" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t('users.cancel')}
+          </Button>
+          <Button type="submit" disabled={mut.isPending}>
+            {t('inventory.save')}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ------------------------------ receive modal ------------------------------
 
 function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => void }) {
@@ -529,6 +689,8 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
   const [supplierId, setSupplierId] = useState('');
+  // Shelf slot for first receipt: set only when the slot is NULL (never clears).
+  const [recvShelf, setRecvShelf] = useState('');
   // P2-M3 (C2): captured 2D pack serials + their GTIN (EDA track & trace).
   const [serials, setSerials] = useState<string[]>([]);
   const [gtin, setGtin] = useState<string | null>(null);
@@ -589,6 +751,7 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
         quantity,
         purchase_price: price,
         supplier_id: supplierId || null,
+        shelf_location: recvShelf.trim() === '' ? null : recvShelf.trim().toUpperCase(),
         ...(gtin ? { gtin } : {}),
         ...(serials.length > 0 ? { serials } : {}),
       }),
@@ -748,6 +911,17 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
               onChange={(e) => setPrice(e.target.value)}
               required
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('inventory.shelf')}</Label>
+            <Input
+              className="tabular-nums"
+              value={recvShelf}
+              onChange={(e) => setRecvShelf(e.target.value.toUpperCase())}
+              placeholder={t('inventory.shelf_placeholder')}
+              maxLength={10}
+            />
+            <p className="text-xs text-slate-500">{t('inventory.shelf_receive_hint')}</p>
           </div>
         </div>
 

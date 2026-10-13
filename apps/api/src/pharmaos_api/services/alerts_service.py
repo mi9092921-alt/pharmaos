@@ -21,7 +21,8 @@ Rule coverage vs CLAUDE.md ALERT_RULES (honesty rule: a rule never pretends
 to fire from a source that does not exist):
   low_stock / out_of_stock / expiry_critical / expiry_warning / expired /
   high_discount / cash_discrepancy / ereceipt_backlog / tt_report_failed /
-  inventory_drift  — evaluated here.
+  inventory_drift / missing_location (one branch aggregate: stocked SKUs
+  with no shelf slot) — evaluated here.
   sync_failed      — NOT yet evaluable: no sync-outbox table exists in the
                      schema (device→cloud sync is beyond Phase 3). The rule is
                      registered so its key/i18n surface is stable; the
@@ -62,6 +63,9 @@ _ALERT_RULES: dict[str, dict[str, str]] = {
     "sync_failed": {"severity": "warning", "entity_type": "branch"},
     "backup_overdue": {"severity": "critical", "entity_type": "branch"},
     "inventory_drift": {"severity": "critical", "entity_type": "medication"},
+    # Shelf slots (M5): ONE aggregate per branch — a per-medication alert
+    # would flood notifications on the first evaluation after rollout.
+    "missing_location": {"severity": "warning", "entity_type": "branch"},
 }
 
 _BACKLOG_HOURS = 24
@@ -387,6 +391,33 @@ async def _eval_inventory_drift(session: AsyncSession, branch_id: uuid.UUID) -> 
     ]
 
 
+async def _eval_missing_location(
+    session: AsyncSession, branch_id: uuid.UUID
+) -> list[Finding]:
+    """Stocked SKUs with no shelf slot — ONE branch aggregate (never one
+    alert per medication: the first post-rollout evaluation would flood
+    delivery). Only rows with sellable stock count; zero-stock rows are a
+    catalog concern, not a picker's problem. Clears on re-evaluation once
+    every stocked SKU is slotted."""
+    count = (await session.execute(text("""
+                SELECT COUNT(*) FROM branch_inventory bi
+                JOIN medications m ON m.id = bi.medication_id
+                WHERE bi.branch_id = :b AND NOT bi.is_deleted AND NOT m.is_deleted
+                  AND bi.cached_quantity > 0 AND bi.shelf_location IS NULL
+                """).bindparams(b=branch_id))).scalar_one()
+    if not count:
+        return []
+    return [
+        Finding(
+            rule_key="missing_location",
+            entity_type="branch",
+            entity_id=None,
+            params={"count": str(count)},
+            dedup_key="missing_location",
+        )
+    ]
+
+
 _EVALUATORS = {
     "low_stock": _eval_low_stock,
     "out_of_stock": _eval_out_of_stock,
@@ -400,6 +431,7 @@ _EVALUATORS = {
     "sync_failed": _eval_sync_failed,
     "backup_overdue": _eval_backup_overdue,
     "inventory_drift": _eval_inventory_drift,
+    "missing_location": _eval_missing_location,
 }
 
 # ---------------------------------------------------------------------------
@@ -483,13 +515,29 @@ async def _generate(
 
 async def evaluate_branch(session: AsyncSession, branch_id: uuid.UUID) -> dict[str, object]:
     """Evaluate EVERY rule for one branch, idempotently. Safe to call as often
-    as wanted (boot / cron / manual) — repeats never duplicate alerts."""
+    as wanted (boot / cron / manual) — repeats never duplicate alerts.
+
+    One failing rule never aborts the rest: each rule runs isolated (a SQL
+    error poisons the transaction, so the session is rolled back to the last
+    committed rule) and the failure is recorded in `errors` with a log line —
+    never silently dropped."""
     by_rule: dict[str, int] = {}
+    errors: list[str] = []
     created_total = 0
     refreshed_total = 0
     resolved_total = 0
     for rule_key in _ALERT_RULES:
-        created, refreshed, findings, resolved = await _generate(session, branch_id, rule_key)
+        if rule_key not in _EVALUATORS:  # fail-closed wiring guard (KeyError -> diagnosis)
+            logger.error("alert rule has no evaluator: %s", rule_key)
+            errors.append(rule_key)
+            continue
+        try:
+            created, refreshed, findings, resolved = await _generate(session, branch_id, rule_key)
+        except Exception:
+            logger.exception("alert evaluator failed: %s", rule_key)
+            await session.rollback()
+            errors.append(rule_key)
+            continue
         created_total += created
         refreshed_total += refreshed
         resolved_total += resolved
@@ -504,6 +552,7 @@ async def evaluate_branch(session: AsyncSession, branch_id: uuid.UUID) -> dict[s
         "refreshed": refreshed_total,
         "resolved": resolved_total,
         "findings": by_rule,
+        "errors": errors,
         "live_alerts": int(live),
     }
 

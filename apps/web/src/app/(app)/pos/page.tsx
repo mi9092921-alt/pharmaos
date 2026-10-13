@@ -24,8 +24,10 @@ import {
   getInvoiceReceipt,
   getMedication,
   getPrescription,
+  type InventoryRow,
   type InvoiceReceipt,
   listCustomers,
+  listInventory,
   listInventoryBranches,
   listPrescriptions,
   type MedOption,
@@ -35,7 +37,6 @@ import {
   type PosSaleResult,
   type PosScan,
   printInvoice,
-  searchMedications,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
@@ -46,6 +47,8 @@ const errCode = (e: unknown) => (e instanceof ApiRequestError ? e.code : 'E-SYS-
 interface CartLine {
   medicationId: string;
   name: string;
+  /** Branch-scoped shelf slot snapshot at pick time (guides hand to drawer). */
+  shelfLocation: string | null;
   levels: PosLevel[];
   packagingId: string;
   unitName: string;
@@ -58,6 +61,12 @@ interface CartLine {
    * snapshot captured at pick time (the server remains authoritative). */
   prescriptionItemId: string | null;
   prescriptionRemainingHint: string | null;
+}
+
+/** Branch-scoped name-search hit: catalog identity + shelf slot + stock. */
+interface PosSearchHit extends MedOption {
+  shelf_location: string | null;
+  on_hand: string;
 }
 
 const RX_STATUS_TONE: Record<string, 'neutral' | 'warning' | 'success' | 'danger'> = {
@@ -102,7 +111,7 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [sel, setSel] = useState(0);
   const [scanVal, setScanVal] = useState('');
-  const [results, setResults] = useState<MedOption[] | null>(null);
+  const [results, setResults] = useState<PosSearchHit[] | null>(null);
   const [resultIdx, setResultIdx] = useState(0);
   const [searching, setSearching] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
@@ -165,6 +174,7 @@ export default function PosPage() {
       {
         medicationId: scan.medication_id,
         name: scan.trade_name_ar ?? scan.trade_name,
+        shelfLocation: scan.shelf_location ?? null,
         levels: scan.levels,
         packagingId: scan.packaging_id,
         unitName: scan.packaging_name_ar,
@@ -238,7 +248,7 @@ export default function PosPage() {
   // ---------------- scan & name search ----------------
 
   const scanMut = useMutation({
-    mutationFn: (code: string) => posScan(code),
+    mutationFn: (code: string) => posScan(code, branchId || undefined),
     onSuccess: addFromScan,
     onError: (e) => {
       const code = errCode(e);
@@ -249,10 +259,19 @@ export default function PosPage() {
 
   const searchByName = async () => {
     const term = scanVal.trim();
-    if (term.length < 2 || searching) return;
+    if (term.length < 2 || searching || !branchId) return;
     setSearching(true);
     try {
-      const found = await searchMedications(term);
+      // Branch-scoped search (not the global catalog): each hit carries its
+      // shelf slot and on-hand stock so the seller walks straight to the drawer.
+      const rows: InventoryRow[] = await listInventory(branchId, { search: term });
+      const found: PosSearchHit[] = rows.map((r) => ({
+        id: r.medication_id,
+        trade_name: r.trade_name,
+        trade_name_ar: r.trade_name_ar,
+        shelf_location: r.shelf_location,
+        on_hand: r.cached_quantity,
+      }));
       setResults(found);
       setResultIdx(0);
     } catch (e) {
@@ -263,6 +282,8 @@ export default function PosPage() {
   };
 
   const pickResult = async (med: MedOption) => {
+    const hit = results?.find((r) => r.id === med.id);
+    const shelfLocation = hit?.shelf_location ?? null;
     try {
       const detail = await getMedication(med.id);
       if (detail.packaging.length === 0) {
@@ -281,6 +302,7 @@ export default function PosPage() {
         {
           medicationId: detail.id,
           name: detail.trade_name_ar ?? detail.trade_name,
+          shelfLocation,
           levels: sellable.map((p) => ({
             id: p.id,
             level: p.level,
@@ -587,7 +609,21 @@ export default function PosPage() {
                   onMouseEnter={() => setResultIdx(i)}
                   onClick={() => void pickResult(m)}
                 >
-                  {m.trade_name_ar ?? m.trade_name}
+                  <span className="font-medium">{m.trade_name_ar ?? m.trade_name}</span>
+                  {m.shelf_location ? (
+                    <Badge
+                      tone="neutral"
+                      className="ms-2 tabular-nums"
+                      title={t('inventory.shelf')}
+                    >
+                      {m.shelf_location}
+                    </Badge>
+                  ) : (
+                    <span className="ms-2 text-xs text-slate-400">
+                      {t('inventory.no_location')}
+                    </span>
+                  )}
+                  <span className="ms-2 text-xs tabular-nums text-slate-400">{m.on_hand}</span>
                 </button>
               ))
             )}
@@ -627,6 +663,15 @@ export default function PosPage() {
                       <td className="p-2 text-xs text-slate-400">{i + 1}</td>
                       <td className="p-2 font-medium text-slate-800">
                         {l.name}
+                        {l.shelfLocation && (
+                          <Badge
+                            tone="neutral"
+                            className="ms-2 tabular-nums"
+                            title={t('inventory.shelf')}
+                          >
+                            {l.shelfLocation}
+                          </Badge>
+                        )}
                         {l.controlled && (
                           <Badge tone="danger" className="ms-2">
                             {t('catalog.controlled')}

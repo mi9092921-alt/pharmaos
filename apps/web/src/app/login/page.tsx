@@ -4,11 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@pharmaos/ui';
 
-import { ApiRequestError, login } from '@/lib/api';
+import { ApiRequestError, getLicenseStatus, login } from '@/lib/api';
+import { LicenseUploadButton, licenseStatusLabel } from '@/components/license-upload';
 import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
 
@@ -42,6 +44,17 @@ export default function LoginPage() {
     }
   };
 
+  // Device license watch (allowlisted — no session needed): surface an
+  // activation box only when attention is required, otherwise stay out of
+  // the way. A fresh activation refetches and the box disappears.
+  const licenseQuery = useQuery({
+    queryKey: ['license-status'],
+    queryFn: getLicenseStatus,
+    retry: false,
+  });
+  const lic = licenseQuery.data;
+  const licenseAttention = !!lic && (lic.status !== 'active' || (lic.days_left ?? 999) <= 14);
+
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-sm">
@@ -59,6 +72,23 @@ export default function LoginPage() {
               className="mb-4 rounded-[var(--radius-md)] border border-danger/30 bg-red-50 p-3 text-sm text-danger"
             >
               {t(`errors.${errorCode}`)}
+            </div>
+          )}
+
+          {/* License activation — visible only when the device license needs
+              attention (unlicensed / grace / expiring soon). */}
+          {licenseAttention && lic && (
+            <div
+              role="alert"
+              className="mb-4 space-y-2 rounded-[var(--radius-md)] border border-warning/40 bg-amber-50 p-3 text-sm text-slate-700"
+            >
+              <div className="font-medium">
+                {t('settings.software_license.title')}: {licenseStatusLabel(lic.status)}
+              </div>
+              <LicenseUploadButton
+                className="w-full"
+                onActivated={() => void licenseQuery.refetch()}
+              />
             </div>
           )}
 

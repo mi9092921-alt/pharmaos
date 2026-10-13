@@ -29,6 +29,7 @@ from pharmaos_api.security.csrf import enforce_csrf
 from pharmaos_api.services import (
     catalog_service,
     customer_service,
+    inventory_service,
     receipt_service,
     sales_service,
 )
@@ -39,6 +40,7 @@ router = APIRouter(prefix="/api/v1/pos", tags=["pos"])
 @router.get("/scan")
 async def scan(
     barcode: str = Query(min_length=1, max_length=120),
+    branch_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     _: None = Depends(require_permission("inventory.view")),
 ) -> dict[str, object]:
@@ -46,9 +48,17 @@ async def scan(
 
     `levels` carries every sellable packaging level (box/strip/tablet) with its
     price so the cart can switch units without another round-trip.
+    `shelf_location` is a branch-scoped extra (None when no branch is given,
+    the branch is unknown, or the slot was never set) — the catalog stays the
+    source of truth for the medication itself.
     """
     result = await sales_service.resolve_scan_code(session, barcode)
     packaging = await catalog_service.get_packaging(session, result.medication_id)
+    shelf: str | None = None
+    if branch_id is not None:
+        shelf = await inventory_service.get_shelf(
+            session, branch_id=branch_id, medication_id=result.medication_id
+        )
     return success_envelope(
         {
             "medication_id": str(result.medication_id),
@@ -60,6 +70,7 @@ async def scan(
             "selling_price": str(result.selling_price),
             "requires_prescription": result.requires_prescription,
             "controlled_substance": result.controlled_substance,
+            "shelf_location": shelf,
             "levels": [
                 {
                     "id": str(p.id),

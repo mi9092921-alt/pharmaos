@@ -115,7 +115,10 @@ async def test_low_stock_fires_and_refreshes_on_repeat(
 
     first = await alerts_service.evaluate_branch(db_session, branch.id)
     assert _rule(first, "low_stock") == 1
-    assert first["created"] == 1 and first["live_alerts"] >= 1
+    # The stocked SKU is also unslotted, so the missing_location branch
+    # aggregate fires exactly once alongside (never one alert per SKU).
+    assert _rule(first, "missing_location") == 1
+    assert first["created"] == 2 and first["live_alerts"] >= 2
 
     second = await alerts_service.evaluate_branch(db_session, branch.id)
     assert second["created"] == 0

@@ -131,9 +131,18 @@ function EreceiptsTab({ branchId }: { branchId: string }) {
 
   const drainMut = useMutation({
     mutationFn: () => drainEreceipts(branchId),
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['ereceipts', branchId] });
-      toast.success(t('compliance.drained_ok'));
+      // Fail-closed honesty: on a production device without real ETA
+      // credentials the drain SKIPS every row (nothing is sent, nothing is
+      // marked) — a plain "done" toast would lie that the backlog cleared.
+      if ((res.skipped_fail_closed ?? 0) > 0 && res.accepted === 0 && res.failed === 0) {
+        toast.info(
+          t('compliance.drained_skipped').replace('{count}', String(res.skipped_fail_closed)),
+        );
+      } else {
+        toast.success(t('compliance.drained_ok'));
+      }
     },
     onError: onErr,
   });
@@ -159,6 +168,7 @@ function EreceiptsTab({ branchId }: { branchId: string }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-slate-500">
+                  <th className="p-2 text-start">{t('compliance.invoice')}</th>
                   <th className="p-2 text-start">{t('compliance.status')}</th>
                   <th className="p-2 text-start">{t('compliance.eta_uuid')}</th>
                   <th className="p-2 text-start">{t('compliance.attempts')}</th>
@@ -168,6 +178,9 @@ function EreceiptsTab({ branchId }: { branchId: string }) {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b border-border/60">
+                    <td className="p-2 font-mono text-xs text-slate-800">
+                      {r.invoice_number ?? r.invoice_id.slice(0, 8)}
+                    </td>
                     <td className="p-2">{statusBadge(r.status)}</td>
                     <td className="p-2 font-mono text-xs text-slate-600">{r.eta_uuid ?? '—'}</td>
                     <td className="p-2 tabular-nums text-slate-600">{r.submission_attempts}</td>
@@ -196,9 +209,15 @@ function TtEventsTab({ branchId }: { branchId: string }) {
 
   const drainMut = useMutation({
     mutationFn: () => drainTtEvents(branchId),
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['tt-events', branchId] });
-      toast.success(t('compliance.drained_ok'));
+      if ((res.skipped_fail_closed ?? 0) > 0 && res.reported === 0 && res.failed === 0) {
+        toast.info(
+          t('compliance.drained_skipped').replace('{count}', String(res.skipped_fail_closed)),
+        );
+      } else {
+        toast.success(t('compliance.drained_ok'));
+      }
     },
     onError: onErr,
   });

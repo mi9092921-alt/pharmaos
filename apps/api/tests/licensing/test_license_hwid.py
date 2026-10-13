@@ -88,3 +88,38 @@ def test_cache_skipped_without_key(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("pharmaos_api.licensing.hwid.collect_sources", _fake_collect)
     compute_hwid(cache_path=cache, ext_key=None)
     assert calls["n"] == 1  # no key ⇒ no cache trust, full recompute
+
+
+class _Completed:
+    def __init__(self, stdout: str) -> None:
+        self.stdout = stdout
+
+
+def test_collect_retries_timeout_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A slow CIM call under boot load must not mint the degraded all-guid
+    fingerprint: one timeout is retried, and the full result wins."""
+    import subprocess
+
+    from pharmaos_api.licensing import hwid as hwid_mod
+
+    calls = {"n": 0}
+
+    def _fake_run(*args: object, **kwargs: object) -> _Completed:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise subprocess.TimeoutExpired(cmd="powershell", timeout=15.0)
+        return _Completed("BB\nCPU\nDISK\nGUID\n")
+
+    monkeypatch.setattr(hwid_mod.subprocess, "run", _fake_run)
+    assert hwid_mod._collect_windows() == ("BB", "CPU", "DISK", "GUID")
+    assert calls["n"] == 2
+
+
+def test_collect_keeps_best_partial(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pharmaos_api.licensing import hwid as hwid_mod
+
+    def _fake_run(*args: object, **kwargs: object) -> _Completed:
+        return _Completed("BB\n\n\nGUID\n")  # only 2/4 sources, every attempt
+
+    monkeypatch.setattr(hwid_mod.subprocess, "run", _fake_run)
+    assert hwid_mod._collect_windows() == ("BB", "", "", "GUID")

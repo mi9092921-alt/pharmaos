@@ -247,13 +247,23 @@ async def list_notifications(
     branch_id: uuid.UUID,
     user_id: uuid.UUID,
     unread_only: bool = False,
+    channel: str | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> dict[str, object]:
     """The viewer's notifications for a branch, newest first (page <= 100).
 
     Visibility: rows for THIS branch addressed to me OR broadcast (user_id
-    NULL) — inlined in each query (no SQL string interpolation)."""
+    NULL) — inlined in each query (no SQL string interpolation).
+
+    Channel filter: the notification center shows ``in_app`` rows only —
+    ``desktop`` rows feed OS toasts and ``email`` rows are the provider
+    queue, so listing all three renders every critical alert 3x (same text,
+    same timestamp). Callers that need another channel (e.g. the desktop
+    toast feed) pass it explicitly; ``None`` keeps the legacy all-channel
+    shape for backward compatibility."""
+    if channel is not None and channel not in _CHANNELS:
+        raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Unknown channel.")
     limit = min(max(limit, 1), _MAX_PAGE)
     params: dict[str, object] = {
         "b": branch_id,
@@ -262,6 +272,10 @@ async def list_notifications(
         "lim": limit,
     }
     unread = "AND n.read_at IS NULL" if unread_only else ""
+    chan = ""
+    if channel is not None:
+        chan = "AND n.channel = :ch "
+        params["ch"] = channel
     rows = (
         (
             await session.execute(
@@ -275,6 +289,7 @@ async def list_notifications(
                             "WHERE n.branch_id = :b AND NOT n.is_deleted ",
                             "  AND (n.user_id = :u OR n.user_id IS NULL) ",
                             "  " + unread + " ",
+                            "  " + chan + " ",
                             "ORDER BY n.created_at DESC ",
                             "OFFSET :skip LIMIT :lim",
                         ]
@@ -285,6 +300,9 @@ async def list_notifications(
         .mappings()
         .all()
     )
+    count_params: dict[str, object] = {"b": branch_id, "u": user_id}
+    if channel is not None:
+        count_params["ch"] = channel
     total = (
         await session.execute(
             text(
@@ -293,10 +311,11 @@ async def list_notifications(
                         "SELECT COUNT(*) FROM notifications n ",
                         "WHERE n.branch_id = :b AND NOT n.is_deleted ",
                         "  AND (n.user_id = :u OR n.user_id IS NULL) ",
-                        "  " + unread,
+                        "  " + unread + " ",
+                        "  " + chan,
                     ]
                 )
-            ).bindparams(b=branch_id, u=user_id)
+            ).bindparams(**count_params)
         )
     ).scalar_one()
     items = []

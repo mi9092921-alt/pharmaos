@@ -188,6 +188,94 @@ async def test_locked_status_error(
 
 
 # ---------------------------------------------------------------------------
+# C2) Locked-state recovery matrix (P0-1): status + activate stay reachable
+# from every locked state (the healing path the activation screen needs),
+# while every other protected path stays fail-closed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "locked_status",
+    [
+        runtime.STATUS_TAMPER,
+        runtime.STATUS_KEY_LOST,
+        runtime.STATUS_CLOCK_ERROR,
+        runtime.STATUS_ERROR,
+    ],
+)
+async def test_locked_states_allow_license_status(
+    gate_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, locked_status: str
+) -> None:
+    monkeypatch.setattr(
+        runtime,
+        "get_state",
+        lambda s=locked_status: LicenseRuntimeState(
+            status=s, hwid="PHAR-TEST-1234-5678-9012", needs_activation=True
+        ),
+    )
+    res = await gate_client.get("/api/v1/license/status")
+    assert res.status_code == 200
+    assert res.json()["data"]["status"] == locked_status
+
+
+@pytest.mark.parametrize(
+    "locked_status",
+    [
+        runtime.STATUS_TAMPER,
+        runtime.STATUS_KEY_LOST,
+        runtime.STATUS_CLOCK_ERROR,
+        runtime.STATUS_ERROR,
+    ],
+)
+async def test_locked_states_allow_license_activate(
+    gate_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, locked_status: str
+) -> None:
+    monkeypatch.setattr(
+        runtime,
+        "get_state",
+        lambda s=locked_status: LicenseRuntimeState(status=s),
+    )
+    # Invalid bytes reach the activate handler (400 invalid-signature), which
+    # proves the gate did NOT block with 423/503 first.
+    res = await gate_client.post(
+        "/api/v1/license/activate",
+        content=b"invalid-container-data",
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == ErrorCode.LICENSE_INVALID_SIGNATURE
+
+
+@pytest.mark.parametrize(
+    "locked_status,expected_code,expected_http",
+    [
+        (runtime.STATUS_TAMPER, ErrorCode.LICENSE_TAMPER_DETECTED, 423),
+        (runtime.STATUS_KEY_LOST, ErrorCode.LICENSE_KEY_LOST, 423),
+        (runtime.STATUS_CLOCK_ERROR, ErrorCode.LICENSE_TAMPER_DETECTED, 423),
+        (runtime.STATUS_ERROR, ErrorCode.LICENSE_STATE_ERROR, 503),
+    ],
+)
+async def test_locked_states_still_block_other_paths(
+    gate_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    locked_status: str,
+    expected_code: str,
+    expected_http: int,
+) -> None:
+    monkeypatch.setattr(
+        runtime,
+        "get_state",
+        lambda s=locked_status: LicenseRuntimeState(status=s),
+    )
+    res = await gate_client.get("/api/v1/users")
+    assert res.status_code == expected_http
+    assert res.json()["error"]["code"] == expected_code
+    setup = await gate_client.get("/api/v1/system/setup-status")
+    assert setup.status_code == expected_http
+    assert setup.json()["error"]["code"] == expected_code
+
+
+# ---------------------------------------------------------------------------
 # D) Read-Only Mode (Mutations Blocked, Reads & Reactivation Allowed)
 # ---------------------------------------------------------------------------
 

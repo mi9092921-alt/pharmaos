@@ -157,6 +157,26 @@ def _backup_import_key(*, use_stdin: bool) -> int:
     return 0
 
 
+def _backup_import_keys(backup_file: Path) -> int:
+    """Import ONLY the clock HMAC key from a backup (P4 §M2).
+
+    Refuses when a key already exists, touches no DB and no other secret.
+    Full `restore` REPLACES secrets on promotion; `import-keys` is the
+    surgical complement for a device whose DB is fine but key is lost.
+    """
+    from pharmaos_api.services import backup_service
+
+    try:
+        members = backup_service.decrypt_backup(backup_file)
+        keys = backup_service.parse_keys_bundle(members, require_db_password=False)
+        backup_service.import_clock_key_only(keys)
+    except Exception as exc:
+        print(f"import-keys failed: {exc}", file=sys.stderr)
+        return 1
+    print("clock HMAC key imported — no other secret touched, no DB touched.")
+    return 0
+
+
 def _backup_restore(backup_file: Path, pgdata: Path, live_port: int, staging_port: int) -> int:
     """Safe cluster-level restore: staging -> verify -> promote (decision 11).
     Any failure rolls the device back to exactly its pre-restore state."""
@@ -604,6 +624,7 @@ def _device_reset() -> int:
         keystore.ENCRYPTION_KEY_NAME,
         keystore.BACKUP_KEY_NAME,
         keystore.BACKUP_KEY_IMPORTED_FLAG,
+        keystore.CLOCK_HMAC_KEY_NAME,
     ]
     for name in names:
         keystore.delete_secret(name)
@@ -651,6 +672,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     b_restore.add_argument("--live-port", type=int, default=5433)
     b_restore.add_argument("--staging-port", type=int, default=55433)
+    b_import_keys = backup_sub.add_parser(
+        "import-keys",
+        help=(
+            "Import ONLY the clock HMAC key from a backup "
+            "(refuses when one exists; no DB touched)."
+        ),
+    )
+    b_import_keys.add_argument("--file", required=True)
 
     b_branch = sub.add_parser("bootstrap-branch", help="Create the first branch.")
     b_branch.add_argument("--name", required=True)
@@ -752,6 +781,8 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch
             return _backup_export_key()
         if args.backup_command == "import-key":
             return _backup_import_key(use_stdin=args.stdin)
+        if args.backup_command == "import-keys":
+            return _backup_import_keys(Path(args.file))
         if args.backup_command == "restore":
             from pharmaos_api.config import default_data_dir
 

@@ -27,7 +27,7 @@ function useDesktopToasts(branchIds: string[], enabled: boolean) {
   const feeds = useQueries({
     queries: branchIds.map((branchId) => ({
       queryKey: ['notifications-desktop-feed', branchId],
-      queryFn: () => listNotifications({ branchId, limit: 100 }),
+      queryFn: () => listNotifications({ branchId, channel: 'desktop', limit: 100 }),
       enabled,
       refetchInterval: 30_000,
     })),

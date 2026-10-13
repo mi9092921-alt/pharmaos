@@ -55,7 +55,7 @@ BACKUP_SUFFIX = ".pharmaos-backup"
 BACKUP_FORMAT = "pharmaos.backup.v1"
 # Newest schema this runtime understands (keep in lockstep with migrations —
 # a backup from a NEWER device must be rejected, not half-restored).
-SUPPORTED_SCHEMA_VERSION = "20260711003000"
+SUPPORTED_SCHEMA_VERSION = "20260711003100"
 # PG 17 per docs/versions.md — pg_restore/dump are major-locked.
 EXPECTED_PG_MAJOR = 17
 LIVE_PORT = 5433
@@ -109,19 +109,22 @@ def _run(
 
 
 def _keys_bundle() -> bytes:
-    """Emergency key copy: JWT pair + field key + DB password (JSON bytes).
+    """Emergency key copy: JWT pair + field key + DB password + clock key.
 
-    The DB password travels inside the encrypted envelope so a restored
-    cluster is reachable on a NEW device (the DPAPI store there is empty and
-    non-portable). Absent in dev backups that never provisioned one."""
+    The clock HMAC key joins the envelope (P4 §M2) so a cross-device restore
+    heals instead of ending in key_lost. Absent only on devices that never
+    activated/rotated one yet (null tolerated on read for old backups).
+    """
     private_pem, public_pem = keystore.ensure_jwt_keypair()
     field_key = keystore.ensure_encryption_key()
+    clock_key = keystore.get_clock_hmac_key()
     return json.dumps(
         {
             "jwt_private_key_pem": private_pem,
             "jwt_public_key_pem": public_pem,
             "encryption_key_hex": field_key.hex(),
             "db_password": keystore.get_db_password(),
+            "clock_hmac_key_hex": clock_key.hex() if clock_key is not None else None,
         }
     ).encode("utf-8")
 
@@ -279,6 +282,17 @@ def _check_compatibility(meta: dict[str, object], *, our_pg_major: int) -> None:
         )
 
 
+def parse_keys_bundle(
+    members: dict[str, bytes], *, require_db_password: bool = True
+) -> dict[str, object]:
+    """Public read of the bundled keys (restore + `backup import-keys`).
+
+    Thin public alias over the internal parser — same fail-closed errors,
+    no private-module reaching from the CLI layer.
+    """
+    return _parse_keys(members, require_db_password=require_db_password)
+
+
 def _parse_keys(
     members: dict[str, bytes], *, require_db_password: bool = True
 ) -> dict[str, object]:
@@ -312,6 +326,7 @@ _LIVE_SECRETS = (
     keystore.JWT_PUBLIC_KEY_NAME,
     keystore.ENCRYPTION_KEY_NAME,
     keystore.DB_PASSWORD_NAME,
+    keystore.CLOCK_HMAC_KEY_NAME,
 )
 
 
@@ -518,6 +533,35 @@ def _import_restored_secrets(keys: dict[str, object]) -> None:
     keystore.set_secret(keystore.JWT_PUBLIC_KEY_NAME, str(keys["jwt_public_key_pem"]))
     keystore.set_secret(keystore.ENCRYPTION_KEY_NAME, str(keys["encryption_key_hex"]).lower())
     keystore.set_db_password(str(keys["db_password"]))
+    # P4 §M2: the clock key rides the same envelope — old backups predate it
+    # (null/absent tolerated), newer ones restore it so the chain verifies.
+    clock_hex = keys.get("clock_hmac_key_hex")
+    if clock_hex:
+        keystore.set_clock_hmac_key(bytes.fromhex(str(clock_hex).lower()))
+
+
+def import_clock_key_only(keys: dict[str, object]) -> None:
+    """`backup import-keys`: import ONLY the clock HMAC key from a backup.
+
+    Refuses when a key already exists (never overwrite live state), touches
+    no DB and no other secret — the documented cross-device heal path that
+    complements (never replaces) a full `restore`.
+    """
+    if keystore.get_clock_hmac_key() is not None:
+        raise BackupError(
+            "a clock HMAC key already exists — refusing to overwrite "
+            "(use a full restore or device-reset first)"
+        )
+    clock_hex = keys.get("clock_hmac_key_hex")
+    if not clock_hex:
+        raise BackupIncompatibleError(
+            "backup predates the clock-key bundle (clock_hmac_key_hex missing) — "
+            "re-take the backup on the source device first"
+        )
+    try:
+        keystore.set_clock_hmac_key(bytes.fromhex(str(clock_hex).lower()))
+    except ValueError as exc:
+        raise BackupError("clock_hmac_key_hex is malformed — backup is corrupt") from exc
 
 
 def _restore_live_secrets(saved: dict[str, str | None]) -> None:

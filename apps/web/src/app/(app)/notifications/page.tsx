@@ -2,6 +2,7 @@
 
 import { Badge, Button, Card, CardContent, Select, Spinner } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import {
@@ -30,9 +31,36 @@ function renderBody(row: NotificationRow): string {
   });
 }
 
+/** Where each alert kind lives — the notification is the signpost, the page
+ * below is the destination (answers "where are the pending e-receipts / the
+ * quantities?"). */
+function detailsHref(bodyKey: string): string {
+  if (bodyKey.includes('ereceipt_backlog') || bodyKey.includes('tt_report_failed')) {
+    return '/compliance';
+  }
+  if (
+    bodyKey.includes('low_stock') ||
+    bodyKey.includes('out_of_stock') ||
+    bodyKey.includes('expiry') ||
+    bodyKey.includes('expired') ||
+    bodyKey.includes('inventory_drift')
+  ) {
+    return '/inventory';
+  }
+  if (bodyKey.includes('high_discount')) return '/reports';
+  if (bodyKey.includes('cash_discrepancy')) return '/cashier';
+  if (bodyKey.includes('backup_overdue') || bodyKey.includes('sync_failed')) return '/settings';
+  return '/alerts';
+}
+
 /** Notification center (P3-M7) — the bell's destination. Unread rows carry
  * the primary-tinted edge; per-row and read-all marking are self-service on
- * VISIBLE rows (own + broadcast) behind notifications.view. */
+ * VISIBLE rows (own + broadcast) behind notifications.view.
+ *
+ * Shows in_app rows ONLY: every critical alert fans out into in_app + desktop
+ * + email delivery rows (same text, same timestamp), so listing all channels
+ * renders each alert 3x. Desktop rows feed OS toasts, email rows are the
+ * provider queue — neither belongs in the human-readable center. */
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
 
@@ -46,7 +74,7 @@ export default function NotificationsPage() {
 
   const listQuery = useQuery({
     queryKey: ['notifications', branchId],
-    queryFn: () => listNotifications({ branchId, limit: 100 }),
+    queryFn: () => listNotifications({ branchId, channel: 'in_app', limit: 100 }),
     enabled: !!branchId,
     refetchInterval: 30_000,
   });
@@ -77,7 +105,9 @@ export default function NotificationsPage() {
     return <p className="py-10 text-center text-slate-500">{t('inventory.no_branch')}</p>;
   }
 
-  const rows = listQuery.data?.notifications ?? [];
+  // Client-side guard too: older API builds ignore the channel param and
+  // return all three delivery rows per alert.
+  const rows = (listQuery.data?.notifications ?? []).filter((r) => r.channel === 'in_app');
   const unreadCount = rows.filter((r) => !r.read_at).length;
 
   return (
@@ -138,6 +168,12 @@ export default function NotificationsPage() {
                     )}
                   </p>
                 </div>
+                <Link
+                  href={detailsHref(row.body_key)}
+                  className="text-xs font-semibold text-primary-600 hover:underline"
+                >
+                  {t('notifications.view_details')}
+                </Link>
                 {!row.read_at && (
                   <Button
                     variant="outline"

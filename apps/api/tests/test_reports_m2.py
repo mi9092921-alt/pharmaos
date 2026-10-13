@@ -240,7 +240,8 @@ async def test_stock_level_csv_neutralizes_formula_injection(
     csv_text = await inventory_service.stock_level_report_csv(db_session, branch_id=branch.id)
     reader = csv.reader(io.StringIO(csv_text.lstrip("\ufeff")))
     header, data_row = list(reader)
-    assert header == ["trade_name_ar", "trade_name", "cached_quantity", "reorder_point", "status"]
+    assert header == ["trade_name_ar", "trade_name", "cached_quantity", "reorder_point",
+                      "shelf_location", "status"]
     name_ar, name_en = data_row[0], data_row[1]
     # The single-quote prefix is the neutralization itself — a spreadsheet app
     # treats it as force-text and drops it from display, so its PRESENCE here
@@ -415,7 +416,7 @@ async def test_stock_level_csv_export_permission_and_shape(
     assert "attachment" in csv_resp.headers.get("content-disposition", "")
     body = csv_resp.text
     assert body.startswith("\ufeff")
-    assert "trade_name_ar,trade_name,cached_quantity,reorder_point,status" in body
+    assert "trade_name_ar,trade_name,cached_quantity,reorder_point,shelf_location,status" in body
 
 
 async def test_inventory_valuation_and_movement_endpoints_smoke(

@@ -14,6 +14,7 @@ documented re-activation path (same customer, new file).
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import re
 import subprocess
@@ -23,7 +24,14 @@ from pathlib import Path
 HWID_PATTERN = re.compile(r"^PHAR-[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$")
 _HWID_DOMAIN = b"pharmaos.hwid.v1\n"
 _CACHE_DOMAIN = b"pharmaos.hwid.cache.v1\n"
-_TIMEOUT_SECONDS = 5.0
+# CIM collection is slow and highly variable on device hardware (measured
+# 1.4s–4.2s idle; worse under boot load) — a single 5s budget silently
+# degraded to the all-guid fallback and minted a DIFFERENT fingerprint
+# mid-boot. Retry with a generous budget; a degraded result is LOUD.
+_COLLECT_TIMEOUT_SECONDS = 15.0
+_COLLECT_ATTEMPTS = 3
+
+logger = logging.getLogger(__name__)
 
 # One PowerShell round-trip for all four sources, positional output (empty
 # lines preserved — a null SerialNumber must not shift the component order).
@@ -67,25 +75,39 @@ def collect_sources() -> tuple[str, str, str, str]:
 
 
 def _collect_windows() -> tuple[str, str, str, str]:
-    result = subprocess.run(  # noqa: S603  # fixed binary, fully controlled args
-        [  # noqa: S607
-            "powershell",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            _PS_SCRIPT,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=_TIMEOUT_SECONDS,
-        check=False,
-    )
-    lines = [line.strip() for line in result.stdout.splitlines()]
-    lines += [""] * (4 - len(lines))
-    baseboard, processor, disk, machine_guid = lines[0], lines[1], lines[2], lines[3]
-    if not machine_guid:
-        machine_guid = _machine_guid_winreg()
-    return baseboard, processor, disk, machine_guid
+    best: tuple[str, str, str, str] | None = None
+    for attempt in range(1, _COLLECT_ATTEMPTS + 1):
+        try:
+            result = subprocess.run(  # noqa: S603  # fixed binary, fully controlled args
+                [  # noqa: S607
+                    "powershell",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    _PS_SCRIPT,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=_COLLECT_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            logger.warning("hwid collection attempt %d/%d failed", attempt, _COLLECT_ATTEMPTS)
+            continue
+        lines = [line.strip() for line in result.stdout.splitlines()]
+        lines += [""] * (4 - len(lines))
+        baseboard, processor, disk, machine_guid = lines[0], lines[1], lines[2], lines[3]
+        if not machine_guid:
+            machine_guid = _machine_guid_winreg()
+        tup = (baseboard, processor, disk, machine_guid)
+        if all(tup):
+            return tup
+        if best is None or sum(bool(x) for x in tup) > sum(bool(x) for x in best):
+            best = tup
+    if best is not None:
+        logger.warning("hwid collection degraded: %d/4 sources present", sum(bool(x) for x in best))
+        return best
+    return ("", "", "", _machine_guid_winreg())
 
 
 def _machine_guid_winreg() -> str:

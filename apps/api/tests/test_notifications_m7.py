@@ -281,7 +281,9 @@ async def test_alerts_engine_creates_notifications(
     await _set_reorder(db_session, branch, med_id, "1500")
 
     first = await alerts_service.evaluate_branch(db_session, branch.id)
-    assert first["created"] == 1
+    # low_stock + the missing_location branch aggregate (the stocked SKU is
+    # unslotted): one notification burst per NEW condition, never per SKU.
+    assert first["created"] == 2
     rows = (await db_session.execute(text("""
                 SELECT n.id FROM notifications n
                 JOIN alerts a ON a.id = n.related_alert_id

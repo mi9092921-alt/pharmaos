@@ -15,9 +15,10 @@ CLAUDE.md rules enforced here:
 import csv
 import datetime as dt
 import io
+import re
 import uuid
 from decimal import Decimal
-from typing import cast
+from typing import Any, cast
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,38 @@ _BATCH_STATUSES = {"active", "quarantined", "expired", "recalled", "depleted"}
 _LOCKED_STATUSES = ("quarantined", "expired", "recalled")
 _REPORT_STATUSES = ("active", "quarantined", "expired", "recalled", "depleted")
 MAX_PAGE_SIZE = 100
+# Shelf-code contract (M0/M2 — mirrors normalize_shelf_code() in migration
+# 20260711003100 and packages/shared/src/shelf_location_vectors.json):
+# normalize FIRST (accept a-3/A 3/b٧-digits), then validate ^[A-Z][1-9][0-9]?$.
+# ASCII-only translate (no locale UPPER); NBSP via escape, never a pasted byte.
+_SHELF_PATTERN = re.compile(r"^[A-Z][1-9][0-9]?$")
+_SHELF_TABLE = str.maketrans(
+    "abcdefghijklmnopqrstuvwxyz٠١٢٣٤٥٦٧٨٩",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+)
+_SHELF_STRIP = (" ", "\t", "\r", "\n", "\u00a0", "-", "_")
+
+#: Sentinel for PATCH fields absent from the payload (no change) — distinct
+#: from an explicit null/"" which means CLEAR per the ratified contract.
+_UNSET: Any = object()
+
+
+def normalize_shelf_location(raw: str | None) -> str | None:
+    """Normalize-first shelf validation. None/blank -> None (clear, not an
+    error); anything else is stripped, ASCII-mapped and pattern-checked.
+    Raises ApiError(VALIDATION_FAILED, 422) on invalid codes."""
+    if raw is None:
+        return None
+    s = raw.strip().translate(_SHELF_TABLE)
+    for ch in _SHELF_STRIP:
+        s = s.replace(ch, "")
+    if not s:
+        return None
+    if not _SHELF_PATTERN.match(s):
+        raise ApiError(
+            ErrorCode.VALIDATION_FAILED, 422, message="Invalid shelf_location (e.g. B7)."
+        )
+    return s
 # Low-stock threshold: reorder point if set, else the minimum level (0 = untracked).
 _LOW_THRESHOLD = "COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0), 0)"
 # Expiry-alert horizons (CLAUDE.md ALERT_RULES): a batch expiring within 30 days
@@ -71,6 +104,7 @@ async def receive_batch(
     reference_id: uuid.UUID | None = None,
     gtin: str | None = None,
     serials: list[str] | None = None,
+    shelf_location: str | None = None,
 ) -> MedicationBatch:
     """Core receiving primitive: batch row + purchase_in movement + cache delta
     in the CALLER's transaction (NO commit — the caller commits).
@@ -78,7 +112,12 @@ async def receive_batch(
     reference_type/reference_id link the movement to its source (e.g. a
     purchase_order), so goods-receipt against a PO is auditable through the same
     stock_movements ledger. Reused by receive_stock (standalone) and by the
-    purchase-order receive flow (many lines, one commit)."""
+    purchase-order receive flow (many lines, one commit).
+
+    Shelf contract (M2): an absent/blank shelf is a no-op and NEVER clears an
+    existing slot; a provided code is normalized first, then written ONLY when
+    the current slot is NULL (first receipt wins — later moves go through
+    PATCH /inventory/settings), audited as settings-changed in the same tx."""
     if quantity <= 0:
         raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Quantity must be positive.")
     if purchase_price < 0:
@@ -135,6 +174,33 @@ async def receive_batch(
         )
     )
     await apply_cache_delta(session, branch_id, medication_id, quantity)
+    if shelf_location is not None:
+        code = normalize_shelf_location(shelf_location)
+        if code is not None:
+            res = await session.execute(
+                text(
+                    "UPDATE branch_inventory SET shelf_location = :s, "
+                    "updated_by = :actor "
+                    "WHERE branch_id = :b AND medication_id = :m "
+                    "AND NOT is_deleted AND shelf_location IS NULL"
+                ).bindparams(s=code, actor=actor.id, b=branch_id, m=medication_id)
+            )
+            updated = getattr(res, "rowcount", 0) or 0
+            if updated:
+                await audit_service.record(
+                    session,
+                    AuditAction.SETTINGS_CHANGED,
+                    actor=actor,
+                    branch_id=branch_id,
+                    entity_type="medication",
+                    entity_id=medication_id,
+                    metadata={
+                        "scope": "stock_settings",
+                        "shelf_location_old": None,
+                        "shelf_location": code,
+                        "source": reference_type,
+                    },
+                )
     # P2-M3: capture scanned 2D pack serials for this batch (EDA track & trace).
     if serials:
         await pack_serial_service.capture_received(
@@ -158,6 +224,7 @@ async def receive_stock(
     reference_id: uuid.UUID | None = None,
     gtin: str | None = None,
     serials: list[str] | None = None,
+    shelf_location: str | None = None,
 ) -> MedicationBatch:
     """Receive one batch as a standalone atomic operation (commits)."""
     batch = await receive_batch(
@@ -174,6 +241,7 @@ async def receive_stock(
         reference_id=reference_id,
         gtin=gtin,
         serials=serials,
+        shelf_location=shelf_location,
     )
     await session.commit()
     await session.refresh(batch)
@@ -276,6 +344,310 @@ async def set_batch_status(
     return batch
 
 
+async def update_stock_settings(
+    session: AsyncSession,
+    *,
+    actor: User,
+    branch_id: uuid.UUID,
+    medication_id: uuid.UUID,
+    reorder_point: Decimal | None = None,
+    min_stock_level: Decimal | None = None,
+    max_stock_level: Decimal | None = None,
+    shelf_location: str | None | Any = _UNSET,
+) -> dict[str, object]:
+    """Set per-medication stock thresholds + shelf slot on the derived cache row.
+
+    This touches NO quantity (batches stay the sole truth — CLAUDE.md rule 15),
+    so no stock_movement is written; the change is audited as settings-changed
+    WITH old/new values in the same transaction.
+    Missing cache row is created with quantity 0 (medication known but never
+    received). At least one field must be provided.
+
+    Shelf contract (M2): the router passes _UNSET when the key is absent from
+    the payload (no change); an explicit null/"" clears to NULL after
+    normalization; anything else is normalized FIRST (a-3 -> A3) then
+    pattern-checked (E-VAL-001 on failure). Numeric nulls keep legacy
+    no-op semantics (documented; only shelf has clear semantics)."""
+    for label, value in (
+        ("reorder_point", reorder_point),
+        ("min_stock_level", min_stock_level),
+        ("max_stock_level", max_stock_level),
+    ):
+        if value is not None and value < 0:
+            raise ApiError(
+                ErrorCode.VALIDATION_FAILED, 422, message=f"{label} must be >= 0."
+            )
+    shelf_provided = shelf_location is not _UNSET
+    shelf = normalize_shelf_location(cast("str | None", shelf_location)) if shelf_provided else None
+    if (
+        reorder_point is None
+        and min_stock_level is None
+        and max_stock_level is None
+        and not shelf_provided
+    ):
+        raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Nothing to update.")
+    medication = (
+        await session.execute(
+            select(Medication).where(
+                Medication.id == medication_id, Medication.is_deleted.is_(False)
+            )
+        )
+    ).scalar_one_or_none()
+    if medication is None:
+        raise ApiError(ErrorCode.VALIDATION_FAILED, 404, message="Medication not found.")
+    branch = await session.get(Branch, branch_id)
+    if branch is None or branch.is_deleted or not branch.is_active:
+        raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Unknown branch.")
+    old_shelf = (
+        await session.execute(
+            text(
+                "SELECT shelf_location FROM branch_inventory "
+                "WHERE branch_id = :b AND medication_id = :m AND NOT is_deleted"
+            ).bindparams(b=branch_id, m=medication_id)
+        )
+    ).scalar_one_or_none()
+    row = (
+        await session.execute(
+            text("""
+                INSERT INTO branch_inventory
+                    (branch_id, medication_id, cached_quantity, reorder_point,
+                     min_stock_level, max_stock_level, shelf_location, created_by)
+                VALUES (:b, :m, 0, :reorder, :min, :max, :shelf_ins, :actor)
+                ON CONFLICT (branch_id, medication_id) DO UPDATE SET
+                    reorder_point = COALESCE(:reorder, branch_inventory.reorder_point),
+                    min_stock_level = COALESCE(:min, branch_inventory.min_stock_level),
+                    max_stock_level = COALESCE(:max, branch_inventory.max_stock_level),
+                    shelf_location = CASE WHEN :shelf_set
+                                          THEN CAST(:shelf AS VARCHAR)
+                                          ELSE branch_inventory.shelf_location END,
+                    updated_by = :actor
+                RETURNING id, cached_quantity, reorder_point,
+                          min_stock_level, max_stock_level, shelf_location
+                """).bindparams(
+                b=branch_id,
+                m=medication_id,
+                reorder=reorder_point,
+                min=min_stock_level,
+                max=max_stock_level,
+                shelf_ins=shelf if shelf_provided else None,
+                shelf=shelf,
+                shelf_set=shelf_provided,
+                actor=actor.id,
+            )
+        )
+    ).mappings().first()
+    if row is None:  # pragma: no cover — the upsert always returns its row
+        raise RuntimeError("stock settings upsert returned no row")
+    metadata: dict[str, object] = {
+        "scope": "stock_settings",
+        "reorder_point": str(reorder_point) if reorder_point is not None else None,
+        "min_stock_level": str(min_stock_level) if min_stock_level is not None else None,
+        "max_stock_level": str(max_stock_level) if max_stock_level is not None else None,
+    }
+    if shelf_provided:
+        metadata["shelf_location_old"] = old_shelf
+        metadata["shelf_location"] = shelf
+    await audit_service.record(
+        session,
+        AuditAction.SETTINGS_CHANGED,
+        actor=actor,
+        branch_id=branch_id,
+        entity_type="medication",
+        entity_id=medication_id,
+        metadata=metadata,
+    )
+    await session.commit()
+    return {
+        "branch_id": str(branch_id),
+        "medication_id": str(medication_id),
+        "cached_quantity": str(row["cached_quantity"]),
+        "reorder_point": str(row["reorder_point"]) if row["reorder_point"] is not None else None,
+        "min_stock_level": str(row["min_stock_level"])
+        if row["min_stock_level"] is not None
+        else None,
+        "max_stock_level": str(row["max_stock_level"])
+        if row["max_stock_level"] is not None
+        else None,
+        "shelf_location": row["shelf_location"],
+    }
+
+
+# --------------------------- shelf bulk import (M5) ---------------------------
+
+SHELF_IMPORT_MAX_BYTES = 2 * 1024 * 1024
+SHELF_IMPORT_MAX_ROWS = 2000
+SHELF_IMPORT_COLUMNS = ("barcode_or_name", "shelf")
+
+
+async def _resolve_import_medication(
+    session: AsyncSession, key: str
+) -> tuple[uuid.UUID | None, str | None]:
+    """Deterministic medication resolution for one import key.
+
+    Barcode exact match first; otherwise an EXACT (case-insensitive, no
+    wildcards) trade_name / trade_name_ar match. Returns (id, None) on a
+    unique hit, else (None, 'unknown_medication' | 'ambiguous_name').
+    Fuzzy/trigram matching is deliberately NOT used — a slot must never
+    land on a guessed medication."""
+    hit = (
+        await session.execute(
+            text(
+                "SELECT bc.medication_id FROM medication_barcodes bc "
+                "JOIN medications m ON m.id = bc.medication_id "
+                "WHERE bc.barcode = :k AND NOT bc.is_deleted AND NOT m.is_deleted"
+            ).bindparams(k=key)
+        )
+    ).scalar_one_or_none()
+    if hit is not None:
+        return hit, None
+    names = (
+        await session.execute(
+            text(
+                "SELECT id FROM medications WHERE NOT is_deleted "
+                "AND (trade_name ILIKE :k OR trade_name_ar ILIKE :k)"
+            ).bindparams(k=key)
+        )
+    ).scalars().all()
+    unique = list(dict.fromkeys(names))
+    if len(unique) == 1:
+        return unique[0], None
+    if not unique:
+        return None, "unknown_medication"
+    return None, "ambiguous_name"
+
+
+async def import_shelf_locations(
+    session: AsyncSession,
+    *,
+    actor: User,
+    branch_id: uuid.UUID,
+    rows: list[dict[str, str]],
+    dry_run: bool = True,
+) -> dict[str, object]:
+    """Bulk shelf assignment from parsed spreadsheet rows.
+
+    Contract (M5): dry_run validates everything and writes nothing; execute
+    FULLY re-validates (a preview may be stale) then applies best-effort
+    per-row through update_stock_settings — one raced row never rolls back
+    the rest. Audit granularity is per-row settings.changed (each slot
+    assignment is its own settings change) plus the summary counts returned
+    here. Quantity is never touched (drift stays clean by construction).
+    Rows for catalog medications with no cache row yet create a 0-quantity
+    slot row — consistent with PATCH, never a phantom batch."""
+    branch = await session.get(Branch, branch_id)
+    if branch is None or branch.is_deleted or not branch.is_active:
+        raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Unknown branch.")
+
+    parsed: list[dict[str, object]] = []
+    for i, raw in enumerate(rows):
+        excel_row = i + 2  # 1-based + header row
+        key = (raw.get("barcode_or_name") or "").strip()
+        shelf_raw = (raw.get("shelf") or "").strip()
+        if not key:
+            parsed.append({"row": excel_row, "ok": False, "reason": "empty_key"})
+            continue
+        try:
+            code = normalize_shelf_location(shelf_raw or None)
+        except ApiError:
+            parsed.append(
+                {"row": excel_row, "key": key, "shelf": shelf_raw,
+                 "ok": False, "reason": "invalid_shelf"}
+            )
+            continue
+        if code is None:
+            parsed.append(
+                {"row": excel_row, "key": key, "shelf": shelf_raw,
+                 "ok": False, "reason": "empty_shelf"}
+            )
+            continue
+        med_id, err = await _resolve_import_medication(session, key)
+        if err is not None or med_id is None:
+            parsed.append(
+                {"row": excel_row, "key": key, "shelf": code,
+                 "ok": False, "reason": err or "unknown_medication"}
+            )
+            continue
+        parsed.append({"row": excel_row, "key": key, "shelf": code,
+                       "ok": True, "medication_id": med_id})
+
+    # Same medication twice in one file (even with the same slot): reject
+    # every occurrence — no silent last-wins.
+    seen: dict[uuid.UUID, int] = {}
+    for p in parsed:
+        if p["ok"]:
+            mid = cast("uuid.UUID", p["medication_id"])
+            seen[mid] = seen.get(mid, 0) + 1
+    dupes = {mid for mid, n in seen.items() if n > 1}
+    if dupes:
+        for p in parsed:
+            if p["ok"] and p["medication_id"] in dupes:
+                p["ok"] = False
+                p["reason"] = "duplicate_in_file"
+
+    rejected = [
+        {"row": p["row"], "key": p.get("key"), "shelf": p.get("shelf"),
+         "code": "E-VAL-001", "reason": p["reason"]}
+        for p in parsed if not p["ok"]
+    ]
+    valid = [p for p in parsed if p["ok"]]
+    if dry_run:
+        names = {}
+        if valid:
+            name_rows = (
+                await session.execute(
+                    select(Medication.id, Medication.trade_name, Medication.trade_name_ar)
+                    .where(Medication.id.in_([p["medication_id"] for p in valid]))
+                )
+            ).all()
+            names = {r[0]: (r[1], r[2]) for r in name_rows}
+        return {
+            "branch_id": str(branch_id),
+            "dry_run": True,
+            "total": len(rows),
+            "valid_count": len(valid),
+            "valid": [
+                {"row": p["row"], "medication_id": str(p["medication_id"]),
+                 "trade_name": names.get(p["medication_id"], ("?", None))[0],
+                 "trade_name_ar": names.get(p["medication_id"], ("?", None))[1],
+                 "shelf": p["shelf"]}
+                for p in valid
+            ],
+            "rejected": rejected,
+        }
+
+    applied: list[dict[str, object]] = []
+    apply_errors: list[dict[str, object]] = list(rejected)
+    for p in valid:
+        try:
+            await update_stock_settings(
+                session, actor=actor, branch_id=branch_id,
+                medication_id=cast("uuid.UUID", p["medication_id"]),
+                shelf_location=cast("str", p["shelf"]),
+            )
+        except ApiError as e:
+            apply_errors.append(
+                {"row": p["row"], "key": p.get("key"), "shelf": p.get("shelf"),
+                 "code": e.code, "reason": "apply_failed"}
+            )
+            continue
+        med = await session.get(Medication, cast("uuid.UUID", p["medication_id"]))
+        applied.append(
+            {"row": p["row"], "medication_id": str(p["medication_id"]),
+             "trade_name": med.trade_name if med else "?",
+             "trade_name_ar": med.trade_name_ar if med else None,
+             "shelf": p["shelf"]}
+        )
+    apply_errors.sort(key=lambda e: str(e["row"]))
+    return {
+        "branch_id": str(branch_id),
+        "dry_run": False,
+        "total": len(rows),
+        "applied": len(applied),
+        "rows": applied,
+        "rejected": apply_errors,
+    }
+
+
 async def drift_check(session: AsyncSession, branch_id: uuid.UUID) -> list[dict[str, str]]:
     """Compare cache vs. truth. Returns drifted rows (empty = invariant holds)."""
     rows = (await session.execute(text("""
@@ -340,19 +712,43 @@ async def get_batch(session: AsyncSession, batch_id: uuid.UUID) -> MedicationBat
 # --------------------------- read models (UI screens) ---------------------------
 
 
+async def get_shelf(
+    session: AsyncSession, *, branch_id: uuid.UUID, medication_id: uuid.UUID
+) -> str | None:
+    """Branch-scoped shelf slot for one medication (None when never slotted).
+    Read-only helper for POS enrichment — the catalog stays the source of
+    truth for the medication itself; only the slot comes from this branch."""
+    return (
+        await session.execute(
+            text(
+                "SELECT shelf_location FROM branch_inventory "
+                "WHERE branch_id = :b AND medication_id = :m AND NOT is_deleted"
+            ).bindparams(b=branch_id, m=medication_id)
+        )
+    ).scalar_one_or_none()
+
+
 async def list_inventory(
     session: AsyncSession,
     *,
     branch_id: uuid.UUID,
     search: str | None = None,
     low_stock_only: bool = False,
+    shelf: str | None = None,
+    zone: str | None = None,
+    sort: str = "stock",
     skip: int = 0,
     limit: int = 50,
 ) -> tuple[list[dict[str, object]], int]:
     """Stock-on-hand per medication for a branch (reads the derived cache).
 
-    Search reuses the catalog's Arabic normalization (trigram + ILIKE); low-stock
-    ranks first so the reorder queue is always on top.
+    Search reuses the catalog's Arabic normalization (trigram + ILIKE); with
+    the default sort, low-stock ranks first so the reorder queue is always
+    on top. `shelf` is an EXACT slot code (normalized first: b7 -> B7);
+    `zone` is a single-letter prefix (B matches B7 but never B71 confusion —
+    codes are at most letter+2 digits). `sort="location"` replaces the
+    low-stock-first order with the numeric shelf walk
+    (A2 before A10, NULLS LAST) for stocktaking.
     """
     capped = min(max(limit, 1), MAX_PAGE_SIZE)
     where = ["bi.branch_id = :b", "NOT bi.is_deleted", "NOT m.is_deleted"]
@@ -364,9 +760,38 @@ async def list_inventory(
             "OR m.trade_name_ar ILIKE '%' || :q || '%')"
         )
         params["q"] = search.strip()
+    if shelf is not None:
+        code = normalize_shelf_location(shelf)
+        if code is None:
+            raise ApiError(
+                ErrorCode.VALIDATION_FAILED, 422, message="Invalid shelf_location (e.g. B7)."
+            )
+        where.append("bi.shelf_location = :shelf")
+        params["shelf"] = code
+    if zone is not None:
+        z = zone.strip().upper()
+        if len(z) != 1 or not ("A" <= z <= "Z"):
+            raise ApiError(
+                ErrorCode.VALIDATION_FAILED, 422, message="Invalid zone (single letter A-Z)."
+            )
+        # Stored codes are normalized uppercase — LIKE (not ILIKE) on the
+        # varchar_pattern_ops prefix index.
+        where.append("bi.shelf_location LIKE :zone_pf")
+        params["zone_pf"] = z + "%"
     if low_stock_only:
         where.append(f"({_LOW_THRESHOLD} > 0 AND bi.cached_quantity <= {_LOW_THRESHOLD})")
     where_sql = " AND ".join(where)
+    if sort == "location":
+        order_sql = (
+            "bi.shelf_location IS NULL, "
+            "SUBSTRING(bi.shelf_location, 1, 1), "
+            "CAST(SUBSTRING(bi.shelf_location, 2) AS INT), m.trade_name"
+        )
+    elif sort == "stock":
+        order_sql = "low_stock DESC, m.trade_name"
+    else:
+        raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Invalid sort.")
+
 
     total = (
         await session.execute(
@@ -386,7 +811,7 @@ async def list_inventory(
                         AND bi.cached_quantity <= {_LOW_THRESHOLD}) AS low_stock
                 FROM branch_inventory bi JOIN medications m ON m.id = bi.medication_id
                 WHERE {where_sql}
-                ORDER BY low_stock DESC, m.trade_name
+                ORDER BY {order_sql}
                 OFFSET :skip LIMIT :lim
                 """  # noqa: S608 (all interpolated fragments are constant; values are bound)
             ).bindparams(**params, skip=max(skip, 0), lim=capped)
@@ -642,6 +1067,7 @@ async def stock_level_report(
     *,
     branch_id: uuid.UUID,
     low_stock_only: bool = False,
+    sort: str = "stock",
     skip: int = 0,
     limit: int = 50,
 ) -> dict[str, object]:
@@ -658,7 +1084,8 @@ async def stock_level_report(
     """
     capped = min(max(limit, 1), MAX_PAGE_SIZE)
     rows, total = await list_inventory(
-        session, branch_id=branch_id, low_stock_only=low_stock_only, skip=skip, limit=capped
+        session, branch_id=branch_id, low_stock_only=low_stock_only,
+        sort=sort, skip=skip, limit=capped,
     )
     items: list[dict[str, object]] = []
     for row in rows:
@@ -715,6 +1142,7 @@ async def stock_level_report_csv(
     where_sql = " AND ".join(where)
     rows = (await session.execute(text(f"""
                 SELECT m.trade_name, m.trade_name_ar, bi.cached_quantity, bi.reorder_point,
+                       bi.shelf_location,
                        ({_LOW_THRESHOLD} > 0
                         AND bi.cached_quantity <= {_LOW_THRESHOLD}) AS low_stock
                 FROM branch_inventory bi JOIN medications m ON m.id = bi.medication_id
@@ -724,7 +1152,8 @@ async def stock_level_report_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["trade_name_ar", "trade_name", "cached_quantity", "reorder_point", "status"])
+    writer.writerow(["trade_name_ar", "trade_name", "cached_quantity", "reorder_point",
+                     "shelf_location", "status"])
     for r in rows:
         qty = Decimal(r.cached_quantity)
         status = "out_of_stock" if qty == 0 else ("low_stock" if r.low_stock else "ok")
@@ -734,6 +1163,7 @@ async def stock_level_report_csv(
                 _csv_safe(r.trade_name),
                 str(qty),
                 str(r.reorder_point) if r.reorder_point is not None else "",
+                r.shelf_location or "",
                 status,
             ]
         )

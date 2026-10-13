@@ -28,6 +28,8 @@ coverage/
 .env.*
 !.env.example
 *.pem
+*.plkey
+*.license
 *.key
 *.p12
 *.pfx

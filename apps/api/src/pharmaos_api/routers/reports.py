@@ -217,13 +217,15 @@ async def customer_analytics_report_export(
 async def stock_level_report(
     branch_id: uuid.UUID = Query(),
     low_stock_only: bool = Query(default=False),
+    sort: str = Query(default="stock", pattern="^(stock|location)$"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=inventory_svc.MAX_PAGE_SIZE),
     session: AsyncSession = Depends(get_session),
     _: None = _reports_inventory,
 ) -> dict[str, object]:
     data = await inventory_svc.stock_level_report(
-        session, branch_id=branch_id, low_stock_only=low_stock_only, skip=skip, limit=limit
+        session, branch_id=branch_id, low_stock_only=low_stock_only,
+        sort=sort, skip=skip, limit=limit,
     )
     return success_envelope(data)
 

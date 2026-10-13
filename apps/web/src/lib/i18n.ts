@@ -62,6 +62,17 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'shell.online': 'متصل',
     'shell.offline': 'غير متصل — يعمل محلياً',
     'shell.loading': 'جارٍ التحميل…',
+    'shell.retry': 'إعادة المحاولة',
+    'shell.boot_error_title': 'تعذر تشغيل النظام',
+    'shell.boot_error_body':
+      'تعذر الاتصال بخدمة البرنامج على هذا الجهاز. تأكد أن التطبيق يعمل، ثم اضغط إعادة المحاولة.',
+    'shell.license_title': 'مطلوب تفعيل ترخيص البرنامج',
+    'shell.hwid': 'كود الجهاز',
+    'shell.hwid_unavailable': 'تعذر قراءة كود الجهاز — أعد المحاولة',
+    'shell.license_step1': '١. انسخ كود الجهاز أعلاه وأرسله للمطور لاستلام ملف الترخيص (.license).',
+    'shell.license_step2':
+      '٢. فعّل برفع ملف الترخيص من الأسفل، أو عبر أداة التفعيل activate-pharmaos.bat.',
+    'shell.license_step3': '٣. اضغط إعادة المحاولة بالأسفل ثم سجّل الدخول.',
     'dashboard.welcome': 'مرحباً',
     'dashboard.role': 'الدور',
     'dashboard.quick_actions': 'إجراءات سريعة',
@@ -103,6 +114,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'users.cannot_modify_self': 'لا يمكن تعطيل أو تغيير دور أو حذف حسابك الخاص',
     'common.save': 'حفظ',
     'common.saved': 'تم الحفظ',
+    'common.retry': 'إعادة المحاولة',
     // Purchases — suppliers (P2-M1)
     'purchases.title': 'الموردون',
     'purchases.add': 'إضافة مورّد',
@@ -216,6 +228,29 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'pos.vat_included': 'منها ض.ق.م',
     'receipt.tax': 'ض.ق.م',
     'settings.max_discount': 'الحد الأقصى للخصم (%)',
+    // Software license card (P4 — device licensing, distinct from the
+    // pharmacy license_number above)
+    'settings.software_license.title': 'ترخيص البرنامج',
+    'settings.software_license.status': 'الحالة',
+    'settings.software_license.hwid': 'كود الجهاز',
+    'settings.software_license.valid_until': 'صالح حتى',
+    'settings.software_license.days_left': 'الأيام المتبقية',
+    'settings.software_license.days_unit': 'يوم',
+    'settings.software_license.na': '—',
+    'settings.software_license.upload': 'رفع ملف الترخيص',
+    'settings.software_license.activating': 'جارٍ التفعيل…',
+    'settings.software_license.activated_ok': 'تم تفعيل الترخيص بنجاح',
+    'settings.software_license.hint':
+      'اختر ملف الترخيص (.license) المستلَم من المطور لتفعيل البرنامج أو تجديده (بحد أقصى 64KB).',
+    'settings.software_license.too_large': 'حجم الملف يتجاوز الحد (64KB) — اختر ملف الترخيص الصحيح',
+    'settings.software_license.st_active': 'نشط',
+    'settings.software_license.st_grace': 'فترة سماح',
+    'settings.software_license.st_read_only': 'منتهٍ — وضع القراءة فقط',
+    'settings.software_license.st_unlicensed': 'غير مفعّل',
+    'settings.software_license.expiring_soon':
+      'ينتهي الترخيص قريبًا — تواصل مع المطور للتجديد قبل انتهاء فترة السماح',
+    'settings.software_license.grace_banner':
+      'انتهت صلاحية الترخيص والدخول في فترة السماح — جدّد الآن لتفادي وضع القراءة فقط',
     'settings.readonly': 'للعرض فقط — تحتاج صلاحية التعديل',
     'settings.no_branch': 'لا يوجد فرع بعد',
     // Catalog
@@ -277,6 +312,12 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.on_hand': 'المتوفر',
     'inventory.reorder_point': 'حد إعادة الطلب',
     'inventory.shelf': 'الرف',
+    'inventory.shelf_filter': 'المكان (B7)',
+    'inventory.zone_filter': 'المنطقة (B)',
+    'inventory.sort_location': 'ترتيب بالمكان (للجرد)',
+    'inventory.no_location': 'بلا مكان',
+    'inventory.shelf_placeholder': 'B7',
+    'inventory.shelf_receive_hint': 'يُسجَّل فقط إن كان بلا مكان — لا يغيّر مكاناً قائماً',
     'inventory.low': 'مخزون منخفض',
     'inventory.empty': 'لا يوجد مخزون في هذا الفرع',
     'inventory.no_branch': 'لا يوجد فرع — أنشئ فرعاً أولاً',
@@ -309,6 +350,11 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.release': 'إعادة تفعيل',
     'inventory.status_changed': 'تم تحديث حالة الدفعة',
     'inventory.view_batches': 'عرض الدفعات',
+    'inventory.stock_settings': 'ضبط الحدود والرف',
+    'inventory.save': 'حفظ',
+    'inventory.min_stock': 'الحد الأدنى للمخزون',
+    'inventory.max_stock': 'الحد الأقصى للمخزون',
+    'inventory.settings_saved_ok': 'تم حفظ إعدادات المخزون',
     'inventory.add_supplier': 'إضافة مورّد',
     'inventory.supplier_name': 'اسم المورّد',
     'inventory.supplier_added': 'تمت إضافة المورّد',
@@ -587,6 +633,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'compliance.drain': 'إرسال المعلّق الآن',
     'compliance.draining': 'جارٍ الإرسال…',
     'compliance.drained_ok': 'تمت معالجة الطابور',
+    'compliance.drained_skipped':
+      'تعذّر الإرسال ({count}): لا توجد بيانات ETA/EDA الحقيقية على هذا الجهاز — البيع والطابور محفوظان، وأدخل الاعتمادات الرسمية أولاً',
     'compliance.status': 'الحالة',
     'compliance.invoice': 'الفاتورة',
     'compliance.eta_uuid': 'معرّف ETA',
@@ -827,6 +875,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.rule_sync_failed': 'فشل المزامنة',
     'alerts.rule_backup_overdue': 'نسخ احتياطي متأخر',
     'alerts.rule_inventory_drift': 'انحراف مخزون',
+    'alerts.rule_missing_location': 'أدوية بلا مكان',
     'alerts.msg_low_stock':
       '{name}: المتوفر {quantity} عند أو دون حد إعادة الطلب ({reorder_point})',
     'alerts.msg.low_stock':
@@ -855,6 +904,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.msg.backup_overdue': 'آخر نسخة احتياطية أقدم من {hours} ساعة (أو لا توجد)',
     'alerts.msg_inventory_drift': 'انحراف مخزون: الكاش {cached} مقابل حقيقة الدفعات {truth}',
     'alerts.msg.inventory_drift': 'انحراف مخزون: الكاش {cached} مقابل حقيقة الدفعات {truth}',
+    'alerts.msg_missing_location': '{count} أصناف بمخزون بلا مكان مسجل',
+    'alerts.msg.missing_location': '{count} أصناف بمخزون بلا مكان مسجل',
 
     // P3-M7 — notifications (delivery; alerts = state)
     'notifications.title': 'الإشعارات',
@@ -862,6 +913,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'notifications.read_all': 'تعليم الكل كمقروء',
     'notifications.mark_read': 'تعليم كمقروء',
     'notifications.empty': 'لا إشعارات بعد',
+    'notifications.view_details': 'عرض التفاصيل',
     'notifications.pending_email': 'بانتظار مزوّد البريد',
     'notifications.priority_low': 'منخفضة',
     'notifications.priority_medium': 'متوسطة',
@@ -918,6 +970,18 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'shell.online': 'Online',
     'shell.offline': 'Offline — working locally',
     'shell.loading': 'Loading…',
+    'shell.retry': 'Retry',
+    'shell.boot_error_title': 'Could not start the system',
+    'shell.boot_error_body':
+      'Could not reach the app service on this device. Make sure the app is running, then press retry.',
+    'shell.license_title': 'Software license activation required',
+    'shell.hwid': 'Device code',
+    'shell.hwid_unavailable': 'Could not read the device code — retry',
+    'shell.license_step1':
+      '1. Copy the device code above and send it to the developer to receive the license file (.license).',
+    'shell.license_step2':
+      '2. Activate by uploading the license file below, or via the activate-pharmaos.bat tool.',
+    'shell.license_step3': '3. Press retry below, then sign in.',
     'dashboard.welcome': 'Welcome',
     'dashboard.role': 'Role',
     'dashboard.quick_actions': 'Quick actions',
@@ -960,6 +1024,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'users.cannot_modify_self': 'You cannot deactivate, change role, or delete your own account',
     'common.save': 'Save',
     'common.saved': 'Saved',
+    'common.retry': 'Retry',
     // Purchases — suppliers (P2-M1)
     'purchases.title': 'Suppliers',
     'purchases.add': 'Add supplier',
@@ -1074,6 +1139,30 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'pos.vat_included': 'incl. VAT',
     'receipt.tax': 'VAT',
     'settings.max_discount': 'Max discount (%)',
+    // Software license card (P4 — device licensing, distinct from the
+    // pharmacy license_number above)
+    'settings.software_license.title': 'Software license',
+    'settings.software_license.status': 'Status',
+    'settings.software_license.hwid': 'Device code',
+    'settings.software_license.valid_until': 'Valid until',
+    'settings.software_license.days_left': 'Days left',
+    'settings.software_license.days_unit': 'days',
+    'settings.software_license.na': '—',
+    'settings.software_license.upload': 'Upload license file',
+    'settings.software_license.activating': 'Activating…',
+    'settings.software_license.activated_ok': 'License activated successfully',
+    'settings.software_license.hint':
+      'Select the (.license) file you received from the developer to activate or renew (max 64KB).',
+    'settings.software_license.too_large':
+      'File exceeds the limit (64KB) — select the correct license file',
+    'settings.software_license.st_active': 'Active',
+    'settings.software_license.st_grace': 'Grace period',
+    'settings.software_license.st_read_only': 'Expired — read-only mode',
+    'settings.software_license.st_unlicensed': 'Not activated',
+    'settings.software_license.expiring_soon':
+      'License expiring soon — contact the developer to renew before the grace period ends',
+    'settings.software_license.grace_banner':
+      'License expired, in grace period — renew now to avoid read-only mode',
     'settings.readonly': 'Read-only — edit permission required',
     'settings.no_branch': 'No branch yet',
     // Catalog
@@ -1135,6 +1224,12 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.on_hand': 'On hand',
     'inventory.reorder_point': 'Reorder point',
     'inventory.shelf': 'Shelf',
+    'inventory.shelf_filter': 'Shelf (B7)',
+    'inventory.zone_filter': 'Zone (B)',
+    'inventory.sort_location': 'Sort by location (stocktake)',
+    'inventory.no_location': 'No location',
+    'inventory.shelf_placeholder': 'B7',
+    'inventory.shelf_receive_hint': 'Recorded only when unslotted — never changes an existing slot',
     'inventory.low': 'Low stock',
     'inventory.empty': 'No stock in this branch',
     'inventory.no_branch': 'No branch — create one first',
@@ -1167,6 +1262,11 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.release': 'Release',
     'inventory.status_changed': 'Batch status updated',
     'inventory.view_batches': 'View batches',
+    'inventory.stock_settings': 'Thresholds & shelf',
+    'inventory.save': 'Save',
+    'inventory.min_stock': 'Minimum stock',
+    'inventory.max_stock': 'Maximum stock',
+    'inventory.settings_saved_ok': 'Stock settings saved',
     'inventory.add_supplier': 'Add supplier',
     'inventory.supplier_name': 'Supplier name',
     'inventory.supplier_added': 'Supplier added',
@@ -1445,6 +1545,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'compliance.drain': 'Submit pending now',
     'compliance.draining': 'Submitting…',
     'compliance.drained_ok': 'Queue processed',
+    'compliance.drained_skipped':
+      'Could not submit ({count}): no real ETA/EDA credentials on this device — sales and queue are safe, provision the official credentials first',
     'compliance.status': 'Status',
     'compliance.invoice': 'Invoice',
     'compliance.eta_uuid': 'ETA UUID',
@@ -1685,6 +1787,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.rule_sync_failed': 'Sync failure',
     'alerts.rule_backup_overdue': 'Backup overdue',
     'alerts.rule_inventory_drift': 'Inventory drift',
+    'alerts.rule_missing_location': 'Medications without location',
     'alerts.msg_low_stock': '{name}: {quantity} on hand, at/below reorder point ({reorder_point})',
     'alerts.msg.low_stock': '{name}: {quantity} on hand, at/below reorder point ({reorder_point})',
     'alerts.msg_out_of_stock': '{name}: completely out of stock',
@@ -1711,6 +1814,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.msg.backup_overdue': 'Last backup older than {hours} hours (or none)',
     'alerts.msg_inventory_drift': 'Inventory drift: cache {cached} vs batch truth {truth}',
     'alerts.msg.inventory_drift': 'Inventory drift: cache {cached} vs batch truth {truth}',
+    'alerts.msg_missing_location': '{count} stocked SKU(s) with no recorded location',
+    'alerts.msg.missing_location': '{count} stocked SKU(s) with no recorded location',
 
     // P3-M7 — notifications (delivery; alerts = state)
     'notifications.title': 'Notifications',
@@ -1718,6 +1823,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'notifications.read_all': 'Mark all read',
     'notifications.mark_read': 'Mark read',
     'notifications.empty': 'No notifications yet',
+    'notifications.view_details': 'View details',
     'notifications.pending_email': 'Awaiting mail provider',
     'notifications.priority_low': 'Low',
     'notifications.priority_medium': 'Medium',

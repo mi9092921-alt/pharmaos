@@ -11,13 +11,27 @@ from cryptography.hazmat.primitives import serialization
 
 from pharmaos_license_cli import keys as keys_mod
 from pharmaos_license_cli import ledger as ledger_mod
-from pharmaos_license_cli.canonical import canonical_json_bytes
+from pharmaos_license_cli.canonical import canonical_json_bytes, loads_strict
 from pharmaos_license_cli.payload import (
     CONTAINER_FORMAT,
     PRESETS,
     LicensePayloadV1,
     next_license_id,
 )
+
+
+def _configure_console_utf8() -> None:
+    """Pin stdout/stderr to UTF-8 (P1-D5): Arabic customer names (e.g.
+    `صيدلية الاختبار`) crash on cp1252 consoles with UnicodeEncodeError.
+    errors=replace keeps the CLI alive on any console; ASCII paths stay
+    byte-identical."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        try:
+            if stream is not None and hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
 
 
 def _load_private_key(path: Path) -> tuple[str, Ed25519PrivateKey]:
@@ -163,15 +177,62 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
+    """Strict pre-send check (P1-D3): same closed container contract the API
+    enforces — format + kid + 64-byte signature shape + closed payload —
+    so a file that prints OK here never gets E-LIC-003 at activate.
+    Signature-only bypass would mislead the owner; this is the full gate
+    minus device/expiry binding (checked server-side)."""
     kid, private_key = _load_private_key(Path(args.key_file))
     public_key = private_key.public_key()
-    from pharmaos_license_cli.canonical import loads_strict
+    raw = Path(args.file).read_bytes()
 
-    document = loads_strict(Path(args.file).read_bytes())
-    payload = LicensePayloadV1.model_validate(document["payload"])
-    signature = base64.b64decode(document["signature"], validate=True)
-    public_key.verify(signature, canonical_json_bytes(payload.to_canonical_dict()))
-    print(f"OK: signature valid (kid={kid}) for {payload.license_id} — {payload.customer}")
+    try:
+        from pharmaos_license_cli.canonical import DuplicateKeyError
+
+        document = loads_strict(raw)
+    except DuplicateKeyError:
+        print("FAIL: duplicate_keys — JSON object repeats a key", file=sys.stderr)
+        return 1
+    except ValueError:
+        print("FAIL: schema_mismatch — file is not valid JSON", file=sys.stderr)
+        return 1
+    if not isinstance(document, dict) or set(document) != {
+        "format",
+        "kid",
+        "payload",
+        "signature",
+    }:
+        print("FAIL: schema_mismatch — top-level keys must be format/kid/payload/signature")
+        return 1
+    if document["format"] != CONTAINER_FORMAT:
+        print(f"FAIL: schema_mismatch — format must be {CONTAINER_FORMAT}")
+        return 1
+    doc_kid = document["kid"]
+    if not isinstance(doc_kid, str) or not doc_kid.isascii() or not (1 <= len(doc_kid) <= 16):
+        print("FAIL: schema_mismatch — kid must be 1-16 ASCII chars")
+        return 1
+    if doc_kid != kid:
+        print(f"FAIL: schema_mismatch — file kid {doc_kid!r} != key-file kid {kid!r}")
+        return 1
+    try:
+        payload = LicensePayloadV1.model_validate(document["payload"])
+    except Exception as exc:
+        print(f"FAIL: payload rejected — {exc}")
+        return 1
+    try:
+        signature = base64.b64decode(document["signature"], validate=True)
+    except Exception:
+        print("FAIL: bad_signature — signature is not valid Base64")
+        return 1
+    if len(signature) != 64:
+        print("FAIL: bad_signature — signature must be 64 bytes")
+        return 1
+    try:
+        public_key.verify(signature, canonical_json_bytes(payload.to_canonical_dict()))
+    except Exception:
+        print("FAIL: bad_signature — Ed25519 verification failed")
+        return 1
+    print(f"OK: signature valid (kid={doc_kid}) for {payload.license_id} — {payload.customer}")
     return 0
 
 
@@ -203,6 +264,7 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_console_utf8()
     parser = argparse.ArgumentParser(
         prog="pharmaos-license",
         description="PharmaOS vendor-side license issuing tool (owner machine only).",

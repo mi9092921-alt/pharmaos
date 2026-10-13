@@ -206,10 +206,11 @@ async def drain(
     }
 
 
-def _out(row: EReceiptQueue) -> dict[str, object]:
+def _out(row: EReceiptQueue, invoice_number: str | None = None) -> dict[str, object]:
     return {
         "id": str(row.id),
         "invoice_id": str(row.invoice_id),
+        "invoice_number": invoice_number,
         "status": row.status,
         "eta_uuid": row.eta_uuid,
         "qr_data": row.qr_data,
@@ -235,20 +236,23 @@ async def list_queue(
     total = (
         await session.execute(select(func.count(EReceiptQueue.id)).where(*conditions))
     ).scalar_one()
-    rows = (
+    # Join the invoice number so the UI can show WHICH invoice each queued
+    # row belongs to (answers "where are the pending e-receipts?" — the
+    # queue row alone carries only an opaque invoice_id).
+    pairs = (
         (
             await session.execute(
-                select(EReceiptQueue)
+                select(EReceiptQueue, Invoice.invoice_number)
+                .join(Invoice, Invoice.id == EReceiptQueue.invoice_id)
                 .where(*conditions)
                 .order_by(EReceiptQueue.created_at.desc())
                 .offset(max(skip, 0))
                 .limit(capped)
             )
         )
-        .scalars()
         .all()
     )
-    return [_out(r) for r in rows], int(total)
+    return [_out(row, inv_no) for row, inv_no in pairs], int(total)
 
 
 async def get_for_invoice(session: AsyncSession, invoice_id: uuid.UUID) -> dict[str, object] | None:

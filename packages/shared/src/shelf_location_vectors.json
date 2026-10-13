@@ -1,0 +1,144 @@
+{
+  "_comment": "M0 shared vectors — single source of truth for shelf-code normalization. Tested by all three layers (SQL/Python/JS). ASCII-only by design: fullwidth and Arabic letters are REJECTED, Arabic-Indic digits are MAPPED to ASCII before validation. NBSP appears ONLY as \u00a0 escape (never a pasted byte).",
+  "spec": {
+    "strip_chars": "space, TAB (\\t), CR (\\r), LF (\\n), NBSP (U+00A0), hyphen-minus, underscore; all removed from the interior, stripped at the edges",
+    "case_mapping": "ASCII a-z -> A-Z ONLY via explicit translate (no locale-dependent UPPER)",
+    "digit_mapping": "Arabic-Indic digits -> 0-9 before validation",
+    "empty_rule": "empty after normalization -> NULL (clear, not an error)",
+    "final_pattern": "^[A-Z][1-9][0-9]?$ (one letter + 1..99, no leading zero)",
+    "reserved_zones": "R=fridge, C=safe, F=backstore (interpretive only, not a grammar restriction)",
+    "print_contract": "window.print() A4 via @page (receipt-screen pattern); no new Electron IPC; no barcode — large code text only"
+  },
+  "vectors": [
+    {
+      "in": "B7",
+      "out": "B7",
+      "verdict": "accept"
+    },
+    {
+      "in": "b7",
+      "out": "B7",
+      "verdict": "normalize"
+    },
+    {
+      "in": "a-3",
+      "out": "A3",
+      "verdict": "normalize"
+    },
+    {
+      "in": "A 3",
+      "out": "A3",
+      "verdict": "normalize"
+    },
+    {
+      "in": "A_3",
+      "out": "A3",
+      "verdict": "normalize"
+    },
+    {
+      "in": "  c2  ",
+      "out": "C2",
+      "verdict": "normalize"
+    },
+    {
+      "in": "A\t3",
+      "out": "A3",
+      "verdict": "normalize",
+      "note": "Excel TAB paste"
+    },
+    {
+      "in": "A\r3",
+      "out": "A3",
+      "verdict": "normalize",
+      "note": "Excel CR paste"
+    },
+    {
+      "in": "A\u00a03",
+      "out": "A3",
+      "verdict": "normalize",
+      "note": "NBSP U+00A0 paste from spreadsheet"
+    },
+    {
+      "in": "B١٢",
+      "out": "B12",
+      "verdict": "normalize",
+      "note": "Arabic-Indic digits mapped then accepted"
+    },
+    {
+      "in": "",
+      "out": null,
+      "verdict": "clear"
+    },
+    {
+      "in": "   ",
+      "out": null,
+      "verdict": "clear"
+    },
+    {
+      "in": "\u00a0",
+      "out": null,
+      "verdict": "clear",
+      "note": "lone NBSP -> clear"
+    },
+    {
+      "in": "A0",
+      "out": null,
+      "verdict": "reject",
+      "reason": "leading zero"
+    },
+    {
+      "in": "A01",
+      "out": null,
+      "verdict": "reject",
+      "reason": "leading zero"
+    },
+    {
+      "in": "A100",
+      "out": null,
+      "verdict": "reject",
+      "reason": "max 2 digits (1..99)"
+    },
+    {
+      "in": "AB12",
+      "out": null,
+      "verdict": "reject",
+      "reason": "single letter only"
+    },
+    {
+      "in": "1A",
+      "out": null,
+      "verdict": "reject",
+      "reason": "letter-first"
+    },
+    {
+      "in": "أ1",
+      "out": null,
+      "verdict": "reject",
+      "reason": "Arabic letter — change keyboard language"
+    },
+    {
+      "in": "Ａ１",
+      "out": null,
+      "verdict": "reject",
+      "reason": "fullwidth rejected (ASCII-only normalization)"
+    },
+    {
+      "in": "R3",
+      "out": "R3",
+      "verdict": "accept",
+      "note": "reserved zone fridge"
+    },
+    {
+      "in": "C2",
+      "out": "C2",
+      "verdict": "accept",
+      "note": "reserved zone safe"
+    },
+    {
+      "in": "F12",
+      "out": "F12",
+      "verdict": "accept",
+      "note": "reserved zone backstore"
+    }
+  ]
+}

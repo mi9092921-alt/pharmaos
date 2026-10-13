@@ -128,3 +128,19 @@ Wave adjustments at this gate (compatibility-first, then newest):
   already-pinned `cryptography==49.0.0` (Ed25519 verify/sign, AES-256-GCM, HKDF, scrypt) and
   `keyring==25.7.0` (OS-keystore clock-HMAC key). `tools/license-cli` pins the exact same
   versions in its own pyproject — no lockfile drift, no new transitive surface.
+
+- **2026-10-10 — Issuer key rotation (pre-production, kid `4ff86fbe` → `03a7a211`).**
+  The original issuer private key's passphrase was lost (the `.env` value was a never-filled
+  template placeholder), so no license could ever be issued for it. Rotated while still
+  pre-production at zero cost: new Ed25519 pair via `license-cli init`, public PEM re-baked
+  into `apps/api/.../licensing/vendor_key.py`, old `kid` dropped from accepted kids
+  (`testkid01` kept — no persistent test private key exists). Proof: `LIC-2026-000001`
+  issued + `verify` green, and the frozen `pharmaos-api.exe` in `PharmaOS-Setup-1.1.0.exe`
+  extracted from its PYZ archive carries exactly the new PEM/kids. No test depends on the
+  baked key (all licensing tests use ephemeral keys), so the suite is unaffected.
+
+- **2026-10-10 — Shelf-location bulk import: `python-multipart==0.0.20` (new).**
+  First multipart endpoint in the API (`POST /inventory/shelf-import`, M5):
+  FastAPI `UploadFile`/`Form` parsing requires it. Pinned exact, installed and
+  import-verified against the frozen stack; no transitive surface beyond the
+  parser itself. Rationale recorded here per the version policy.

@@ -33,6 +33,7 @@ _notifications_view = Depends(require_permission("notifications.view"))
 async def list_notifications(
     branch_id: uuid.UUID = Query(),
     unread_only: bool = Query(default=False),
+    channel: str | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
@@ -44,6 +45,7 @@ async def list_notifications(
         branch_id=branch_id,
         user_id=user.id,
         unread_only=unread_only,
+        channel=channel,
         skip=skip,
         limit=limit,
     )

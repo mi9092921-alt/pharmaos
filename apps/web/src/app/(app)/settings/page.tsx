@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -16,6 +17,7 @@ import { useEffect, useState } from 'react';
 
 import {
   createBranch,
+  getLicenseStatus,
   getSettings,
   getTaxProfile,
   listBranches,
@@ -23,6 +25,11 @@ import {
   updateTaxProfile,
   type BranchSettings,
 } from '@/lib/api';
+import {
+  LicenseUploadButton,
+  licenseStatusLabel,
+  licenseStatusTone,
+} from '@/components/license-upload';
 import { useAuth } from '@/lib/auth-store';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
@@ -252,6 +259,8 @@ export default function SettingsPage() {
       </form>
 
       <TaxProfileCard branchId={branch.id} canEdit={canEdit} />
+
+      <SoftwareLicenseCard />
     </div>
   );
 }
@@ -373,6 +382,104 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** P4 device-licensing card: status display + .license upload + alerts.
+ *  Visible to everyone holding settings.view (same gate as this page).
+ *  Distinct from settings.license_number (the pharmacy's own license no.). */
+function SoftwareLicenseCard() {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ['license-status'],
+    queryFn: getLicenseStatus,
+    retry: false,
+  });
+
+  const status = query.data?.status ?? null;
+  const daysLeft = query.data?.days_left ?? null;
+  const showExpiring = status === 'active' && daysLeft !== null && daysLeft <= 14;
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="text-base">{t('settings.software_license.title')}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-0">
+        {query.isLoading ? (
+          <div className="flex justify-center py-4">
+            <Spinner />
+          </div>
+        ) : query.isError || !query.data ? (
+          <p className="text-sm text-danger">{formatApiErrorMessage(query.error)}</p>
+        ) : (
+          <>
+            {(status !== 'active' || showExpiring) && (
+              <div
+                role="alert"
+                className={`rounded-[var(--radius-md)] border p-3 text-sm ${
+                  status === 'grace' || showExpiring
+                    ? 'border-warning/40 bg-amber-50 text-slate-700'
+                    : 'border-danger/30 bg-red-50 text-danger'
+                }`}
+              >
+                {status === 'grace'
+                  ? t('settings.software_license.grace_banner')
+                  : showExpiring
+                    ? t('settings.software_license.expiring_soon')
+                    : licenseStatusLabel(status)}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+              <div>
+                <div className="text-xs text-slate-500">
+                  {t('settings.software_license.status')}
+                </div>
+                <div className="mt-1">
+                  <Badge tone={licenseStatusTone(status)}>{licenseStatusLabel(status)}</Badge>
+                </div>
+              </div>
+              <Info
+                label={t('settings.software_license.hwid')}
+                value={query.data.hwid ?? t('settings.software_license.na')}
+              />
+              <Info
+                label={t('settings.software_license.valid_until')}
+                value={formatLicenseDate(query.data.valid_until)}
+              />
+              <div>
+                <div className="text-xs text-slate-500">
+                  {t('settings.software_license.days_left')}
+                </div>
+                <div className="font-medium text-slate-800 tabular-nums">
+                  {daysLeft !== null ? (
+                    <>
+                      {daysLeft} {t('settings.software_license.days_unit')}
+                    </>
+                  ) : (
+                    t('settings.software_license.na')
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="space-y-2">
+          <p className="text-xs text-slate-500">{t('settings.software_license.hint')}</p>
+          <LicenseUploadButton
+            onActivated={() => qc.invalidateQueries({ queryKey: ['license-status'] })}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatLicenseDate(iso: string | null): string {
+  if (!iso) return t('settings.software_license.na');
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return t('settings.software_license.na');
+  return d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+}
 function FieldInput({
   label,
   value,

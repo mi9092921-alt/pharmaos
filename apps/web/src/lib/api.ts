@@ -52,7 +52,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit, isRetry = fa
     if (csrf) headers.set('X-CSRF-Token', csrf);
   }
 
-  const response = await fetch(path, { ...init, headers, credentials: 'include' });
+  let response: Response;
+  try {
+    response = await fetch(path, { ...init, headers, credentials: 'include' });
+  } catch {
+    // The local API is unreachable (device service down, proxy not ready).
+    // Surface it as a stable code so the shell renders an actionable error
+    // screen with a retry button instead of hanging on the spinner forever.
+    throw new ApiRequestError('E-SYS-001', 'Local service unreachable.');
+  }
   let body: ApiResponse<T> | null = null;
   try {
     body = (await response.json()) as ApiResponse<T>;
@@ -101,6 +109,34 @@ export function fetchMe() {
 
 export function logout() {
   return apiFetch<{ logged_out: boolean }>('/api/v1/auth/logout', { method: 'POST' });
+}
+
+// ---- Device license (P4-M2 gate; M3 activation UI pending) ----
+
+export interface LicenseStatus {
+  status: string;
+  hwid: string | null;
+  valid_until: string | null;
+  days_left: number | null;
+  needs_activation: boolean;
+}
+
+/** Allowlisted endpoint (no session needed) — feeds the activation screen. */
+export function getLicenseStatus() {
+  return apiFetch<LicenseStatus>('/api/v1/license/status');
+}
+
+/**
+ * Activate (or renew) with a raw .license container — the endpoint reads the
+ * raw request body, so the file goes as octet-stream, NOT multipart/JSON.
+ * Allowlisted pre-session (fresh devices activate before any login).
+ */
+export function activateLicense(file: Blob) {
+  return apiFetch<LicenseStatus>('/api/v1/license/activate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  });
 }
 
 // ---- User & role management (P1-M3; super_admin only) ----
@@ -423,6 +459,8 @@ export interface ReceiveInput {
   // P2-M3 (review C2): 2D pack-serial capture on receive (EDA track & trace).
   gtin?: string | null;
   serials?: string[];
+  // Shelf slot for first receipt (M2/M4): set only when the slot is NULL.
+  shelf_location?: string | null;
 }
 
 export function listInventoryBranches() {
@@ -431,11 +469,14 @@ export function listInventoryBranches() {
 
 export function listInventory(
   branchId: string,
-  opts: { search?: string; lowStock?: boolean } = {},
+  opts: { search?: string; lowStock?: boolean; shelf?: string; zone?: string; sort?: string } = {},
 ) {
   const params = new URLSearchParams({ branch_id: branchId, limit: '100' });
   if (opts.search) params.set('search', opts.search);
   if (opts.lowStock) params.set('low_stock', 'true');
+  if (opts.shelf) params.set('shelf', opts.shelf);
+  if (opts.zone) params.set('zone', opts.zone);
+  if (opts.sort) params.set('sort', opts.sort);
   return apiFetch<InventoryRow[]>(`/api/v1/inventory?${params.toString()}`);
 }
 
@@ -498,6 +539,32 @@ export function rebuildCache(branchId: string) {
   return apiFetch<{ rows: number }>('/api/v1/inventory/rebuild', {
     method: 'POST',
     body: JSON.stringify({ branch_id: branchId }),
+  });
+}
+
+export interface StockSettingsInput {
+  branch_id: string;
+  medication_id: string;
+  reorder_point?: string | null;
+  min_stock_level?: string | null;
+  max_stock_level?: string | null;
+  shelf_location?: string | null;
+}
+
+export interface StockSettingsOut {
+  branch_id: string;
+  medication_id: string;
+  cached_quantity: string;
+  reorder_point: string | null;
+  min_stock_level: string | null;
+  max_stock_level: string | null;
+  shelf_location: string | null;
+}
+
+export function updateStockSettings(input: StockSettingsInput) {
+  return apiFetch<StockSettingsOut>('/api/v1/inventory/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
   });
 }
 
@@ -593,12 +660,17 @@ export interface PosScan {
   selling_price: string;
   requires_prescription: boolean;
   controlled_substance: boolean;
+  /** Branch-scoped shelf slot (None when no branch given / never slotted). */
+  shelf_location: string | null;
   levels: PosLevel[];
 }
 
-/** Exact barcode or full GS1 DataMatrix element string (Egyptian 2D codes). */
-export function posScan(code: string) {
-  return apiFetch<PosScan>(`/api/v1/pos/scan?barcode=${encodeURIComponent(code)}`);
+/** Exact barcode or full GS1 DataMatrix element string (Egyptian 2D codes).
+ * branchId enriches the response with the branch-scoped shelf slot. */
+export function posScan(code: string, branchId?: string) {
+  const params = new URLSearchParams({ barcode: code });
+  if (branchId) params.set('branch_id', branchId);
+  return apiFetch<PosScan>(`/api/v1/pos/scan?${params.toString()}`);
 }
 
 export interface PosSaleLine {
@@ -1328,6 +1400,7 @@ export function deleteExpense(id: string) {
 export interface EReceiptRow {
   id: string;
   invoice_id: string;
+  invoice_number: string | null;
   status: string;
   eta_uuid: string | null;
   qr_data: string | null;
@@ -1335,6 +1408,13 @@ export interface EReceiptRow {
   last_error: string | null;
   submitted_at: string | null;
   created_at: string;
+}
+
+export interface DrainResult {
+  processed: number;
+  accepted: number;
+  failed: number;
+  skipped_fail_closed: number;
 }
 
 export interface TtEventRow {
@@ -1357,10 +1437,10 @@ export function listEreceipts(branchId: string, opts: { status?: string } = {}) 
 }
 
 export function drainEreceipts(branchId: string) {
-  return apiFetch<{ processed: number; accepted: number; failed: number }>(
-    '/api/v1/compliance/ereceipts/drain',
-    { method: 'POST', body: JSON.stringify({ branch_id: branchId }) },
-  );
+  return apiFetch<DrainResult>('/api/v1/compliance/ereceipts/drain', {
+    method: 'POST',
+    body: JSON.stringify({ branch_id: branchId }),
+  });
 }
 
 export function listTtEvents(branchId: string, opts: { status?: string } = {}) {
@@ -1370,10 +1450,15 @@ export function listTtEvents(branchId: string, opts: { status?: string } = {}) {
 }
 
 export function drainTtEvents(branchId: string) {
-  return apiFetch<{ processed: number; reported: number; failed: number }>(
-    '/api/v1/compliance/tt-events/drain',
-    { method: 'POST', body: JSON.stringify({ branch_id: branchId }) },
-  );
+  return apiFetch<{
+    processed: number;
+    reported: number;
+    failed: number;
+    skipped_fail_closed: number;
+  }>('/api/v1/compliance/tt-events/drain', {
+    method: 'POST',
+    body: JSON.stringify({ branch_id: branchId }),
+  });
 }
 
 // ---- Reports: sales (P3-M1) ----
@@ -1950,11 +2035,13 @@ export interface NotificationsList {
 export function listNotifications(opts: {
   branchId: string;
   unreadOnly?: boolean;
+  channel?: NotificationChannel;
   skip?: number;
   limit?: number;
 }) {
   const params = new URLSearchParams({ branch_id: opts.branchId });
   if (opts.unreadOnly) params.set('unread_only', 'true');
+  if (opts.channel) params.set('channel', opts.channel);
   if (opts.skip) params.set('skip', String(opts.skip));
   if (opts.limit) params.set('limit', String(opts.limit));
   return apiFetch<NotificationsList>(`/api/v1/notifications?${params.toString()}`);

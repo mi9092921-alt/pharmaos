@@ -138,6 +138,90 @@ async def test_wrong_key_fails_verification(chain_scratch) -> None:  # type: ign
     assert not stranger.ok
 
 
+def test_lock1_entry_hash_vector() -> None:
+    """LOCK-1 literal formula (P4 §1, D9): independent inline hmac over the
+    hand-assembled message — never via chain_entry_hash. Catches any drift in
+    domain / u64_be / prev_bytes / canonical_event."""
+    import hashlib
+    import hmac as hmac_mod
+    import json as json_mod
+
+    from pharmaos_api.licensing.event import LicenseClockEventV1 as Ev
+    from pharmaos_api.licensing.event import chain_entry_hash
+
+    key = bytes.fromhex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+    moment = datetime(2026, 10, 5, 12, 30, 45, tzinfo=UTC)
+    event = Ev(
+        event_type="boot_seen",
+        origin="boot",
+        observed_at=moment,
+        high_water_utc=moment,
+        ref="",
+        anomaly_count=0,
+    )
+    canonical_event = json_mod.dumps(
+        {
+            "anomaly_count": 0,
+            "event_type": "boot_seen",
+            "high_water_utc": "2026-10-05T12:30:45Z",
+            "observed_at": "2026-10-05T12:30:45Z",
+            "origin": "boot",
+            "ref": "",
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode()
+    msg1 = b"pharmaos.clock.chain.v1\n" + (1).to_bytes(8, "big") + b"" + canonical_event
+    expected1 = hmac_mod.new(key, msg1, hashlib.sha256).hexdigest()
+    assert expected1 == "6902c45edbb0b3422fa48199dc13c7576089ac9f232870b5f0dcdfcbc3591140"
+    assert chain_entry_hash(key, 1, b"", event) == expected1
+    msg2 = (
+        b"pharmaos.clock.chain.v1\n"
+        + (2).to_bytes(8, "big")
+        + bytes.fromhex(expected1)
+        + canonical_event
+    )
+    expected2 = hmac_mod.new(key, msg2, hashlib.sha256).hexdigest()
+    assert expected2 == "b81f1045c7ebfbb0a7ae740faa894e3e7f678875dcc060fcc4860f1284c092ba"
+    assert chain_entry_hash(key, 2, bytes.fromhex(expected1), event) == expected2
+
+
+def test_lock2_ext_mac_vector() -> None:
+    """LOCK-2 literal MAC (D9): independent HKDF + HMAC over hand-assembled
+    canonical record — never via derive_ext_key/mac_record."""
+    import hashlib
+    import hmac as hmac_mod
+    import json as json_mod
+
+    from cryptography.hazmat.primitives import hashes as c_hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF as C_HKDF
+
+    from pharmaos_api.licensing.external_stores import derive_ext_key, mac_record
+
+    key = bytes.fromhex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+    ext_key = C_HKDF(
+        algorithm=c_hashes.SHA256(), length=32, salt=b"", info=b"pharmaos.clock.ext.v1"
+    ).derive(key)
+    assert ext_key.hex() == "fcc2cdfe33aa6560831a852bbf84e7da30db094223620d04c22d51ad405d08b3"
+    assert derive_ext_key(key) == ext_key
+    record = {
+        "head_hash": "6902c45edbb0b3422fa48199dc13c7576089ac9f232870b5f0dcdfcbc3591140",
+        "head_seq": 1,
+        "high_water": "2026-10-05T12:30:45Z",
+        "last_activation_issued_at": None,
+        "last_activation_license_id": None,
+        "last_successful_sync_utc": "2026-10-05T12:30:45Z",
+        "verified_from_seq": None,
+    }
+    canonical_record = json_mod.dumps(
+        record, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    expected = hmac_mod.new(ext_key, canonical_record, hashlib.sha256).hexdigest()
+    assert expected == "04e35959f8773a736b15922186972936f4ac269fc8f29358d7a5d6b3a140159e"
+    assert mac_record(ext_key, record) == expected
+
+
 async def _head_seq(factory) -> int:  # type: ignore[no-untyped-def]
     async with factory() as session:
         row = (

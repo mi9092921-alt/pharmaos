@@ -32,7 +32,7 @@ if "%LICENSE_FILE%"=="" (
 )
 
 :: تنظيف علامات التنصيص إن وجدت
-set LICENSE_FILE=%LICENSE_FILE:"=%
+set "LICENSE_FILE=%LICENSE_FILE:"=%"
 
 if not exist "%LICENSE_FILE%" (
     color 0c
@@ -44,10 +44,12 @@ echo.
 echo جاري تفعيل الترخيص من الملف: %LICENSE_FILE% ...
 echo.
 
-:: إرسال الملف إلى الـ API
+:: إرسال الملف إلى الـ API (المسار عبر متغير بيئة — آمن لمسافات/أقواس/&/عربي)
+set "PHARMAOS_ACTIVATE_FILE=%LICENSE_FILE%"
+set "PHARMAOS_ACTIVATE_URL=%SERVER_URL%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "try { " ^
-    "  $resp = Invoke-RestMethod -Uri '%SERVER_URL%/activate' -Method Post -InFile '%LICENSE_FILE%' -ContentType 'application/octet-stream'; " ^
+    "  $resp = Invoke-RestMethod -Uri ($env:PHARMAOS_ACTIVATE_URL + '/activate') -Method Post -InFile $env:PHARMAOS_ACTIVATE_FILE -ContentType 'application/octet-stream'; " ^
     "  if ($resp.data.status -eq 'active') { " ^
     "    Write-Host '======================================================' -ForegroundColor Green; " ^
     "    Write-Host '  ✓ تم تفعيل البرنامج بنجاح!' -ForegroundColor Green; " ^
@@ -58,8 +60,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "    Write-Host ('حالة الترخيص: ' + $resp.data.status) -ForegroundColor Yellow; " ^
     "  } " ^
     "} catch { " ^
-    "  Write-Host '✗ فشل التفعيل:' -ForegroundColor Red; " ^
-    "  Write-Host $_.Exception.Message -ForegroundColor Red; " ^
+    "  Write-Host 'فشل التفعيل:' -ForegroundColor Red; " ^
+    "  $code = $null; $reason = $null; " ^
+    "  try { " ^
+    "    $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream()); " ^
+    "    $body = $reader.ReadToEnd() | ConvertFrom-Json; " ^
+    "    $code = $body.error.code; $reason = $body.error.details.reason; " ^
+    "  } catch { " ^
+    "    try { $raw = $_.ErrorDetails.Message | ConvertFrom-Json; " ^
+    "      $code = $raw.error.code; $reason = $raw.error.details.reason; } catch { } " ^
+    "  } " ^
+    "  if (-not $code) { " ^
+    "    Write-Host 'E-SYS-001: Local service unreachable.' -ForegroundColor Red; " ^
+    "  } else { " ^
+    "    Write-Host ('Activation failed: ' + $code + $(if ($reason) { ' (' + $reason + ')' } else { '' })) -ForegroundColor Red; " ^
+    "  } " ^
     "  exit 1; " ^
     "}"
 

@@ -110,6 +110,21 @@ class LicenseGateMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # 2b. License recovery allowlist (P4 §4/§6) — runs BEFORE any locked-state
+        # branch so a tamper/key_lost/clock_error/error device can still inspect
+        # its HWID (GET /license/status) and heal with a new file
+        # (POST /license/activate). Every other path stays fail-closed below.
+        # The 64 KiB cap still applies to /activate (enforced in step 8 via
+        # _activate_with_limit); status/activate never bypass it.
+        if (path == "/api/v1/license/status" and method == "GET") or (
+            path == "/api/v1/license/activate" and method == "POST"
+        ):
+            if path == "/api/v1/license/activate":
+                await self._activate_with_limit(scope, receive, send)
+                return
+            await self.app(scope, receive, send)
+            return
+
         # 3. Read runtime state (fail-closed if None)
         state = runtime.get_state()
         if state is None:
@@ -236,51 +251,59 @@ class LicenseGateMiddleware:
 
         # 8. Enforce 64 KiB payload limit on license activate
         if path == "/api/v1/license/activate" and method == "POST":
-            content_length: int | None = None
-            for name, val in scope.get("headers", []):
-                if name.lower() == b"content-length":
-                    with contextlib.suppress(ValueError):
-                        content_length = int(val.decode("latin1"))
-                    break
-
-            if content_length is not None and content_length > _MAX_LICENSE_BYTES:
-                await self._send_json(
-                    send,
-                    413,
-                    error_envelope(
-                        ErrorCode.VALIDATION_FAILED,
-                        "License file exceeds maximum size (64 KiB).",
-                    ),
-                )
-                return
-
-            total_bytes = 0
-
-            async def limited_receive() -> Message:
-                nonlocal total_bytes
-                msg = await receive()
-                if msg["type"] == "http.request":
-                    body_chunk = msg.get("body", b"")
-                    total_bytes += len(body_chunk)
-                    if total_bytes > _MAX_LICENSE_BYTES:
-                        raise ApiError(
-                            ErrorCode.VALIDATION_FAILED,
-                            413,
-                            "License file exceeds maximum size (64 KiB).",
-                        )
-                return msg
-
-            try:
-                await self.app(scope, limited_receive, send)
-            except ApiError as exc:
-                await self._send_json(
-                    send,
-                    exc.http_status,
-                    error_envelope(exc.code, exc.message, exc.details),
-                )
+            await self._activate_with_limit(scope, receive, send)
             return
 
         await self.app(scope, receive, send)
+
+    async def _activate_with_limit(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Forward POST /license/activate with the 64 KiB cap enforced.
+
+        Shared by the step-2b recovery allowlist (pre-lock) and the normal
+        step-8 path so healing from a locked state can never bypass the cap.
+        """
+        content_length: int | None = None
+        for name, val in scope.get("headers", []):
+            if name.lower() == b"content-length":
+                with contextlib.suppress(ValueError):
+                    content_length = int(val.decode("latin1"))
+                break
+
+        if content_length is not None and content_length > _MAX_LICENSE_BYTES:
+            await self._send_json(
+                send,
+                413,
+                error_envelope(
+                    ErrorCode.VALIDATION_FAILED,
+                    "License file exceeds maximum size (64 KiB).",
+                ),
+            )
+            return
+
+        total_bytes = 0
+
+        async def limited_receive() -> Message:
+            nonlocal total_bytes
+            msg = await receive()
+            if msg["type"] == "http.request":
+                body_chunk = msg.get("body", b"")
+                total_bytes += len(body_chunk)
+                if total_bytes > _MAX_LICENSE_BYTES:
+                    raise ApiError(
+                        ErrorCode.VALIDATION_FAILED,
+                        413,
+                        "License file exceeds maximum size (64 KiB).",
+                    )
+            return msg
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except ApiError as exc:
+            await self._send_json(
+                send,
+                exc.http_status,
+                error_envelope(exc.code, exc.message, exc.details),
+            )
 
     async def _send_json(self, send: Send, status_code: int, data: dict[str, Any]) -> None:
         body = json.dumps(data).encode("utf-8")
