@@ -332,8 +332,11 @@ async def import_shelf_locations(
             if all(v is None or str(v).strip() == "" for v in values):
                 continue
             rows.append(
-                {name: ("" if values[i] is None else str(values[i]).strip())
-                 for name, i in idx.items() if i < len(values)}
+                {
+                    name: ("" if values[i] is None else str(values[i]).strip())
+                    for name, i in idx.items()
+                    if i < len(values)
+                }
             )
             if len(rows) > svc.SHELF_IMPORT_MAX_ROWS:
                 raise ValueError("too many rows")
@@ -350,7 +353,8 @@ async def import_shelf_locations(
 
 
 @router.get("/inventory/drift")
-async def check_drift(    branch_id: uuid.UUID = Query(),
+async def check_drift(
+    branch_id: uuid.UUID = Query(),
     session: AsyncSession = Depends(get_session),
     _: None = _view,
 ) -> dict[str, object]:

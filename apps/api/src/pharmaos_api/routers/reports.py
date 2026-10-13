@@ -224,8 +224,12 @@ async def stock_level_report(
     _: None = _reports_inventory,
 ) -> dict[str, object]:
     data = await inventory_svc.stock_level_report(
-        session, branch_id=branch_id, low_stock_only=low_stock_only,
-        sort=sort, skip=skip, limit=limit,
+        session,
+        branch_id=branch_id,
+        low_stock_only=low_stock_only,
+        sort=sort,
+        skip=skip,
+        limit=limit,
     )
     return success_envelope(data)
 

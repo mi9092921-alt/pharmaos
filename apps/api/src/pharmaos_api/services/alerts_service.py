@@ -391,9 +391,7 @@ async def _eval_inventory_drift(session: AsyncSession, branch_id: uuid.UUID) -> 
     ]
 
 
-async def _eval_missing_location(
-    session: AsyncSession, branch_id: uuid.UUID
-) -> list[Finding]:
+async def _eval_missing_location(session: AsyncSession, branch_id: uuid.UUID) -> list[Finding]:
     """Stocked SKUs with no shelf slot — ONE branch aggregate (never one
     alert per medication: the first post-rollout evaluation would flood
     delivery). Only rows with sellable stock count; zero-stock rows are a

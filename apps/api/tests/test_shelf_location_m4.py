@@ -1,13 +1,13 @@
 """Shelf locations M4: inventory filter/sort + POS scan enrichment + report shape.
 
-  - `shelf` filters one EXACT slot (normalized first: b7 -> B7);
-    `zone` filters one letter prefix; invalid filters are E-VAL-001.
-  - `sort=location` walks shelves numerically (A2 before A10, NULLS LAST)
-    and explicitly replaces the default low-stock-first order.
-  - /pos/scan accepts an optional branch_id and returns the branch-scoped
-    shelf_location (None when absent/unknown/never slotted) — the catalog
-    stays the source of truth for the medication itself.
-  - stock_level_report passes sort through; the CSV carries shelf_location.
+- `shelf` filters one EXACT slot (normalized first: b7 -> B7);
+  `zone` filters one letter prefix; invalid filters are E-VAL-001.
+- `sort=location` walks shelves numerically (A2 before A10, NULLS LAST)
+  and explicitly replaces the default low-stock-first order.
+- /pos/scan accepts an optional branch_id and returns the branch-scoped
+  shelf_location (None when absent/unknown/never slotted) — the catalog
+  stays the source of truth for the medication itself.
+- stock_level_report passes sort through; the CSV carries shelf_location.
 """
 
 import datetime as dt
@@ -28,8 +28,12 @@ async def _seed_user(db_session: AsyncSession, role_code: str) -> str:
     role = (await db_session.execute(select(Role).where(Role.code == role_code))).scalar_one()
     username = f"{role_code}_{uuid.uuid4().hex[:8]}"
     db_session.add(
-        User(username=username, full_name=f"م {role_code}",
-             password_hash=hash_password("T3st@user!"), role_id=role.id)
+        User(
+            username=username,
+            full_name=f"م {role_code}",
+            password_hash=hash_password("T3st@user!"),
+            role_id=role.id,
+        )
     )
     await db_session.commit()
     return username
@@ -65,9 +69,14 @@ async def _make_med(db_session: AsyncSession, tag: str) -> str:
 
 
 async def _receive(client, csrf, *, branch_id, medication_id, qty="10"):
-    body = {"branch_id": branch_id, "medication_id": medication_id,
-            "batch_number": f"B-{uuid.uuid4().hex[:6]}", "expiry_date": FUTURE,
-            "quantity": qty, "purchase_price": "2.50"}
+    body = {
+        "branch_id": branch_id,
+        "medication_id": medication_id,
+        "batch_number": f"B-{uuid.uuid4().hex[:6]}",
+        "expiry_date": FUTURE,
+        "quantity": qty,
+        "purchase_price": "2.50",
+    }
     r = await client.post("/api/v1/inventory/receive", headers={"X-CSRF-Token": csrf}, json=body)
     assert r.status_code == 200, r.text
     return r.json()["data"]
@@ -75,7 +84,8 @@ async def _receive(client, csrf, *, branch_id, medication_id, qty="10"):
 
 async def _slot(client, csrf, branch_id, med_id, shelf):
     r = await client.patch(
-        "/api/v1/inventory/settings", headers={"X-CSRF-Token": csrf},
+        "/api/v1/inventory/settings",
+        headers={"X-CSRF-Token": csrf},
         json={"branch_id": branch_id, "medication_id": med_id, "shelf_location": shelf},
     )
     assert r.status_code == 200, r.text
@@ -165,7 +175,8 @@ async def test_sort_location_replaces_low_stock_first(admin, branch, db_session:
     await _slot(client, csrf, bid, ok, "A1")
     # low-stock item gets a reorder point so the default sort flags it first
     r = await client.patch(
-        "/api/v1/inventory/settings", headers={"X-CSRF-Token": csrf},
+        "/api/v1/inventory/settings",
+        headers={"X-CSRF-Token": csrf},
         json={"branch_id": bid, "medication_id": low, "reorder_point": "100"},
     )
     assert r.status_code == 200, r.text
@@ -178,8 +189,7 @@ async def test_sort_location_replaces_low_stock_first(admin, branch, db_session:
 
 async def test_sort_rejects_unknown(admin, branch):
     client, _csrf = admin
-    r = await client.get("/api/v1/inventory",
-                         params={"branch_id": str(branch.id), "sort": "price"})
+    r = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id), "sort": "price"})
     assert r.status_code == 422
 
 
@@ -208,8 +218,13 @@ async def _make_barcoded_med(db_session: AsyncSession):
     db_session.add(med)
     await db_session.flush()
     strip = MedicationPackaging(
-        medication_id=med.id, level=2, unit_id=unit_id, name_ar="شريط",
-        qty_in_parent=Decimal(3), selling_price=Decimal("30.00"), is_default_sale=True,
+        medication_id=med.id,
+        level=2,
+        unit_id=unit_id,
+        name_ar="شريط",
+        qty_in_parent=Decimal(3),
+        selling_price=Decimal("30.00"),
+        is_default_sale=True,
     )
     db_session.add(strip)
     await db_session.flush()
@@ -256,8 +271,9 @@ async def test_stock_level_report_sort_and_csv_shelf(admin, branch, db_session: 
     await _slot(client, csrf, bid, m2, "A2")
 
     await _login(client, await _seed_user(db_session, "branch_manager"))
-    rep = await client.get("/api/v1/reports/inventory/stock-level",
-                           params={"branch_id": bid, "sort": "location"})
+    rep = await client.get(
+        "/api/v1/reports/inventory/stock-level", params={"branch_id": bid, "sort": "location"}
+    )
     assert rep.status_code == 200, rep.text
     items = rep.json()["data"]["items"]
     assert [(x["shelf_location"]) for x in items] == ["A2", "B7"]

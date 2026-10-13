@@ -118,14 +118,16 @@ async def test_patch_absent_key_keeps_value(admin, branch, db_session: AsyncSess
     client, csrf = admin
     med_id = await _make_med(db_session)
     bid = str(branch.id)
-    r = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                     payload={"shelf_location": "B7"})
+    r = await _patch(
+        client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": "B7"}
+    )
     assert r.status_code == 200, r.text
     assert r.json()["data"]["shelf_location"] == "B7"
 
     # reorder-only payload carries NO shelf key -> slot must survive
-    r2 = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                      payload={"reorder_point": "10"})
+    r2 = await _patch(
+        client, csrf, branch_id=bid, medication_id=med_id, payload={"reorder_point": "10"}
+    )
     assert r2.status_code == 200, r2.text
     assert await _shelf(client, bid, med_id) == "B7"
 
@@ -135,11 +137,11 @@ async def test_patch_clear_variants(admin, branch, db_session: AsyncSession):
     bid = str(branch.id)
     for payload in ({"shelf_location": None}, {"shelf_location": ""}):
         med_id = await _make_med(db_session)
-        ok = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                          payload={"shelf_location": "B7"})
+        ok = await _patch(
+            client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": "B7"}
+        )
         assert ok.status_code == 200, ok.text
-        clr = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                           payload=payload)
+        clr = await _patch(client, csrf, branch_id=bid, medication_id=med_id, payload=payload)
         assert clr.status_code == 200, clr.text
         assert clr.json()["data"]["shelf_location"] is None
         assert await _shelf(client, bid, med_id) is None
@@ -149,8 +151,9 @@ async def test_patch_normalizes_before_validating(admin, branch, db_session: Asy
     client, csrf = admin
     med_id = await _make_med(db_session)
     bid = str(branch.id)
-    r = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                     payload={"shelf_location": "a-3"})
+    r = await _patch(
+        client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": "a-3"}
+    )
     assert r.status_code == 200, r.text
     assert r.json()["data"]["shelf_location"] == "A3"
 
@@ -160,8 +163,9 @@ async def test_patch_rejects_invalid_unchanged(admin, branch, db_session: AsyncS
     med_id = await _make_med(db_session)
     bid = str(branch.id)
     for bad in ("A0", "A01", "أ1", "AB12", "A100"):
-        r = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                         payload={"shelf_location": bad})
+        r = await _patch(
+            client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": bad}
+        )
         assert r.status_code == 422, (bad, r.text)
         assert r.json()["error"]["code"] == "E-VAL-001"
     # rejected writes must not even create a cache row
@@ -174,10 +178,14 @@ async def test_patch_audit_carries_old_and_new(admin, branch, db_session: AsyncS
     client, csrf = admin
     med_id = await _make_med(db_session)
     bid = str(branch.id)
-    assert (await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                         payload={"shelf_location": "B7"})).status_code == 200
-    mv = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                      payload={"shelf_location": "B8"})
+    assert (
+        await _patch(
+            client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": "B7"}
+        )
+    ).status_code == 200
+    mv = await _patch(
+        client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": "B8"}
+    )
     assert mv.status_code == 200, mv.text
     rows = (
         await db_session.execute(
@@ -200,8 +208,9 @@ async def test_patch_has_no_quantity_side_effects(admin, branch, db_session: Asy
     bid = str(branch.id)
     await _receive(client, csrf, branch_id=bid, medication_id=med_id, qty="50")
     before = await _movements(db_session, branch.id)
-    r = await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                     payload={"shelf_location": "C2"})
+    r = await _patch(
+        client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": "C2"}
+    )
     assert r.status_code == 200, r.text
     assert r.json()["data"]["cached_quantity"] in ("50.000", "50")
     assert await _movements(db_session, branch.id) == before
@@ -213,8 +222,7 @@ async def test_patch_permission_and_csrf(client, branch, db_session: AsyncSessio
     admin_name = await _seed_user(db_session, "super_admin")
     admin_csrf = await _login(client, admin_name)
     med_id = await _make_med(db_session)
-    body = {"branch_id": str(branch.id), "medication_id": med_id,
-            "shelf_location": "B7"}
+    body = {"branch_id": str(branch.id), "medication_id": med_id, "shelf_location": "B7"}
 
     # cashier holds inventory.view but NOT inventory.edit
     cashier_csrf = await _login(client, await _seed_user(db_session, "cashier"))
@@ -240,8 +248,9 @@ async def test_receive_sets_shelf_when_null(admin, branch, db_session: AsyncSess
     client, csrf = admin
     med_id = await _make_med(db_session)
     bid = str(branch.id)
-    r = await _receive(client, csrf, branch_id=bid, medication_id=med_id,
-                       qty="20", shelf_location="c2")
+    r = await _receive(
+        client, csrf, branch_id=bid, medication_id=med_id, qty="20", shelf_location="c2"
+    )
     assert r.status_code == 200, r.text
     assert await _shelf(client, bid, med_id) == "C2"
 
@@ -250,16 +259,21 @@ async def test_receive_never_overwrites_or_clears(admin, branch, db_session: Asy
     client, csrf = admin
     med_id = await _make_med(db_session)
     bid = str(branch.id)
-    assert (await _patch(client, csrf, branch_id=bid, medication_id=med_id,
-                         payload={"shelf_location": "B7"})).status_code == 200
+    assert (
+        await _patch(
+            client, csrf, branch_id=bid, medication_id=med_id, payload={"shelf_location": "B7"}
+        )
+    ).status_code == 200
     # second receipt with a different slot must NOT move it ...
-    r = await _receive(client, csrf, branch_id=bid, medication_id=med_id,
-                       qty="5", shelf_location="C2")
+    r = await _receive(
+        client, csrf, branch_id=bid, medication_id=med_id, qty="5", shelf_location="C2"
+    )
     assert r.status_code == 200, r.text
     assert await _shelf(client, bid, med_id) == "B7"
     # ... and a blank/absent slot must NOT clear it either
-    r2 = await _receive(client, csrf, branch_id=bid, medication_id=med_id,
-                        qty="5", shelf_location="")
+    r2 = await _receive(
+        client, csrf, branch_id=bid, medication_id=med_id, qty="5", shelf_location=""
+    )
     assert r2.status_code == 200, r2.text
     assert await _shelf(client, bid, med_id) == "B7"
 
@@ -267,8 +281,9 @@ async def test_receive_never_overwrites_or_clears(admin, branch, db_session: Asy
 async def test_receive_rejects_invalid_shelf(admin, branch, db_session: AsyncSession):
     client, csrf = admin
     med_id = await _make_med(db_session)
-    r = await _receive(client, csrf, branch_id=str(branch.id), medication_id=med_id,
-                       shelf_location="A0")
+    r = await _receive(
+        client, csrf, branch_id=str(branch.id), medication_id=med_id, shelf_location="A0"
+    )
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "E-VAL-001"
 
@@ -278,8 +293,9 @@ async def test_receive_rejects_invalid_shelf(admin, branch, db_session: AsyncSes
 
 def test_normalizer_matches_shared_vectors():
     here = os.path.dirname(os.path.abspath(__file__))
-    raw = os.path.join(here, "..", "..", "..", "packages", "shared",
-                       "src", "shelf_location_vectors.json")
+    raw = os.path.join(
+        here, "..", "..", "..", "packages", "shared", "src", "shelf_location_vectors.json"
+    )
     with open(raw, encoding="utf-8") as fh:
         spec = json.load(fh)
     assert spec["spec"]["final_pattern"].startswith("^[A-Z][1-9][0-9]?$")

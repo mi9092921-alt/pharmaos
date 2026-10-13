@@ -240,18 +240,15 @@ async def list_queue(
     # row belongs to (answers "where are the pending e-receipts?" — the
     # queue row alone carries only an opaque invoice_id).
     pairs = (
-        (
-            await session.execute(
-                select(EReceiptQueue, Invoice.invoice_number)
-                .join(Invoice, Invoice.id == EReceiptQueue.invoice_id)
-                .where(*conditions)
-                .order_by(EReceiptQueue.created_at.desc())
-                .offset(max(skip, 0))
-                .limit(capped)
-            )
+        await session.execute(
+            select(EReceiptQueue, Invoice.invoice_number)
+            .join(Invoice, Invoice.id == EReceiptQueue.invoice_id)
+            .where(*conditions)
+            .order_by(EReceiptQueue.created_at.desc())
+            .offset(max(skip, 0))
+            .limit(capped)
         )
-        .all()
-    )
+    ).all()
     return [_out(row, inv_no) for row, inv_no in pairs], int(total)
 
 

@@ -31,8 +31,12 @@ async def _seed_user(db_session: AsyncSession, role_code: str) -> str:
     role = (await db_session.execute(select(Role).where(Role.code == role_code))).scalar_one()
     username = f"{role_code}_{uuid.uuid4().hex[:8]}"
     db_session.add(
-        User(username=username, full_name=f"م {role_code}",
-             password_hash=hash_password("T3st@user!"), role_id=role.id)
+        User(
+            username=username,
+            full_name=f"م {role_code}",
+            password_hash=hash_password("T3st@user!"),
+            role_id=role.id,
+        )
     )
     await db_session.commit()
     return username
@@ -61,24 +65,31 @@ async def branch(db_session: AsyncSession) -> Branch:
 
 
 async def _med(db_session: AsyncSession, tag: str, *, name: str | None = None) -> str:
-    med = Medication(trade_name=name or f"ShelfM5 {tag} {uuid.uuid4().hex[:6]}",
-                     trade_name_ar="دواء رف")
+    med = Medication(
+        trade_name=name or f"ShelfM5 {tag} {uuid.uuid4().hex[:6]}", trade_name_ar="دواء رف"
+    )
     db_session.add(med)
     await db_session.commit()
     return str(med.id)
 
 
 async def _receive(client, csrf, *, branch_id, medication_id, qty="10"):
-    body = {"branch_id": branch_id, "medication_id": medication_id,
-            "batch_number": f"B-{uuid.uuid4().hex[:6]}", "expiry_date": FUTURE,
-            "quantity": qty, "purchase_price": "2.50"}
+    body = {
+        "branch_id": branch_id,
+        "medication_id": medication_id,
+        "batch_number": f"B-{uuid.uuid4().hex[:6]}",
+        "expiry_date": FUTURE,
+        "quantity": qty,
+        "purchase_price": "2.50",
+    }
     r = await client.post("/api/v1/inventory/receive", headers={"X-CSRF-Token": csrf}, json=body)
     assert r.status_code == 200, r.text
 
 
 async def _slot(client, csrf, branch_id, med_id, shelf):
     r = await client.patch(
-        "/api/v1/inventory/settings", headers={"X-CSRF-Token": csrf},
+        "/api/v1/inventory/settings",
+        headers={"X-CSRF-Token": csrf},
         json={"branch_id": branch_id, "medication_id": med_id, "shelf_location": shelf},
     )
     assert r.status_code == 200, r.text
@@ -103,9 +114,13 @@ async def _post_import(client, csrf, branch_id, payload: bytes, *, dry_run=True,
     return await client.post(
         IMPORT,
         data={"branch_id": branch_id, "dry_run": str(dry_run).lower()},
-        files={"file": ("shelf.xlsx",
-                        payload,
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        files={
+            "file": (
+                "shelf.xlsx",
+                payload,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
         headers=headers,
     )
 
@@ -126,8 +141,10 @@ async def test_missing_location_single_aggregate_and_resolve(
     # zero-stock known SKU (same shape as a PATCH-created 0-quantity slot row):
     # must NOT count toward the aggregate.
     await db_session.execute(
-        text("INSERT INTO branch_inventory (branch_id, medication_id, cached_quantity) "
-             "VALUES (:b, :m, 0)").bindparams(b=branch.id, m=uuid.UUID(m3))
+        text(
+            "INSERT INTO branch_inventory (branch_id, medication_id, cached_quantity) "
+            "VALUES (:b, :m, 0)"
+        ).bindparams(b=branch.id, m=uuid.UUID(m3))
     )
     await db_session.commit()
 
@@ -136,9 +153,10 @@ async def test_missing_location_single_aggregate_and_resolve(
     assert first["findings"].get("missing_location") == 1  # ONE aggregate, not two
     rows = (
         await db_session.execute(
-            text("SELECT severity, entity_type, entity_id, params FROM alerts "
-                 "WHERE branch_id = :b AND rule_key = 'missing_location' AND status <> 'resolved'")
-            .bindparams(b=branch.id)
+            text(
+                "SELECT severity, entity_type, entity_id, params FROM alerts "
+                "WHERE branch_id = :b AND rule_key = 'missing_location' AND status <> 'resolved'"
+            ).bindparams(b=branch.id)
         )
     ).all()
     assert len(rows) == 1
@@ -188,23 +206,31 @@ async def test_import_dry_run_writes_nothing(admin, branch, db_session: AsyncSes
     await _med(db_session, "dup1", name=dup)
     await _med(db_session, "dup2", name=dup)
 
-    payload = _xlsx_bytes([
-        (f"DryRunA {suffix}", "b7"),  # name-exact, lowercase shelf -> B7
-        (f"DryRunB {suffix}", "A0"),  # invalid shelf
-        ("no-such-med", "C2"),        # unknown
-        (dup, "C3"),                  # ambiguous
-        (f"DryRunA {suffix}", "C4"),  # duplicate in file (both occurrences rejected)
-        ("", "C5"),                   # empty key
-        (f"DryRunB {suffix}", ""),    # empty shelf
-    ])
+    payload = _xlsx_bytes(
+        [
+            (f"DryRunA {suffix}", "b7"),  # name-exact, lowercase shelf -> B7
+            (f"DryRunB {suffix}", "A0"),  # invalid shelf
+            ("no-such-med", "C2"),  # unknown
+            (dup, "C3"),  # ambiguous
+            (f"DryRunA {suffix}", "C4"),  # duplicate in file (both occurrences rejected)
+            ("", "C5"),  # empty key
+            (f"DryRunB {suffix}", ""),  # empty shelf
+        ]
+    )
     r = await _post_import(client, csrf, bid, payload, dry_run=True)
     assert r.status_code == 200, r.text
     data = r.json()["data"]
     assert data["dry_run"] is True and data["total"] == 7
     assert data["valid_count"] == 0  # the only resolvable row is duplicated
     reasons = {e["reason"] for e in data["rejected"]}
-    assert {"invalid_shelf", "unknown_medication", "ambiguous_name",
-            "duplicate_in_file", "empty_key", "empty_shelf"} <= reasons
+    assert {
+        "invalid_shelf",
+        "unknown_medication",
+        "ambiguous_name",
+        "duplicate_in_file",
+        "empty_key",
+        "empty_shelf",
+    } <= reasons
     # preview wrote nothing
     inv = await client.get("/api/v1/inventory", params={"branch_id": bid})
     assert all(x["shelf_location"] is None for x in inv.json()["data"])
@@ -220,8 +246,9 @@ async def test_import_execute_applies_and_rejects(admin, branch, db_session: Asy
     await _receive(client, csrf, branch_id=bid, medication_id=m2, qty="30")
     moves_before = (
         await db_session.execute(
-            text("SELECT COUNT(*) FROM stock_movements WHERE branch_id = :b")
-            .bindparams(b=branch.id)
+            text("SELECT COUNT(*) FROM stock_movements WHERE branch_id = :b").bindparams(
+                b=branch.id
+            )
         )
     ).scalar_one()
 
@@ -244,8 +271,9 @@ async def test_import_execute_applies_and_rejects(admin, branch, db_session: Asy
     assert all(x["cached_quantity"] in ("30.000", "30") for x in inv.json()["data"])
     moves_after = (
         await db_session.execute(
-            text("SELECT COUNT(*) FROM stock_movements WHERE branch_id = :b")
-            .bindparams(b=branch.id)
+            text("SELECT COUNT(*) FROM stock_movements WHERE branch_id = :b").bindparams(
+                b=branch.id
+            )
         )
     ).scalar_one()
     assert moves_after == moves_before
@@ -254,9 +282,11 @@ async def test_import_execute_applies_and_rejects(admin, branch, db_session: Asy
     # per-row audit exists
     n_audit = (
         await db_session.execute(
-            text("SELECT COUNT(*) FROM audit_logs WHERE action = 'settings.changed' "
-                 "AND metadata->>'scope' = 'stock_settings' "
-                 "AND metadata->>'reason' IS DISTINCT FROM 'shelf_norm_migration'")
+            text(
+                "SELECT COUNT(*) FROM audit_logs WHERE action = 'settings.changed' "
+                "AND metadata->>'scope' = 'stock_settings' "
+                "AND metadata->>'reason' IS DISTINCT FROM 'shelf_norm_migration'"
+            )
         )
     ).scalar_one()
     assert n_audit >= 2
@@ -267,9 +297,9 @@ async def test_import_execute_revalidates_stale_preview(admin, branch, db_sessio
     bid = str(branch.id)
     m = await _med(db_session, "stale", name=f"StaleMed {uuid.uuid4().hex[:6]}")
     await _receive(client, csrf, branch_id=bid, medication_id=m)
-    med_name = (await db_session.execute(
-        select(Medication.trade_name).where(Medication.id == uuid.UUID(m))
-    )).scalar_one()
+    med_name = (
+        await db_session.execute(select(Medication.trade_name).where(Medication.id == uuid.UUID(m)))
+    ).scalar_one()
     payload = _xlsx_bytes([(med_name, "D4")])
 
     preview = await _post_import(client, csrf, bid, payload, dry_run=True)
@@ -321,9 +351,15 @@ async def test_import_permission_and_csrf(client, branch, db_session: AsyncSessi
 
     cashier_csrf = await _login(client, await _seed_user(db_session, "cashier"))
     denied = await client.post(
-        IMPORT, data={"branch_id": str(branch.id)},
-        files={"file": ("s.xlsx", payload,
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        IMPORT,
+        data={"branch_id": str(branch.id)},
+        files={
+            "file": (
+                "s.xlsx",
+                payload,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
         headers={"X-CSRF-Token": cashier_csrf},
     )
     assert denied.status_code == 403
@@ -331,9 +367,15 @@ async def test_import_permission_and_csrf(client, branch, db_session: AsyncSessi
 
     await _login(client, await _seed_user(db_session, "super_admin"))
     no_csrf = await client.post(
-        IMPORT, data={"branch_id": str(branch.id)},
-        files={"file": ("s.xlsx", payload,
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        IMPORT,
+        data={"branch_id": str(branch.id)},
+        files={
+            "file": (
+                "s.xlsx",
+                payload,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
     )
     assert no_csrf.status_code == 403
     assert no_csrf.json()["error"]["code"] == "E-AUTH-004"

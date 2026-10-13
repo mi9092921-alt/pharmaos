@@ -67,6 +67,8 @@ def normalize_shelf_location(raw: str | None) -> str | None:
             ErrorCode.VALIDATION_FAILED, 422, message="Invalid shelf_location (e.g. B7)."
         )
     return s
+
+
 # Low-stock threshold: reorder point if set, else the minimum level (0 = untracked).
 _LOW_THRESHOLD = "COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0), 0)"
 # Expiry-alert horizons (CLAUDE.md ALERT_RULES): a batch expiring within 30 days
@@ -374,9 +376,7 @@ async def update_stock_settings(
         ("max_stock_level", max_stock_level),
     ):
         if value is not None and value < 0:
-            raise ApiError(
-                ErrorCode.VALIDATION_FAILED, 422, message=f"{label} must be >= 0."
-            )
+            raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message=f"{label} must be >= 0.")
     shelf_provided = shelf_location is not _UNSET
     shelf = normalize_shelf_location(cast("str | None", shelf_location)) if shelf_provided else None
     if (
@@ -407,8 +407,9 @@ async def update_stock_settings(
         )
     ).scalar_one_or_none()
     row = (
-        await session.execute(
-            text("""
+        (
+            await session.execute(
+                text("""
                 INSERT INTO branch_inventory
                     (branch_id, medication_id, cached_quantity, reorder_point,
                      min_stock_level, max_stock_level, shelf_location, created_by)
@@ -424,18 +425,21 @@ async def update_stock_settings(
                 RETURNING id, cached_quantity, reorder_point,
                           min_stock_level, max_stock_level, shelf_location
                 """).bindparams(
-                b=branch_id,
-                m=medication_id,
-                reorder=reorder_point,
-                min=min_stock_level,
-                max=max_stock_level,
-                shelf_ins=shelf if shelf_provided else None,
-                shelf=shelf,
-                shelf_set=shelf_provided,
-                actor=actor.id,
+                    b=branch_id,
+                    m=medication_id,
+                    reorder=reorder_point,
+                    min=min_stock_level,
+                    max=max_stock_level,
+                    shelf_ins=shelf if shelf_provided else None,
+                    shelf=shelf,
+                    shelf_set=shelf_provided,
+                    actor=actor.id,
+                )
             )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
     if row is None:  # pragma: no cover — the upsert always returns its row
         raise RuntimeError("stock settings upsert returned no row")
     metadata: dict[str, object] = {
@@ -462,12 +466,12 @@ async def update_stock_settings(
         "medication_id": str(medication_id),
         "cached_quantity": str(row["cached_quantity"]),
         "reorder_point": str(row["reorder_point"]) if row["reorder_point"] is not None else None,
-        "min_stock_level": str(row["min_stock_level"])
-        if row["min_stock_level"] is not None
-        else None,
-        "max_stock_level": str(row["max_stock_level"])
-        if row["max_stock_level"] is not None
-        else None,
+        "min_stock_level": (
+            str(row["min_stock_level"]) if row["min_stock_level"] is not None else None
+        ),
+        "max_stock_level": (
+            str(row["max_stock_level"]) if row["max_stock_level"] is not None else None
+        ),
         "shelf_location": row["shelf_location"],
     }
 
@@ -501,13 +505,17 @@ async def _resolve_import_medication(
     if hit is not None:
         return hit, None
     names = (
-        await session.execute(
-            text(
-                "SELECT id FROM medications WHERE NOT is_deleted "
-                "AND (trade_name ILIKE :k OR trade_name_ar ILIKE :k)"
-            ).bindparams(k=key)
+        (
+            await session.execute(
+                text(
+                    "SELECT id FROM medications WHERE NOT is_deleted "
+                    "AND (trade_name ILIKE :k OR trade_name_ar ILIKE :k)"
+                ).bindparams(k=key)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     unique = list(dict.fromkeys(names))
     if len(unique) == 1:
         return unique[0], None
@@ -550,25 +558,41 @@ async def import_shelf_locations(
             code = normalize_shelf_location(shelf_raw or None)
         except ApiError:
             parsed.append(
-                {"row": excel_row, "key": key, "shelf": shelf_raw,
-                 "ok": False, "reason": "invalid_shelf"}
+                {
+                    "row": excel_row,
+                    "key": key,
+                    "shelf": shelf_raw,
+                    "ok": False,
+                    "reason": "invalid_shelf",
+                }
             )
             continue
         if code is None:
             parsed.append(
-                {"row": excel_row, "key": key, "shelf": shelf_raw,
-                 "ok": False, "reason": "empty_shelf"}
+                {
+                    "row": excel_row,
+                    "key": key,
+                    "shelf": shelf_raw,
+                    "ok": False,
+                    "reason": "empty_shelf",
+                }
             )
             continue
         med_id, err = await _resolve_import_medication(session, key)
         if err is not None or med_id is None:
             parsed.append(
-                {"row": excel_row, "key": key, "shelf": code,
-                 "ok": False, "reason": err or "unknown_medication"}
+                {
+                    "row": excel_row,
+                    "key": key,
+                    "shelf": code,
+                    "ok": False,
+                    "reason": err or "unknown_medication",
+                }
             )
             continue
-        parsed.append({"row": excel_row, "key": key, "shelf": code,
-                       "ok": True, "medication_id": med_id})
+        parsed.append(
+            {"row": excel_row, "key": key, "shelf": code, "ok": True, "medication_id": med_id}
+        )
 
     # Same medication twice in one file (even with the same slot): reject
     # every occurrence — no silent last-wins.
@@ -585,9 +609,15 @@ async def import_shelf_locations(
                 p["reason"] = "duplicate_in_file"
 
     rejected = [
-        {"row": p["row"], "key": p.get("key"), "shelf": p.get("shelf"),
-         "code": "E-VAL-001", "reason": p["reason"]}
-        for p in parsed if not p["ok"]
+        {
+            "row": p["row"],
+            "key": p.get("key"),
+            "shelf": p.get("shelf"),
+            "code": "E-VAL-001",
+            "reason": p["reason"],
+        }
+        for p in parsed
+        if not p["ok"]
     ]
     valid = [p for p in parsed if p["ok"]]
     if dry_run:
@@ -595,8 +625,9 @@ async def import_shelf_locations(
         if valid:
             name_rows = (
                 await session.execute(
-                    select(Medication.id, Medication.trade_name, Medication.trade_name_ar)
-                    .where(Medication.id.in_([p["medication_id"] for p in valid]))
+                    select(Medication.id, Medication.trade_name, Medication.trade_name_ar).where(
+                        Medication.id.in_([p["medication_id"] for p in valid])
+                    )
                 )
             ).all()
             names = {r[0]: (r[1], r[2]) for r in name_rows}
@@ -606,10 +637,13 @@ async def import_shelf_locations(
             "total": len(rows),
             "valid_count": len(valid),
             "valid": [
-                {"row": p["row"], "medication_id": str(p["medication_id"]),
-                 "trade_name": names.get(p["medication_id"], ("?", None))[0],
-                 "trade_name_ar": names.get(p["medication_id"], ("?", None))[1],
-                 "shelf": p["shelf"]}
+                {
+                    "row": p["row"],
+                    "medication_id": str(p["medication_id"]),
+                    "trade_name": names.get(p["medication_id"], ("?", None))[0],
+                    "trade_name_ar": names.get(p["medication_id"], ("?", None))[1],
+                    "shelf": p["shelf"],
+                }
                 for p in valid
             ],
             "rejected": rejected,
@@ -620,22 +654,32 @@ async def import_shelf_locations(
     for p in valid:
         try:
             await update_stock_settings(
-                session, actor=actor, branch_id=branch_id,
+                session,
+                actor=actor,
+                branch_id=branch_id,
                 medication_id=cast("uuid.UUID", p["medication_id"]),
                 shelf_location=cast("str", p["shelf"]),
             )
         except ApiError as e:
             apply_errors.append(
-                {"row": p["row"], "key": p.get("key"), "shelf": p.get("shelf"),
-                 "code": e.code, "reason": "apply_failed"}
+                {
+                    "row": p["row"],
+                    "key": p.get("key"),
+                    "shelf": p.get("shelf"),
+                    "code": e.code,
+                    "reason": "apply_failed",
+                }
             )
             continue
         med = await session.get(Medication, cast("uuid.UUID", p["medication_id"]))
         applied.append(
-            {"row": p["row"], "medication_id": str(p["medication_id"]),
-             "trade_name": med.trade_name if med else "?",
-             "trade_name_ar": med.trade_name_ar if med else None,
-             "shelf": p["shelf"]}
+            {
+                "row": p["row"],
+                "medication_id": str(p["medication_id"]),
+                "trade_name": med.trade_name if med else "?",
+                "trade_name_ar": med.trade_name_ar if med else None,
+                "shelf": p["shelf"],
+            }
         )
     apply_errors.sort(key=lambda e: str(e["row"]))
     return {
@@ -791,7 +835,6 @@ async def list_inventory(
         order_sql = "low_stock DESC, m.trade_name"
     else:
         raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Invalid sort.")
-
 
     total = (
         await session.execute(
@@ -1084,8 +1127,12 @@ async def stock_level_report(
     """
     capped = min(max(limit, 1), MAX_PAGE_SIZE)
     rows, total = await list_inventory(
-        session, branch_id=branch_id, low_stock_only=low_stock_only,
-        sort=sort, skip=skip, limit=capped,
+        session,
+        branch_id=branch_id,
+        low_stock_only=low_stock_only,
+        sort=sort,
+        skip=skip,
+        limit=capped,
     )
     items: list[dict[str, object]] = []
     for row in rows:
@@ -1152,8 +1199,16 @@ async def stock_level_report_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["trade_name_ar", "trade_name", "cached_quantity", "reorder_point",
-                     "shelf_location", "status"])
+    writer.writerow(
+        [
+            "trade_name_ar",
+            "trade_name",
+            "cached_quantity",
+            "reorder_point",
+            "shelf_location",
+            "status",
+        ]
+    )
     for r in rows:
         qty = Decimal(r.cached_quantity)
         status = "out_of_stock" if qty == 0 else ("low_stock" if r.low_stock else "ok")
