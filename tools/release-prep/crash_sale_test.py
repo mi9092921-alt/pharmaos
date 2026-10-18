@@ -357,19 +357,19 @@ def start_cluster(pgdata: Path, logfile: Path, port: int) -> None:
 # consistency checks
 # ---------------------------------------------------------------------------
 
-# All five invariants. c5 needs :med_id and :baseline bound at call time.
+# All five invariants. c5 needs :med_id and $2 bound at call time.
 CHECK_QUERIES: list[tuple[str, str]] = [
     (
         "c1_invoice_without_movements",
         """SELECT count(*) FROM invoices i
-           WHERE i.branch_id = :branch_id AND i.is_deleted = FALSE
+           WHERE i.branch_id = $1 AND i.is_deleted = FALSE
              AND NOT EXISTS (SELECT 1 FROM stock_movements m
                              WHERE m.reference_id = i.id AND m.movement_type = 'sale_out')""",
     ),
     (
         "c2_movement_without_invoice",
         """SELECT count(*) FROM stock_movements m
-           WHERE m.branch_id = :branch_id AND m.movement_type = 'sale_out'
+           WHERE m.branch_id = $1 AND m.movement_type = 'sale_out'
              AND m.reference_type = 'invoice' AND m.reference_id IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.id = m.reference_id)""",
     ),
@@ -379,7 +379,7 @@ CHECK_QUERIES: list[tuple[str, str]] = [
                SELECT i.id FROM invoices i
                LEFT JOIN stock_movements m
                  ON m.reference_id = i.id AND m.movement_type = 'sale_out'
-               WHERE i.branch_id = :branch_id AND i.is_deleted = FALSE
+               WHERE i.branch_id = $1 AND i.is_deleted = FALSE
                GROUP BY i.id
                HAVING COALESCE(SUM(m.quantity_delta), 0)
                       <> -COALESCE((SELECT SUM(ii.qty_smallest) FROM invoice_items ii
@@ -389,7 +389,7 @@ CHECK_QUERIES: list[tuple[str, str]] = [
     (
         "c4_inventory_cache_drift",
         """SELECT count(*) FROM branch_inventory bi
-           WHERE bi.branch_id = :branch_id
+           WHERE bi.branch_id = $1
              AND bi.cached_quantity
                  <> (SELECT COALESCE(SUM(b.quantity), 0) FROM medication_batches b
                      WHERE b.branch_id = bi.branch_id AND b.medication_id = bi.medication_id
@@ -398,8 +398,8 @@ CHECK_QUERIES: list[tuple[str, str]] = [
     (
         "c5_batch_ledger_equation",
         """SELECT count(*) FROM medication_batches b
-           WHERE b.batch_number = :batch_number
-             AND b.quantity <> :baseline + COALESCE((
+           WHERE b.batch_number = $1
+             AND b.quantity <> $2 + COALESCE((
                  SELECT SUM(m.quantity_delta) FROM stock_movements m
                  WHERE m.batch_id = b.id), 0)""",
     ),
@@ -421,12 +421,11 @@ async def _checks_async(port: int, baseline: Decimal, batch_number: str) -> dict
                 results[name] = int(
                     await conn.fetchval(
                         sql,
-                        batch_number=batch_number,
-                        baseline=baseline,
+                        batch_number, baseline
                     )
                 )
             else:
-                results[name] = int(await conn.fetchval(sql, branch_id=branch_id, med_id=med_id))
+                results[name] = int(await conn.fetchval(sql, branch_id))
         results["invoice_count"] = int(
             await conn.fetchval(
                 "SELECT count(*) FROM invoices WHERE branch_id = $1", branch_id
