@@ -40,6 +40,7 @@ import argparse
 import asyncio
 import json
 import os
+import queue
 import random
 import statistics
 import subprocess
@@ -50,25 +51,92 @@ import uuid
 from decimal import Decimal
 from pathlib import Path
 
-DB_NAME = "pharmaos_crash"
+EXPECTED_QA_PORT = "55444"
+ALLOWED_QA_HOSTS = {"127.0.0.1", "localhost"}
+
+
+def _require_env(name: str) -> str:
+    """Read a required env var — abort loudly when it is missing or blank.
+
+    No defaults: running without explicit configuration is refused.
+    """
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise SystemExit(f"REFUSING TO RUN: required env var {name} is missing or blank.")
+    return value
+
+
+def qa_config_from_env() -> tuple[Path, int, str, Path, Path, Path]:
+    """Validate the QA safety contract and return (pgdata, port, db, bindir, results, src).
+
+    Guard: runs ONLY when QA_PGDATA contains '.qa-pgdata', QA_DB_NAME contains
+    '_qa_', QA_PORT == '55444', and QA_DB_HOST is loopback. Anything else
+    aborts before touching data (the guard is the first code that runs in
+    main(), before argparse and before any DB import/connection).
+    """
+    pgdata_raw = _require_env("QA_PGDATA")
+    port_raw = _require_env("QA_PORT")
+    db_name = _require_env("QA_DB_NAME")
+    host_raw = _require_env("QA_DB_HOST")
+    bindir_raw = _require_env("QA_PG_BIN_DIR")
+    results_raw = _require_env("QA_RESULTS_DIR")
+    src_raw = _require_env("PHARMAOS_API_SRC")
+    if ".qa-pgdata" not in pgdata_raw:
+        raise SystemExit(
+            f"REFUSING TO RUN: QA_PGDATA must contain '.qa-pgdata' (got {pgdata_raw!r})."
+        )
+    if "_qa_" not in db_name:
+        raise SystemExit(f"REFUSING TO RUN: QA_DB_NAME must contain '_qa_' (got {db_name!r}).")
+    if port_raw != EXPECTED_QA_PORT:
+        raise SystemExit(f"REFUSING TO RUN: QA_PORT must be {EXPECTED_QA_PORT} (got {port_raw!r}).")
+    if host_raw not in ALLOWED_QA_HOSTS:
+        raise SystemExit(
+            f"REFUSING TO RUN: QA_DB_HOST must be one of {sorted(ALLOWED_QA_HOSTS)} "
+            f"(got {host_raw!r})."
+        )
+    return (
+        Path(pgdata_raw),
+        int(port_raw),
+        db_name,
+        Path(bindir_raw),
+        Path(results_raw),
+        Path(src_raw),
+    )
+
+
+DB_NAME = ""
 MARKER_BRANCH = "فرع اختبار الانقطاع"
 MARKER_MED = "GEN-TEST-CRASH"
 MARKER_BARCODE = "6229900000017"
 MARKER_BATCH = "CRASH-B1"
 MARKER_USER = "crash_cashier"
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
+RESULTS_DIR = Path("__QA_UNCONFIGURED__")
 
 
-def db_url(port: int, db: str = DB_NAME) -> str:
-    return f"postgresql://postgres@127.0.0.1:{port}/{db}"
+def qa_db_host() -> str:
+    """QA DB host — must be loopback only (refuses remote hosts)."""
+    host = _require_env("QA_DB_HOST")
+    if host not in ALLOWED_QA_HOSTS:
+        raise SystemExit(
+            f"REFUSING TO RUN: QA_DB_HOST must be one of {sorted(ALLOWED_QA_HOSTS)} "
+            f"(got {host!r})."
+        )
+    return host
 
 
-def pgdata_default() -> Path:
-    return Path(r"D:\pharmaos-release-prep\pgcrash")
+def db_url(port: int, db: str = "") -> str:
+    name = db or DB_NAME
+    if not name:
+        raise SystemExit("REFUSING TO RUN: DB name is not configured (guard must run first).")
+    return f"postgresql://postgres@{qa_db_host()}:{port}/{name}"
 
 
 def pg_bin() -> Path:
-    return Path(r"D:\projects\pharmaos\installer\vendor\pg\bin")
+    return Path(_require_env("QA_PG_BIN_DIR"))
+
+
+def pgdata_default() -> Path:
+    return Path(_require_env("QA_PGDATA"))
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +329,7 @@ def stop_cluster_pgdata(pgdata: Path) -> None:
             pass
 
 
-def start_cluster(pgdata: Path, logfile: Path) -> None:
+def start_cluster(pgdata: Path, logfile: Path, port: int) -> None:
     # No captured pipes: pg_ctl detaches postgres.exe which inherits handles
     # and hangs communicate() (documented in backup_service._pg_ctl_start).
     subprocess.run(  # noqa: S603
@@ -274,7 +342,7 @@ def start_cluster(pgdata: Path, logfile: Path) -> None:
     )
     for _ in range(120):
         probe = subprocess.run(  # noqa: S603
-            [str(pg_bin() / "pg_isready.exe"), "-h", "127.0.0.1", "-p", "5434"],
+            [str(pg_bin() / "pg_isready.exe"), "-h", "127.0.0.1", "-p", str(port)],
             capture_output=True,
             check=False,
             timeout=10,
@@ -373,9 +441,19 @@ def run_checks(port: int, baseline: Decimal, batch_number: str) -> dict[str, int
     return asyncio.run(_checks_async(port, baseline, batch_number))
 
 
-def run_amcheck(db: str) -> tuple[bool, str]:
+def run_amcheck(db: str, port: int) -> tuple[bool, str]:
     proc = subprocess.run(  # noqa: S603
-        [str(pg_bin() / "pg_amcheck.exe"), "--database", db, "--heapallindexed", "--verbose"],
+        [
+            str(pg_bin() / "pg_amcheck.exe"),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--database",
+            db,
+            "--heapallindexed",
+            "--verbose",
+        ],
         capture_output=True,
         check=False,
         timeout=300,
@@ -393,10 +471,13 @@ def read_ansi_port(port: int) -> int:  # pragma: no cover - helper clarity
     return port
 
 
-def spawn_child(port: int) -> tuple[subprocess.Popen[str], threading.Queue[str]]:
+def spawn_child(port: int) -> tuple[subprocess.Popen[str], queue.Queue[str]]:
     env = os.environ.copy()
     env["PHARMAOS_ENV"] = "test"
     env["DATABASE_URL"] = db_url(port)
+    src_root = os.environ.get("PHARMAOS_API_SRC", "").strip()
+    if src_root:
+        env["PYTHONPATH"] = src_root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     proc = subprocess.Popen(  # noqa: S603
         [sys.executable, str(Path(__file__).resolve()), "child", "--port", str(port)],
         stdout=subprocess.PIPE,
@@ -405,24 +486,24 @@ def spawn_child(port: int) -> tuple[subprocess.Popen[str], threading.Queue[str]]
         bufsize=1,
         env=env,
     )
-    queue: threading.Queue[str] = threading.Queue()
+    q: queue.Queue[str] = queue.Queue()
 
     def _pump() -> None:
         assert proc.stdout is not None
         for line in proc.stdout:
-            queue.put(line.strip())
+            q.put(line.strip())
 
     threading.Thread(target=_pump, daemon=True).start()
-    return proc, queue
+    return proc, q
 
 
 def measure_commit_time(port: int, runs: int = 3) -> float:
     times: list[float] = []
     for _ in range(runs):
-        proc, queue = spawn_child(port)
+        proc, q = spawn_child(port)
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
-            line = queue.get(timeout=120)
+            line = q.get(timeout=120)
             if line.startswith("TXN-COMMIT"):
                 times.append(float(line.split()[1]))
                 break
@@ -473,9 +554,9 @@ def run_harness(args: argparse.Namespace) -> int:
         delay = random.uniform(window_lo, window_hi)
 
         invoices_before = run_checks(args.port, baseline, MARKER_BATCH)["invoice_count"]
-        proc, queue = spawn_child(args.port)
+        proc, q = spawn_child(args.port)
         try:
-            marker = queue.get(timeout=120)
+            marker = q.get(timeout=120)
             if marker != "TXN-START":
                 raise RuntimeError(f"child output before marker: {marker!r}")
         except Exception:
@@ -487,7 +568,7 @@ def run_harness(args: argparse.Namespace) -> int:
         if mode == "power":
             kill_tree(proc.pid)
             stop_cluster_pgdata(pgdata)
-            start_cluster(pgdata, logfile)
+            start_cluster(pgdata, logfile, args.port)
             with logfile.open("r", encoding="utf-8", errors="replace") as fh:
                 tail = fh.read()[-4000:]
             recovery_logged = "automatic recovery in progress" in tail
@@ -495,7 +576,7 @@ def run_harness(args: argparse.Namespace) -> int:
             kill_tree(proc.pid)
 
         checks = run_checks(args.port, baseline, MARKER_BATCH)
-        ok_am, am_out = run_amcheck(DB_NAME)
+        ok_am, am_out = run_amcheck(DB_NAME, args.port)
         committed = checks["invoice_count"] > invoices_before
         consistent = all(
             checks[name] == 0
@@ -543,15 +624,25 @@ def run_harness(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # QA guard FIRST: no env = no run. Validates pgdata/db/port before argparse.
+    qa_pgdata, qa_port, qa_db, _qa_bindir, qa_results, _qa_src = qa_config_from_env()
+    global DB_NAME, RESULTS_DIR
+    DB_NAME = qa_db
+    RESULTS_DIR = qa_results
     parser = argparse.ArgumentParser(description="PharmaOS sale crash-safety harness")
     sub = parser.add_subparsers(dest="mode", required=True)
     child = sub.add_parser("child", help="internal: run exactly one sale")
-    child.add_argument("--port", type=int, default=5434)
+    child.add_argument("--port", type=int, default=qa_port)
     runner = sub.add_parser("run", help="run the kill/restart/verify loop")
-    runner.add_argument("--port", type=int, default=5434)
+    runner.add_argument("--port", type=int, default=qa_port)
     runner.add_argument("--iterations", type=int, default=50)
-    runner.add_argument("--pgdata", default=str(pgdata_default()))
+    runner.add_argument("--pgdata", default=str(qa_pgdata))
     args = parser.parse_args()
+    if args.port != qa_port or str(Path(args.pgdata)) != str(qa_pgdata):
+        raise SystemExit(
+            "REFUSING TO RUN: explicit --port/--pgdata must match the QA env contract "
+            f"(port={qa_port}, pgdata={qa_pgdata})."
+        )
     if args.mode == "child":
         return run_child(args.port)
     return run_harness(args)

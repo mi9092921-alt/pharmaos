@@ -1,11 +1,59 @@
 """Test fixtures.
 
+QA SAFETY GUARD (first code in this file — before pytest/app imports):
+  - TEST_DATABASE_URL is REQUIRED (no default). A missing value aborts the
+    whole session before any connection is opened.
+  - The URL must point at 127.0.0.1/localhost, port 55444, and a database
+    whose name contains "_qa_". Anything else aborts the session.
+  This guarantees pytest can never run against a live or shared database.
+
 DB-backed tests run against a real PostgreSQL 17 with the project migrations
 applied (TEST_DATABASE_URL). Unit tests (passwords/JWT/CSRF) need no DB.
 Keys use the non-production dev-store fallback in a temp directory.
 """
 
 import os
+from urllib.parse import urlparse
+
+_QA_EXPECTED_PORT = 55444
+_QA_ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
+
+
+def _qa_guard_test_db() -> str:
+    raw = os.environ.get("TEST_DATABASE_URL", "").strip()
+    if not raw:
+        raise SystemExit(
+            "REFUSING TO RUN PYTEST: TEST_DATABASE_URL is missing or blank "
+            "(no default — set it to the isolated QA database)."
+        )
+    try:
+        parsed = urlparse(raw)
+        host = (parsed.hostname or "").strip()
+        port = parsed.port
+        db = (parsed.path or "").lstrip("/").strip()
+    except ValueError as exc:
+        raise SystemExit(f"REFUSING TO RUN PYTEST: TEST_DATABASE_URL is not a valid URL ({exc}).")
+    if host not in _QA_ALLOWED_HOSTS:
+        raise SystemExit(
+            f"REFUSING TO RUN PYTEST: TEST_DATABASE_URL host must be one of "
+            f"{sorted(_QA_ALLOWED_HOSTS)} (got {host!r})."
+        )
+    if port != _QA_EXPECTED_PORT:
+        raise SystemExit(
+            f"REFUSING TO RUN PYTEST: TEST_DATABASE_URL port must be {_QA_EXPECTED_PORT} "
+            f"(got {port!r})."
+        )
+    if "_qa_" not in db:
+        raise SystemExit(
+            f"REFUSING TO RUN PYTEST: TEST_DATABASE_URL database must contain '_qa_' "
+            f"(got {db!r})."
+        )
+    return raw
+
+
+_TEST_DB = _qa_guard_test_db()
+os.environ["DATABASE_URL"] = _TEST_DB
+
 import uuid
 from collections.abc import AsyncIterator, Iterator
 
@@ -13,8 +61,6 @@ import pytest
 
 # Test environment MUST be set before importing app modules (settings cache).
 os.environ.setdefault("PHARMAOS_ENV", "test")
-_TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql://postgres@127.0.0.1:5433/pharmaos_test")
-os.environ["DATABASE_URL"] = _TEST_DB
 # The account-lockout tests need >5 login calls in one minute; the transport
 # rate limit (5/min/IP) is exercised by its own dedicated test instead.
 os.environ.setdefault("LOGIN_RATE_LIMIT_PER_MINUTE", "1000")
