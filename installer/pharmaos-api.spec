@@ -48,6 +48,12 @@ a = Analysis(
         "keyring.backends.Windows",
         "keyring.backends.kwallet",
         "keyring.backends.macOS",
+        # python-multipart is imported LAZILY by Starlette at runtime
+        # (ensure_multipart_is_installed), so static analysis misses it;
+        # without it the frozen API dies at import on Form/File endpoints
+        # (2026-10-14: /inventory/shelf-import killed device boot).
+        "multipart",
+        "multipart.multipart",
     ],
     hookspath=[],
     hooksconfig={},

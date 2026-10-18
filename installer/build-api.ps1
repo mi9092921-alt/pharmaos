@@ -54,6 +54,13 @@ $OutApi = Join-Path $OutApiDir "pharmaos-api.exe"
 if (-not (Test-Path $OutApi)) { throw "expected exe missing: $OutApi" }
 Write-Host "API bundle ready: $OutApi"
 
+# Build-time smoke gate: the frozen exe must import the full app surface
+# (all routers). Catches runtime-lazy deps PyInstaller missed (multipart,
+# 2026-10-14) BEFORE electron-builder ships a dead API to the device.
+& $OutApi --check-imports
+if ($LASTEXITCODE -ne 0) { throw "frozen API --check-imports failed with $LASTEXITCODE" }
+Write-Host "frozen API import check passed"
+
 # Record the PyInstaller version into the runtime manifest (decision 16).
 $ManifestPath = Join-Path $PSScriptRoot "runtime-manifest.json"
 if (Test-Path $ManifestPath) {
