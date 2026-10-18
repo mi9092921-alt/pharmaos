@@ -475,13 +475,14 @@ def spawn_child(port: int) -> tuple[subprocess.Popen[str], queue.Queue[str]]:
     env = os.environ.copy()
     env["PHARMAOS_ENV"] = "test"
     env["DATABASE_URL"] = db_url(port)
+    env["PYTHONUNBUFFERED"] = "1"
     src_root = os.environ.get("PHARMAOS_API_SRC", "").strip()
     if src_root:
         env["PYTHONPATH"] = src_root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     proc = subprocess.Popen(  # noqa: S603
-        [sys.executable, str(Path(__file__).resolve()), "child", "--port", str(port)],
+        [sys.executable, "-u", str(Path(__file__).resolve()), "child", "--port", str(port)],
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
         env=env,
@@ -493,7 +494,14 @@ def spawn_child(port: int) -> tuple[subprocess.Popen[str], queue.Queue[str]]:
         for line in proc.stdout:
             q.put(line.strip())
 
+    def _pump_err() -> None:
+        if proc.stderr is None:
+            return
+        for line in proc.stderr:
+            q.put("CHILD-STDERR: " + line.strip())
+
     threading.Thread(target=_pump, daemon=True).start()
+    threading.Thread(target=_pump_err, daemon=True).start()
     return proc, q
 
 
@@ -638,13 +646,18 @@ def main() -> int:
     runner.add_argument("--iterations", type=int, default=50)
     runner.add_argument("--pgdata", default=str(qa_pgdata))
     args = parser.parse_args()
-    if args.port != qa_port or str(Path(args.pgdata)) != str(qa_pgdata):
+    if args.port != qa_port:
         raise SystemExit(
-            "REFUSING TO RUN: explicit --port/--pgdata must match the QA env contract "
-            f"(port={qa_port}, pgdata={qa_pgdata})."
+            "REFUSING TO RUN: explicit --port must match the QA env contract "
+            f"(port={qa_port})."
         )
     if args.mode == "child":
         return run_child(args.port)
+    if str(Path(args.pgdata)) != str(qa_pgdata):
+        raise SystemExit(
+            "REFUSING TO RUN: explicit --pgdata must match the QA env contract "
+            f"(pgdata={qa_pgdata})."
+        )
     return run_harness(args)
 
 
