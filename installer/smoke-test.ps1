@@ -18,8 +18,14 @@ $ErrorActionPreference = "Continue"
 $RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $ApiExe = Join-Path $RepoRoot "installer\dist\pharmaos-api\pharmaos-api.exe"
 $PgBin = Join-Path $RepoRoot "installer\vendor\pg\bin"
+$ExpectedPgVersion = "17.11"
 if (-not (Test-Path $ApiExe)) { throw "build-api.ps1 first (exe missing)" }
 if (-not (Test-Path "$PgBin\initdb.exe")) { throw "fetch-binaries.ps1 first (pg missing)" }
+$pgVersion = (& "$PgBin\postgres.exe" --version) -join " "
+if ($pgVersion -notmatch "(^|\s)$([regex]::Escape($ExpectedPgVersion))(\.|\s|$)") {
+    throw "bundled PostgreSQL mismatch: expected $ExpectedPgVersion, got $pgVersion"
+}
+Write-Host "bundled PostgreSQL: $pgVersion"
 
 $DataDir = Join-Path $env:PROGRAMDATA "PharmaOS"
 $PgData = Join-Path $DataDir "pgdata"
@@ -79,6 +85,8 @@ if ($LASTEXITCODE -ne 0) { throw "pg start failed - see $PgLog" }
 Write-Host "=== 2. migrate (bundled SQL, asyncpg) ==="
 & $ApiExe migrate
 if ($LASTEXITCODE -ne 0) { throw "migrate failed (rc=$LASTEXITCODE)" }
+& $ApiExe postgres-settings --assert
+if ($LASTEXITCODE -ne 0) { throw "PostgreSQL durability settings do not match the runtime contract" }
 
 Write-Host "=== 3. bootstrap admin + branch ==="
 $env:PHARMAOS_ADMIN_PASSWORD = "Sm0ke@Test!"
@@ -114,6 +122,13 @@ New-Item -ItemType Directory -Force -Path $PgData | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "restore failed" }
 $pgdataSizeAfter = (Get-ChildItem $PgData -Recurse -File | Measure-Object Length -Sum).Sum
 if ($pgdataSizeAfter -lt ($pgdataSizeBefore * 0.5)) { throw "restored pgdata suspiciously small" }
+& "$PgBin\pg_isready.exe" -h 127.0.0.1 -p 5433 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    & "$PgBin\pg_ctl.exe" -D $PgData start -l $PgLog
+    if ($LASTEXITCODE -ne 0) { throw "pg restart after restore failed - see $PgLog" }
+}
+& $ApiExe postgres-settings --assert
+if ($LASTEXITCODE -ne 0) { throw "restored PostgreSQL durability settings do not match the runtime contract" }
 
 Write-Host "=== 8. API back up, health again ==="
 Start-DeviceApi

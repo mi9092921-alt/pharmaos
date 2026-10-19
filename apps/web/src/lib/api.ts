@@ -107,6 +107,18 @@ export function fetchMe() {
   return apiFetch<{ user: SessionUser }>('/api/v1/auth/me');
 }
 
+export interface SetupStatus {
+  users: number;
+  branches: number;
+  setup_complete: boolean;
+  last_completed_step: string;
+  backup_key_exported: boolean;
+}
+
+export function getSetupStatus() {
+  return apiFetch<SetupStatus>('/api/v1/system/setup-status');
+}
+
 export function logout() {
   return apiFetch<{ logged_out: boolean }>('/api/v1/auth/logout', { method: 'POST' });
 }

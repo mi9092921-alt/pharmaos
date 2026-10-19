@@ -42,6 +42,10 @@ DB_PASSWORD_NAME = "DB_PASSWORD"  # noqa: S105  (a keystore entry NAME, not a pa
 # Marker distinguishing an OWNER-IMPORTED recovery key from one auto-generated
 # by a local backup: restore refuses to guess between them (decision 10).
 BACKUP_KEY_IMPORTED_FLAG = "BACKUP_KEY_IMPORTED"
+# A durable acknowledgement that the owner has received the independent
+# recovery root.  The key itself remains in the OS keystore; this marker only
+# gates first-run completion and the persistent in-app warning.
+BACKUP_KEY_EXPORTED_FLAG = "BACKUP_KEY_EXPORTED"
 
 _DEV_STORE_DIR = Path(".pharmaos-devkeys")
 
@@ -236,10 +240,20 @@ def get_backup_key() -> bytes | None:
 def mark_backup_key_imported() -> None:
     """Record that the current backup key came from the owner's offline copy."""
     set_secret(BACKUP_KEY_IMPORTED_FLAG, "1")
+    mark_backup_key_exported()
 
 
 def backup_key_imported() -> bool:
     return get_secret(BACKUP_KEY_IMPORTED_FLAG) == "1"
+
+
+def mark_backup_key_exported() -> None:
+    """Record that the owner has been given the recovery key."""
+    set_secret(BACKUP_KEY_EXPORTED_FLAG, "1")
+
+
+def backup_key_exported() -> bool:
+    return get_secret(BACKUP_KEY_EXPORTED_FLAG) == "1"
 
 
 def get_db_password() -> str | None:

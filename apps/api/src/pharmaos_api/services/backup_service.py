@@ -54,6 +54,7 @@ _NONCE_SIZE = 12
 _BACKUP_CONTEXT = b"pharmaos.backup.v1"
 BACKUP_SUFFIX = ".pharmaos-backup"
 CHECKSUM_SUFFIX = ".sha256"
+STATUS_FILENAME = "backup_status.json"
 BACKUP_FORMAT = "pharmaos.backup.v1"
 # Newest schema this runtime understands (keep in lockstep with migrations —
 # a backup from a NEWER device must be rejected, not half-restored).
@@ -201,11 +202,62 @@ def create_backup(backup_dir: Path, *, database_url: str | None = None) -> Path:
 
     stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = backup_dir / f"pharmaos_{stamp}{BACKUP_SUFFIX}"
-    out_path.write_bytes(blob)
-    os.chmod(out_path, 0o600)
-    write_checksum(out_path)
+    temporary = out_path.with_name(f".{out_path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_bytes(blob)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, out_path)
+        write_checksum(out_path)
+    finally:
+        temporary.unlink(missing_ok=True)
     logger.info("Backup created: %s (%d bytes)", out_path, len(blob))
     return out_path
+
+
+def _write_backup_status(backup_dir: Path, payload: dict[str, object]) -> None:
+    """Atomically record the latest backup job outcome without secrets."""
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / STATUS_FILENAME
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def record_backup_success(backup_dir: Path, backup_file: Path) -> None:
+    """Record a successful primary backup for operators and diagnostics."""
+    try:
+        _write_backup_status(
+            backup_dir,
+            {
+                "status": "success",
+                "completed_at": dt.datetime.now(dt.UTC).isoformat(),
+                "backup_file": backup_file.name,
+                "error": None,
+            },
+        )
+    except OSError:
+        logger.exception("Could not write backup success status in %s", backup_dir)
+
+
+def record_backup_failure(backup_dir: Path, error: BaseException) -> None:
+    """Record a failed scheduled/manual backup without exposing secrets."""
+    try:
+        _write_backup_status(
+            backup_dir,
+            {
+                "status": "failure",
+                "completed_at": dt.datetime.now(dt.UTC).isoformat(),
+                "backup_file": None,
+                "error": str(error)[:500],
+            },
+        )
+    except OSError:
+        logger.exception("Could not write backup failure status in %s", backup_dir)
 
 
 def write_checksum(backup_file: Path) -> Path:
@@ -403,10 +455,21 @@ def _conf_file(cluster_dir: Path) -> Path:
 
 
 def _pin_cluster_config(cluster_dir: Path, *, port: int) -> None:
-    """Pin the runtime contract on a freshly initdb'd cluster: localhost only,
-    the requested port. Later lines win, so appending is sufficient."""
+    """Pin the runtime contract on a freshly initdb'd cluster.
+
+    These durability settings are intentionally explicit rather than relying on
+    PostgreSQL defaults; the installer smoke gate asserts the same contract.
+    """
     with _conf_file(cluster_dir).open("a", encoding="utf-8") as fh:
-        fh.write(f"\nlisten_addresses = '127.0.0.1'\nport = {port}\n")
+        fh.write(
+            "\n"
+            "listen_addresses = '127.0.0.1'\n"
+            f"port = {port}\n"
+            "wal_level = 'replica'\n"
+            "synchronous_commit = 'on'\n"
+            "fsync = 'on'\n"
+            "full_page_writes = 'on'\n"
+        )
         if os.name != "nt":
             fh.write("unix_socket_directories = '/tmp'\n")
 

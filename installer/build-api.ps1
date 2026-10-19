@@ -20,10 +20,17 @@ Get-Process pharmaos-api -ErrorAction SilentlyContinue | Stop-Process -Force
 Get-Process postgres -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$RepoRoot*" } | Stop-Process -Force
 
 $Python = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $Python)) {
-    Write-Host "repo .venv missing - creating build venv..."
+$python312 = $false
+if (Test-Path $Python) {
+    try {
+        $pythonVersion = (& $Python -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')") -join ""
+        $python312 = $pythonVersion -eq "3.12"
+    } catch { $python312 = $false }
+}
+if (-not $python312) {
+    Write-Host "a Python 3.12 build venv is required - creating/reusing installer\.venv-build..."
     $Venv = Join-Path $RepoRoot "installer\.venv-build"
-    py -3.12 -m venv $Venv
+    if (-not (Test-Path (Join-Path $Venv "Scripts\python.exe"))) { py -3.12 -m venv $Venv }
     $Python = Join-Path $Venv "Scripts\python.exe"
     & $Python -m pip install --quiet --upgrade pip
     & $Python -m pip install --quiet -e (Join-Path $RepoRoot "apps\api")
@@ -34,6 +41,7 @@ if ($LASTEXITCODE -ne 0) {
     uv pip install -p $Python "pyinstaller==6.16.0"
 }
 & $Python -c "import sys; assert sys.version_info[:2] == (3, 12), 'Python 3.12 required'"
+Write-Host "build Python: $((& $Python --version) -join '')"
 
 $Spec = Join-Path $PSScriptRoot "pharmaos-api.spec"
 $Dist = Join-Path $PSScriptRoot "dist"
@@ -67,6 +75,7 @@ if (Test-Path $ManifestPath) {
     $PyiVersion = (& $Python -m PyInstaller --version) -join ""
     $Manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
     $Manifest | Add-Member -NotePropertyName pyinstaller -NotePropertyValue ([ordered]@{ version = $PyiVersion }) -Force
+    $Manifest | Add-Member -NotePropertyName python -NotePropertyValue ([ordered]@{ version = ((& $Python --version) -join "") }) -Force
     $Manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $ManifestPath -Encoding UTF8
     Write-Host "manifest updated with pyinstaller $PyiVersion"
 }

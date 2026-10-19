@@ -42,6 +42,7 @@ import argparse
 import asyncio
 import getpass
 import json as _json
+import logging
 import os
 import sys
 import uuid
@@ -60,6 +61,7 @@ SUPER_ADMIN_ROLE_NAME_AR = "مالك النظام"
 # Exit code for "another maintenance operation is running" — schedulers can
 # distinguish it from a real failure (StartWhenAvailable retries later).
 MAINTENANCE_BUSY_EXIT = 5
+logger = logging.getLogger(__name__)
 
 
 async def _bootstrap_admin(username: str, full_name: str, password: str) -> int:
@@ -115,22 +117,30 @@ def _backup_create(backup_dir: Path, *, cloud: bool) -> int:
     from pharmaos_api.config import get_settings
     from pharmaos_api.services import backup_service
 
-    backup_file = backup_service.create_backup(backup_dir)
-    print(f"backup created: {backup_file}")
-    checksum = backup_service.verify_checksum(backup_file)
-    print("checksum sidecar: written" if checksum else "checksum sidecar: MISSING (error)")
-    secondary = get_settings().backup_secondary_path
-    if secondary is not None:
-        secondary_file = backup_service.copy_to_secondary(backup_file, secondary)
-        print(f"secondary copy: {secondary_file}")
-    if cloud:
-        uploaded = backup_service.upload_to_cloud(backup_file)
-        print("cloud copy: uploaded" if uploaded else "cloud copy: skipped (not configured)")
-    keep = get_settings().backup_keep_count
-    deleted = backup_service.prune_old_backups(backup_dir, keep=keep)
-    if deleted:
-        print(f"retention: pruned {len(deleted)} old backup(s) (keeping newest {keep})")
-    return 0
+    try:
+        backup_file = backup_service.create_backup(backup_dir)
+        print(f"backup created: {backup_file}")
+        if not backup_service.verify_checksum(backup_file):
+            raise RuntimeError("checksum sidecar is missing or does not verify")
+        print("checksum sidecar: written")
+        backup_service.record_backup_success(backup_dir, backup_file)
+        secondary = get_settings().backup_secondary_path
+        if secondary is not None:
+            secondary_file = backup_service.copy_to_secondary(backup_file, secondary)
+            print(f"secondary copy: {secondary_file}")
+        if cloud:
+            uploaded = backup_service.upload_to_cloud(backup_file)
+            print("cloud copy: uploaded" if uploaded else "cloud copy: skipped (not configured)")
+        keep = get_settings().backup_keep_count
+        deleted = backup_service.prune_old_backups(backup_dir, keep=keep)
+        if deleted:
+            print(f"retention: pruned {len(deleted)} old backup(s) (keeping newest {keep})")
+        return 0
+    except Exception as exc:
+        backup_service.record_backup_failure(backup_dir, exc)
+        logger.exception("Backup job failed (directory=%s)", backup_dir)
+        print(f"backup failed: {exc}", file=sys.stderr)
+        return 1
 
 
 def _backup_restore_drill(backup_file: Path, drill_database_url: str) -> int:
@@ -144,7 +154,9 @@ def _backup_restore_drill(backup_file: Path, drill_database_url: str) -> int:
 def _backup_export_key() -> int:
     from pharmaos_api.security import keystore
 
-    print(keystore.ensure_backup_key().hex())
+    key = keystore.ensure_backup_key().hex()
+    keystore.mark_backup_key_exported()
+    print(key)
     print(
         "⚠️  Store this backup key OFFLINE (paper/sealed envelope). "
         "Without it, backups cannot be restored after device loss.",
@@ -582,6 +594,7 @@ def _setup_status_cmd() -> int:
     import json as _json
 
     from pharmaos_api.models import Branch
+    from pharmaos_api.security import keystore
 
     async def _collect() -> dict[str, object]:
         from pharmaos_api.services import installation_state
@@ -599,6 +612,7 @@ def _setup_status_cmd() -> int:
             "branches": branches,
             "setup_complete": state.get("setup_complete") == "1",
             "last_completed_step": state.get("last_completed_step", "none"),
+            "backup_key_exported": keystore.backup_key_exported(),
         }
 
     print(_json.dumps(asyncio.run(_collect()), indent=2))
@@ -608,7 +622,16 @@ def _setup_status_cmd() -> int:
 def _setup_complete() -> int:
     """Flip installation_state.setup_complete (the LAST wizard step - after
     this, a restored device skips the wizard, decision 7)."""
+    from pharmaos_api.security import keystore
     from pharmaos_api.services import installation_state
+
+    if not keystore.backup_key_exported():
+        print(
+            "refusing setup completion: export and store the offline backup key first "
+            "(backup export-key).",
+            file=sys.stderr,
+        )
+        return 2
 
     async def _mark() -> None:
         async with get_session_factory()() as session:
@@ -620,6 +643,37 @@ def _setup_complete() -> int:
     asyncio.run(_mark())
     print("setup marked complete.")
     return 0
+
+
+async def _postgres_settings_async(assert_expected: bool) -> int:
+    """Print and optionally assert the PostgreSQL durability contract."""
+    import asyncpg
+
+    from pharmaos_api.config import get_settings
+
+    expected = {
+        "wal_level": "replica",
+        "synchronous_commit": "on",
+        "fsync": "on",
+        "full_page_writes": "on",
+    }
+    conn = await asyncpg.connect(get_settings().resolved_database_url)
+    try:
+        actual = {
+            name: str(await conn.fetchval("SELECT current_setting($1)", name)) for name in expected
+        }
+    finally:
+        await conn.close()
+    print(_json.dumps({"actual": actual, "expected": expected}, indent=2))
+    mismatches = {k: (actual[k], v) for k, v in expected.items() if actual[k] != v}
+    if assert_expected and mismatches:
+        print(f"postgres durability contract FAILED: {mismatches}", file=sys.stderr)
+        return 3
+    return 0
+
+
+def _postgres_settings(assert_expected: bool) -> int:
+    return asyncio.run(_postgres_settings_async(assert_expected))
 
 
 def _device_reset() -> int:
@@ -635,6 +689,7 @@ def _device_reset() -> int:
         keystore.ENCRYPTION_KEY_NAME,
         keystore.BACKUP_KEY_NAME,
         keystore.BACKUP_KEY_IMPORTED_FLAG,
+        keystore.BACKUP_KEY_EXPORTED_FLAG,
         keystore.CLOCK_HMAC_KEY_NAME,
     ]
     for name in names:
@@ -736,6 +791,10 @@ def main(argv: list[str] | None = None) -> int:
         help="First-run wizard state (users/branches/setup_complete) as JSON.",
     )
     sub.add_parser("setup-complete", help="Mark first-run setup complete.")
+    pg_settings = sub.add_parser(
+        "postgres-settings", help="Print PostgreSQL durability settings (installer smoke gate)."
+    )
+    pg_settings.add_argument("--assert", dest="assert_expected", action="store_true")
     dev_reset = sub.add_parser(
         "device-reset",
         help="Delete device keystore secrets (debug tool; --yes required).",
@@ -808,6 +867,8 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch
         return _setup_status_cmd()
     if args.command == "setup-complete":
         return _setup_complete()
+    if args.command == "postgres-settings":
+        return _postgres_settings(args.assert_expected)
     if args.command == "device-init":
         return _device_init(args.pgdata)
     if args.command == "bootstrap-branch":

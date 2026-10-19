@@ -323,10 +323,10 @@ async function runSetupWizard(): Promise<void> {
 async function registerScheduledTasks(winPassword: string): Promise<void> {
   const user = process.env.USERNAME ?? '';
   if (!winPassword || !user) {
-    log(
-      'scheduled tasks: skipped (no Windows password provided) - the daily backup runs only while logged on',
+    throw new Error(
+      'Windows account name and password are required to register scheduled backups; ' +
+        'without them no automatic backup task is installed.',
     );
-    return;
   }
   const tasks: Array<{ name: string; args: string; schedule: string[] }> = [
     {
@@ -368,7 +368,26 @@ async function registerScheduledTasks(winPassword: string): Promise<void> {
     if (result.code !== 0) {
       throw new Error(`task ${task.name}: ${result.stderr || result.stdout}`);
     }
-    log(`scheduled task registered: ${task.name} (user ${user}, run-whether-logged-on)`);
+    // schtasks.exe creates the trigger but has no switch for Task Scheduler's
+    // "Start the task as soon as possible after a scheduled start is missed".
+    // Set that setting explicitly so a powered-off pharmacy machine catches up
+    // after boot instead of silently skipping the 02:00 run.
+    const settings =
+      `$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable; ` +
+      `Set-ScheduledTask -TaskName '${task.name}' -Settings $settings | Out-Null`;
+    const settingsResult = await runCapture(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', settings],
+      p.dataDir,
+    );
+    if (settingsResult.code !== 0) {
+      throw new Error(
+        `task ${task.name} settings: ${settingsResult.stderr || settingsResult.stdout}`,
+      );
+    }
+    log(
+      `scheduled task registered: ${task.name} (user ${user}, run-whether-logged-on, start-when-available)`,
+    );
   }
 }
 

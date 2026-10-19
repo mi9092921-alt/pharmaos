@@ -335,6 +335,7 @@ def create_app(license_scheduler: bool = True) -> FastAPI:
 
         from pharmaos_api.db import get_session_factory
         from pharmaos_api.models import Branch, User
+        from pharmaos_api.security import keystore
         from pharmaos_api.services import installation_state
 
         async with get_session_factory()() as session:
@@ -349,13 +350,24 @@ def create_app(license_scheduler: bool = True) -> FastAPI:
                 "branches": branches,
                 "setup_complete": state.get("setup_complete") == "1",
                 "last_completed_step": state.get("last_completed_step", "none"),
+                "backup_key_exported": keystore.backup_key_exported(),
             }
         )
 
     @app.post("/api/v1/system/setup-complete")
     async def system_setup_complete() -> dict[str, object]:
         from pharmaos_api.db import get_session_factory
+        from pharmaos_api.security import keystore
         from pharmaos_api.services import installation_state
+
+        if not keystore.backup_key_exported():
+            return JSONResponse(
+                status_code=409,
+                content=error_envelope(
+                    ErrorCode.BACKUP_KEY_EXPORT_REQUIRED,
+                    "Export and store the offline backup key before finishing setup.",
+                ),
+            )
 
         async with get_session_factory()() as session:
             await installation_state.set_values(

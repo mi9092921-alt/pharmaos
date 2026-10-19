@@ -48,4 +48,5 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/reports', labelKey: 'nav.reports', permission: 'reports.inventory', ready: true },
   { href: '/users', labelKey: 'nav.users', permission: 'settings.users', ready: true },
   { href: '/settings', labelKey: 'nav.settings', permission: 'settings.view', ready: true },
+  { href: '/about', labelKey: 'nav.about', permission: 'sales.view', ready: true },
 ];

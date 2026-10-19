@@ -118,6 +118,19 @@ def test_retention_refuses_to_keep_zero(tmp_path: Path) -> None:
         backup_service.prune_old_backups(tmp_path, keep=0)
 
 
+def test_new_cluster_pins_durability_contract(tmp_path: Path) -> None:
+    (tmp_path / "postgresql.conf").write_text("fsync = off\n", encoding="utf-8")
+
+    backup_service._pin_cluster_config(tmp_path, port=55433)
+
+    config = (tmp_path / "postgresql.conf").read_text(encoding="utf-8")
+    assert "wal_level = 'replica'" in config
+    assert "synchronous_commit = 'on'" in config
+    assert "fsync = 'on'" in config
+    assert "full_page_writes = 'on'" in config
+    assert "port = 55433" in config
+
+
 def test_secondary_copy_is_atomic_and_checksum_verified(tmp_path: Path) -> None:
     source = tmp_path / "primary" / f"one{backup_service.BACKUP_SUFFIX}"
     secondary = tmp_path / "secondary"

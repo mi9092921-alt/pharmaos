@@ -123,6 +123,25 @@ def test_full_cluster_restore_lifecycle(tmp_path: Path, monkeypatch: pytest.Monk
         _run(_seed_live(_dsn("pharmaos")))
 
         backup_file = backup_service.create_backup(tmp_path, database_url=_dsn("pharmaos"))
+        exported_key = keystore.get_backup_key()
+        assert exported_key is not None
+
+        # Simulate a clean replacement device: only the owner's offline key is
+        # available before restore. The encrypted backup must repopulate the
+        # database password and application keys during promotion.
+        for name in (
+            keystore.BACKUP_KEY_NAME,
+            keystore.BACKUP_KEY_IMPORTED_FLAG,
+            keystore.BACKUP_KEY_EXPORTED_FLAG,
+            keystore.DB_PASSWORD_NAME,
+            keystore.JWT_PRIVATE_KEY_NAME,
+            keystore.JWT_PUBLIC_KEY_NAME,
+            keystore.ENCRYPTION_KEY_NAME,
+            keystore.CLOCK_HMAC_KEY_NAME,
+        ):
+            keystore.delete_secret(name)
+        backup_service.import_backup_key(exported_key.hex())
+        assert keystore.backup_key_imported() is True
 
         # Disaster: the live cluster is destroyed (crash / dead disk).
         _pg_ctl(live_dir, "stop", "-m", "fast")
@@ -213,3 +232,4 @@ def test_import_backup_key_validation() -> None:
     # Leave the session keystore as we found it (no imported flag leaking
     # into other tests' error-message branches).
     keystore.delete_secret(keystore.BACKUP_KEY_IMPORTED_FLAG)
+    keystore.delete_secret(keystore.BACKUP_KEY_EXPORTED_FLAG)
