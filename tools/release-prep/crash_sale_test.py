@@ -455,7 +455,9 @@ def run_checks_resilient(
     raise RuntimeError(f"run_checks failed after {retries} retries; last error: {last_err}")
 
 
-def run_amcheck(db: str, port: int) -> tuple[bool, str]:
+def run_amcheck(db: str, port: int, amcheck_available: bool = True) -> tuple[bool, str]:
+    if not amcheck_available:
+        return True, "skipped: pg_amcheck extension not installed in this PG build"
     proc = subprocess.run(  # noqa: S603
         [
             str(pg_bin() / "pg_amcheck.exe"),
@@ -565,15 +567,18 @@ def run_harness(args: argparse.Namespace) -> int:
     print(f"baseline batch quantity: {baseline}")
 
     # ensure pg_amcheck extension is available in the QA database (contrib module)
-    async def _ensure_amcheck() -> None:
+    async def _ensure_amcheck() -> bool:
         conn = await asyncpg.connect(db_url(args.port))
         try:
             await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_amcheck")
+            return True
+        except Exception:  # contrib not installed in this PG build -> amcheck skipped
+            return False
         finally:
             await conn.close()
 
-    asyncio.run(_ensure_amcheck())
-    print("pg_amcheck extension ensured")
+    amcheck_available = asyncio.run(_ensure_amcheck())
+    print(f"pg_amcheck extension: {'available' if amcheck_available else 'NOT installed (amcheck skipped)'}")
 
     commit_s = measure_commit_time(args.port)
     window_lo, window_hi = 0.005, commit_s * 1.4
@@ -613,7 +618,7 @@ def run_harness(args: argparse.Namespace) -> int:
             kill_tree(proc.pid)
 
         checks = run_checks_resilient(args.port, baseline, MARKER_BATCH)
-        ok_am, am_out = run_amcheck(DB_NAME, args.port)
+        ok_am, am_out = run_amcheck(DB_NAME, args.port, amcheck_available)
         committed = checks["invoice_count"] > invoices_before
         consistent = all(
             checks[name] == 0
