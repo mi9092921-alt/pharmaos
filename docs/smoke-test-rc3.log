@@ -1,0 +1,158 @@
+bundled PostgreSQL: postgres (PostgreSQL) 17.11
+smoke ports: PostgreSQL=55433 staging=55434 API=18000
+cleaning previous smoke state...
+=== 1. device-init (first-run, daily-user context) ===
+device cluster provisioned: C:\Users\Mosta\AppData\Local\Temp\PharmaOS-smoke-rc3-final\PharmaOS\pgdata
+next: pharmaos-api migrate
+=== 1.5. start PG (the orchestrator's step) ===
+waiting for server to start.... done
+server started
+=== 2. migrate (bundled SQL, asyncpg) ===
+{
+  "applied": [
+    "20260711000100_extensions",
+    "20260711000200_core_schema",
+    "20260711000300_catalog_schema",
+    "20260711000400_users_role",
+    "20260711000500_skeleton_operational",
+    "20260711000600_audit_log",
+    "20260711000700_settings",
+    "20260711000800_catalog_pricing",
+    "20260711000900_inventory",
+    "20260711001000_cash_sessions",
+    "20260711001100_suppliers_full",
+    "20260711001200_purchase_orders",
+    "20260711001300_pack_serials",
+    "20260711001400_batch_status_index",
+    "20260711001500_customers_loyalty",
+    "20260711001600_vat_tax",
+    "20260711001700_returns_payments",
+    "20260711001800_prescriptions_controlled",
+    "20260711001900_expenses",
+    "20260711002000_return_stock_policy",
+    "20260711002100_expense_cash_session",
+    "20260711002200_payments_xor",
+    "20260711002300_ereceipt_queue",
+    "20260711002400_tt_events",
+    "20260711002500_report_indexes",
+    "20260711002600_inventory_report_indexes",
+    "20260711002700_alerts",
+    "20260711002800_notifications",
+    "20260711002900_license_state",
+    "20260711003000_installation_state",
+    "20260711003100_shelf_location_norm"
+  ],
+  "skipped": 0,
+  "seeds": [
+    "rbac_seed.sql"
+  ]
+}
+{
+  "actual": {
+    "wal_level": "replica",
+    "synchronous_commit": "on",
+    "fsync": "on",
+    "full_page_writes": "on"
+  },
+  "expected": {
+    "wal_level": "replica",
+    "synchronous_commit": "on",
+    "fsync": "on",
+    "full_page_writes": "on"
+  }
+}
+=== 3. bootstrap admin + branch ===
+super_admin 'smoke-admin' created.
+branch created: e35885cd-1679-4110-95b3-fe11d80c3eab
+=== 4. start API, health ===
+health: {"success":true,"data":{"status":"ok"}}
+=== 5. backup create (no pg on PATH) ===
+backup created: C:\Users\Mosta\AppData\Local\Temp\PharmaOS-smoke-rc3-final\PharmaOS\backups\pharmaos_20261019T181144Z.pharmaos-backup
+checksum sidecar: written
+backup: C:\Users\Mosta\AppData\Local\Temp\PharmaOS-smoke-rc3-final\PharmaOS\backups\pharmaos_20261019T181144Z.pharmaos-backup
+=== 6. export-key -> import-key (stdin) ===
+powershell : \u26a0\ufe0f  Store this backup key OFFLINE (paper/sealed envelope). Without it, backups cannot be 
+restored after device loss.
+At line:2 char:212
++ ... rc3-final'; powershell -NoProfile -ExecutionPolicy Bypass -File insta ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (\u26a0\ufe0f  S...er device loss.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+backup key imported (marked owner-provided) � keep the paper copy safe.
+=== 7. disaster: stop API+PG, destroy pgdata, restore ===
+waiting for server to shut down...... done
+server stopped
+waiting for server to start.... done
+server started
+waiting for server to start.... done
+server started
+restore promoted and verified:
+{
+  "verification": {
+    "users": 1,
+    "permissions": 44,
+    "encrypted_field_verified": false,
+    "encrypted_sample": null
+  },
+  "migrations": {
+    "applied": [],
+    "skipped": [
+      "20260711000100_extensions",
+      "20260711000200_core_schema",
+      "20260711000300_catalog_schema",
+      "20260711000400_users_role",
+      "20260711000500_skeleton_operational",
+      "20260711000600_audit_log",
+      "20260711000700_settings",
+      "20260711000800_catalog_pricing",
+      "20260711000900_inventory",
+      "20260711001000_cash_sessions",
+      "20260711001100_suppliers_full",
+      "20260711001200_purchase_orders",
+      "20260711001300_pack_serials",
+      "20260711001400_batch_status_index",
+      "20260711001500_customers_loyalty",
+      "20260711001600_vat_tax",
+      "20260711001700_returns_payments",
+      "20260711001800_prescriptions_controlled",
+      "20260711001900_expenses",
+      "20260711002000_return_stock_policy",
+      "20260711002100_expense_cash_session",
+      "20260711002200_payments_xor",
+      "20260711002300_ereceipt_queue",
+      "20260711002400_tt_events",
+      "20260711002500_report_indexes",
+      "20260711002600_inventory_report_indexes",
+      "20260711002700_alerts",
+      "20260711002800_notifications",
+      "20260711002900_license_state",
+      "20260711003000_installation_state",
+      "20260711003100_shelf_location_norm"
+    ],
+    "seeds": [
+      "rbac_seed.sql"
+    ]
+  }
+}
+{
+  "actual": {
+    "wal_level": "replica",
+    "synchronous_commit": "on",
+    "fsync": "on",
+    "full_page_writes": "on"
+  },
+  "expected": {
+    "wal_level": "replica",
+    "synchronous_commit": "on",
+    "fsync": "on",
+    "full_page_writes": "on"
+  }
+}
+=== 8. API back up, health again ===
+health after restore: {"success":true,"data":{"status":"ok"}}
+
+M2 FULL-CHAIN GATE: PASS
+pgdata before/after restore: 52107559 / 51780747 bytes
+
+
