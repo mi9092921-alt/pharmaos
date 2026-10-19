@@ -139,6 +139,6 @@
 - SHA256 للمثبّت: `EF77DE1679078B13F3BF5F4A63D94258AE98FD92883C235B8E4B7B286BD5572F`.
 - نجح `installer/smoke-test.ps1` على مخرجات البناء الفعلية بالمنافذ المؤقتة
   PostgreSQL `55433` وstaging `55434` وAPI `18000`، مع `M2 FULL-CHAIN GATE: PASS`.
-  حُفظت المخرجات الكاملة محلياً في `%TEMP%\pharmaos-smoke-rc3-final.log`.
+  أُرفقت المخرجات الكاملة في `docs/smoke-test-rc3.log`.
 - أُعيد تشغيل المجموعة الكاملة: `458 passed` على Python `3.12.14` وPostgreSQL
   `17.11` بإعداد builtin `C.UTF-8`.
