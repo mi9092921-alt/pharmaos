@@ -121,6 +121,40 @@ async def test_create_search_arabic_fts_and_trigram(admin, db_session: AsyncSess
     assert any(m["trade_name_ar"] == "كونجيستال" for m in r3.json()["data"])
 
 
+async def test_arabic_search_common_variations_and_nonmatches(admin):
+    client, csrf = admin
+    cases = (
+        ("إيبوبروفين", "ايبوبروفين"),  # hamza/alef
+        ("أقراص", "اقراص"),  # hamza/alef
+        ("حبة", "حبه"),  # taa marbuta/haa
+        ("موسى", "موسي"),  # alif maqsura/yaa
+        ("كونجيستال", "كونجستال"),  # one missing Arabic letter
+    )
+    for name, typo in cases:
+        created = await client.post(
+            "/api/v1/medications",
+            headers={"X-CSRF-Token": csrf},
+            json={"trade_name": f"Arabic-{uuid.uuid4().hex[:8]}", "trade_name_ar": name},
+        )
+        assert created.status_code == 200, created.text
+        response = await client.get("/api/v1/medications", params={"search": typo})
+        assert any(m["trade_name_ar"] == name for m in response.json()["data"]), (
+            name,
+            typo,
+            response.text,
+        )
+
+    unrelated = "باراسيتامول"
+    created = await client.post(
+        "/api/v1/medications",
+        headers={"X-CSRF-Token": csrf},
+        json={"trade_name": f"Unrelated-{uuid.uuid4().hex[:8]}", "trade_name_ar": unrelated},
+    )
+    assert created.status_code == 200, created.text
+    response = await client.get("/api/v1/medications", params={"search": "كونجستال"})
+    assert unrelated not in [m["trade_name_ar"] for m in response.json()["data"]]
+
+
 async def test_packaging_price_change_writes_history(admin, db_session: AsyncSession):
     client, csrf = admin
     unit = await _unit_id(db_session)

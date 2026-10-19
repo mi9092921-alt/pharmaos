@@ -18,6 +18,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import asyncpg
+from sqlalchemy import text
 
 DB_NAME = "pharmaos_release_perf"
 ADMIN_URL = os.environ.get("PERF_ADMIN_DATABASE_URL", "postgresql://postgres@127.0.0.1:5433/postgres")
@@ -61,6 +62,17 @@ async def _seed() -> tuple[str, str]:
             SELECT 'GEN-PERF-' || lpad(g::text, 5, '0'),
                    'GEN-PERF-AR-' || lpad(g::text, 5, '0')
             FROM generate_series(1, 10000) AS g
+            """
+        )
+        await conn.execute(
+            """
+            UPDATE medications
+            SET trade_name_ar = CASE
+                WHEN trade_name = 'GEN-PERF-09999' THEN 'كونجيستال'
+                WHEN trade_name = 'GEN-PERF-10000' THEN 'إيبوبروفين'
+                ELSE trade_name_ar
+            END
+            WHERE trade_name IN ('GEN-PERF-09999', 'GEN-PERF-10000')
             """
         )
         med_id = str(
@@ -169,6 +181,16 @@ async def _measure(branch_id: str, user_id: str) -> dict[str, object]:
                 session, search="GEN-PERF-09999", skip=0, limit=20
             )
 
+        async def arabic_exact_search() -> None:
+            await catalog_service.list_medications(
+                session, search="كونجيستال", skip=0, limit=20
+            )
+
+        async def arabic_typo_search() -> None:
+            await catalog_service.list_medications(
+                session, search="كونجستال", skip=0, limit=20
+            )
+
         async def sale() -> None:
             await sales_service.create_sale(
                 session,
@@ -203,8 +225,34 @@ async def _measure(branch_id: str, user_id: str) -> dict[str, object]:
 
         measurements: dict[str, list[float]] = {
             "search_medication_ms": await timed(search),
+            "arabic_exact_search_ms": await timed(arabic_exact_search),
+            "arabic_typo_search_ms": await timed(arabic_typo_search),
             "daily_sales_report_ms": await timed(sales_report),
             "inventory_report_ms": await timed(inventory_report),
+        }
+
+        async def explain(query: str) -> list[str]:
+            rows = (
+                await session.execute(
+                    text("EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) " + query)
+                )
+            ).scalars().all()
+            return [str(row) for row in rows]
+
+        explain_plans = {
+            "arabic_exact": await explain(
+                "SELECT id FROM medications WHERE NOT is_deleted "
+                "AND search_vector @@ plainto_tsquery('arabic_simple', normalize_arabic('كونجيستال'))"
+            ),
+            "arabic_typo_trigram": await explain(
+                "SELECT id FROM medications WHERE NOT is_deleted "
+                "AND normalize_arabic(trade_name_ar) % normalize_arabic('كونجستال')"
+            ),
+            "arabic_typo_levenshtein_fallback": await explain(
+                "SELECT id FROM medications WHERE NOT is_deleted "
+                "AND levenshtein_less_equal(normalize_arabic(trade_name_ar), "
+                "normalize_arabic('كونجستال'), 1) <= 1"
+            ),
         }
         sale_times: list[float] = []
         for _ in range(5):
@@ -216,6 +264,11 @@ async def _measure(branch_id: str, user_id: str) -> dict[str, object]:
             "database": DB_NAME,
             "fictional_medications": 10000,
             "fictional_invoices": 50000,
+            "search_queries": {
+                "arabic_exact": "كونجيستال",
+                "arabic_typo": "كونجستال",
+            },
+            "explain_analyze": explain_plans,
             "measurements_ms": {
                 key: {
                     "samples": [round(value, 2) for value in values],
