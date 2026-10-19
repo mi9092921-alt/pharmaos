@@ -564,6 +564,17 @@ def run_harness(args: argparse.Namespace) -> int:
     baseline = asyncio.run(_baseline())
     print(f"baseline batch quantity: {baseline}")
 
+    # ensure pg_amcheck extension is available in the QA database (contrib module)
+    async def _ensure_amcheck() -> None:
+        conn = await asyncpg.connect(db_url(args.port))
+        try:
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_amcheck")
+        finally:
+            await conn.close()
+
+    asyncio.run(_ensure_amcheck())
+    print("pg_amcheck extension ensured")
+
     commit_s = measure_commit_time(args.port)
     window_lo, window_hi = 0.005, commit_s * 1.4
     print(f"kill window: {window_lo:.3f}s .. {window_hi:.3f}s (random uniform)")
