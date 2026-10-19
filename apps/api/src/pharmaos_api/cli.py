@@ -112,13 +112,20 @@ async def _bootstrap_admin(username: str, full_name: str, password: str) -> int:
 
 
 def _backup_create(backup_dir: Path, *, cloud: bool) -> int:
+    from pharmaos_api.config import get_settings
     from pharmaos_api.services import backup_service
 
     backup_file = backup_service.create_backup(backup_dir)
     print(f"backup created: {backup_file}")
+    checksum = backup_service.verify_checksum(backup_file)
+    print("checksum sidecar: written" if checksum else "checksum sidecar: MISSING (error)")
     if cloud:
         uploaded = backup_service.upload_to_cloud(backup_file)
         print("cloud copy: uploaded" if uploaded else "cloud copy: skipped (not configured)")
+    keep = get_settings().backup_keep_count
+    deleted = backup_service.prune_old_backups(backup_dir, keep=keep)
+    if deleted:
+        print(f"retention: pruned {len(deleted)} old backup(s) (keeping newest {keep})")
     return 0
 
 

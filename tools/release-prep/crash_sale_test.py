@@ -40,6 +40,7 @@ import argparse
 import asyncio
 import json
 import os
+import queue as queue_mod
 import random
 import statistics
 import subprocess
@@ -218,18 +219,78 @@ async def _seed_async(port: int) -> None:
                 is_primary=True,
             )
         )
-        session.add(
-            MedicationBatch(
-                branch_id=branch.id,
-                medication_id=med.id,
-                batch_number=MARKER_BATCH,
-                expiry_date=dt.date.today() + dt.timedelta(days=720),
-                quantity=Decimal(10_000_000),
-                purchase_price=Decimal("2.00"),
-            )
+        await session.commit()
+
+    # Stock enters through the REAL receive primitive (batch row + purchase_in
+    # movement + cache delta, one transaction) — never a raw INSERT, so the
+    # derived cache starts consistent exactly like a live device.
+    from pharmaos_api.db import get_session_factory as _g
+    from pharmaos_api.models import Branch as _B
+    from pharmaos_api.models import Medication as _M
+    from pharmaos_api.models import User as _U
+    from pharmaos_api.services.inventory_service import receive_batch
+
+    async with _g()() as session:
+        branch = (
+            await session.execute(select(_B).where(_B.name == MARKER_BRANCH))
+        ).scalar_one()
+        med = (
+            await session.execute(select(_M).where(_M.trade_name == MARKER_MED))
+        ).scalar_one()
+        actor = (
+            await session.execute(select(_U).where(_U.username == MARKER_USER))
+        ).scalar_one()
+        await receive_batch(
+            session,
+            actor=actor,
+            branch_id=branch.id,
+            medication_id=med.id,
+            batch_number=MARKER_BATCH,
+            expiry_date=dt.date.today() + dt.timedelta(days=720),
+            quantity=Decimal(10_000_000),
+            purchase_price=Decimal("2.00"),
         )
         await session.commit()
-    print("seeded fictional crash-test data")
+    print("seeded fictional crash-test data (via receive_batch)")
+
+
+async def _reset_db_async(port: int) -> None:
+    import asyncpg
+
+    conn = await asyncpg.connect(db_url(port, "postgres"))
+    try:
+        await conn.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
+        await conn.execute(f'CREATE DATABASE "{DB_NAME}"')
+    finally:
+        await conn.close()
+
+
+async def _install_amcheck_async(port: int) -> None:
+    """Install PostgreSQL's integrity-check extension in the throwaway DB.
+
+    ``pg_amcheck`` is shipped with PostgreSQL, but it skips databases that do
+    not have the ``amcheck`` extension installed.  The crash harness owns this
+    fresh database, so enabling the extension here makes the integrity gate
+    real instead of recording a false failure for every iteration.
+    """
+    import asyncpg
+
+    conn = await asyncpg.connect(db_url(port))
+    try:
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS amcheck")
+    finally:
+        await conn.close()
+
+
+def reset_db(port: int) -> None:
+    """Pristine database per harness run: no cross-run state contaminates
+    the ledger-equation invariants."""
+    asyncio.run(_reset_db_async(port))
+    from pharmaos_api.migrations_runner import run_migrations
+
+    applied = run_migrations(db_url(port))
+    asyncio.run(_install_amcheck_async(port))
+    print(f"migrations applied fresh: {len(applied['applied'])} (seeds: {applied['seeds']})")
 
 
 def seed(port: int) -> None:
@@ -289,19 +350,20 @@ def start_cluster(pgdata: Path, logfile: Path) -> None:
 # consistency checks
 # ---------------------------------------------------------------------------
 
-# All five invariants. c5 needs :med_id and :baseline bound at call time.
+# All five invariants (positional args: $1 = branch_id / $1 = batch_number,
+# $2 = baseline for c5). All must return 0.
 CHECK_QUERIES: list[tuple[str, str]] = [
     (
         "c1_invoice_without_movements",
         """SELECT count(*) FROM invoices i
-           WHERE i.branch_id = :branch_id AND i.is_deleted = FALSE
+           WHERE i.branch_id = $1 AND i.is_deleted = FALSE
              AND NOT EXISTS (SELECT 1 FROM stock_movements m
                              WHERE m.reference_id = i.id AND m.movement_type = 'sale_out')""",
     ),
     (
         "c2_movement_without_invoice",
         """SELECT count(*) FROM stock_movements m
-           WHERE m.branch_id = :branch_id AND m.movement_type = 'sale_out'
+           WHERE m.branch_id = $1 AND m.movement_type = 'sale_out'
              AND m.reference_type = 'invoice' AND m.reference_id IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.id = m.reference_id)""",
     ),
@@ -311,7 +373,7 @@ CHECK_QUERIES: list[tuple[str, str]] = [
                SELECT i.id FROM invoices i
                LEFT JOIN stock_movements m
                  ON m.reference_id = i.id AND m.movement_type = 'sale_out'
-               WHERE i.branch_id = :branch_id AND i.is_deleted = FALSE
+               WHERE i.branch_id = $1 AND i.is_deleted = FALSE
                GROUP BY i.id
                HAVING COALESCE(SUM(m.quantity_delta), 0)
                       <> -COALESCE((SELECT SUM(ii.qty_smallest) FROM invoice_items ii
@@ -321,7 +383,7 @@ CHECK_QUERIES: list[tuple[str, str]] = [
     (
         "c4_inventory_cache_drift",
         """SELECT count(*) FROM branch_inventory bi
-           WHERE bi.branch_id = :branch_id
+           WHERE bi.branch_id = $1
              AND bi.cached_quantity
                  <> (SELECT COALESCE(SUM(b.quantity), 0) FROM medication_batches b
                      WHERE b.branch_id = bi.branch_id AND b.medication_id = bi.medication_id
@@ -330,15 +392,15 @@ CHECK_QUERIES: list[tuple[str, str]] = [
     (
         "c5_batch_ledger_equation",
         """SELECT count(*) FROM medication_batches b
-           WHERE b.batch_number = :batch_number
-             AND b.quantity <> :baseline + COALESCE((
+           WHERE b.batch_number = $1
+             AND b.quantity <> COALESCE((
                  SELECT SUM(m.quantity_delta) FROM stock_movements m
                  WHERE m.batch_id = b.id), 0)""",
     ),
 ]
 
 
-async def _checks_async(port: int, baseline: Decimal, batch_number: str) -> dict[str, int]:
+async def _checks_async(port: int, batch_number: str) -> dict[str, int]:
     import asyncpg
 
     conn = await asyncpg.connect(db_url(port))
@@ -346,19 +408,12 @@ async def _checks_async(port: int, baseline: Decimal, batch_number: str) -> dict
         branch_id = await conn.fetchval(
             "SELECT id FROM branches WHERE name = $1", MARKER_BRANCH
         )
-        med_id = await conn.fetchval("SELECT id FROM medications WHERE trade_name = $1", MARKER_MED)
         results: dict[str, int] = {}
         for name, sql in CHECK_QUERIES:
             if name == "c5_batch_ledger_equation":
-                results[name] = int(
-                    await conn.fetchval(
-                        sql,
-                        batch_number=batch_number,
-                        baseline=baseline,
-                    )
-                )
+                results[name] = int(await conn.fetchval(sql, batch_number))
             else:
-                results[name] = int(await conn.fetchval(sql, branch_id=branch_id, med_id=med_id))
+                results[name] = int(await conn.fetchval(sql, branch_id))
         results["invoice_count"] = int(
             await conn.fetchval(
                 "SELECT count(*) FROM invoices WHERE branch_id = $1", branch_id
@@ -369,13 +424,25 @@ async def _checks_async(port: int, baseline: Decimal, batch_number: str) -> dict
         await conn.close()
 
 
-def run_checks(port: int, baseline: Decimal, batch_number: str) -> dict[str, int]:
-    return asyncio.run(_checks_async(port, baseline, batch_number))
+def run_checks(port: int, batch_number: str) -> dict[str, int]:
+    return asyncio.run(_checks_async(port, batch_number))
 
 
-def run_amcheck(db: str) -> tuple[bool, str]:
+def run_amcheck(port: int, db: str) -> tuple[bool, str]:
     proc = subprocess.run(  # noqa: S603
-        [str(pg_bin() / "pg_amcheck.exe"), "--database", db, "--heapallindexed", "--verbose"],
+        [
+            str(pg_bin() / "pg_amcheck.exe"),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--username",
+            "postgres",
+            "--database",
+            db,
+            "--heapallindexed",
+            "--verbose",
+        ],
         capture_output=True,
         check=False,
         timeout=300,
@@ -405,7 +472,7 @@ def spawn_child(port: int) -> tuple[subprocess.Popen[str], threading.Queue[str]]
         bufsize=1,
         env=env,
     )
-    queue: threading.Queue[str] = threading.Queue()
+    queue: "queue_mod.Queue[str]" = queue_mod.Queue()
 
     def _pump() -> None:
         assert proc.stdout is not None
@@ -437,27 +504,9 @@ def measure_commit_time(port: int, runs: int = 3) -> float:
 def run_harness(args: argparse.Namespace) -> int:
     pgdata: Path = Path(args.pgdata)
     logfile = pgdata.parent / "pgcrash.log"
+    reset_db(args.port)
     seed(args.port)
-
-    # baseline stock (before any iteration) + ledger baseline for c5
-    import asyncpg
-
-    async def _baseline() -> Decimal:
-        conn = await asyncpg.connect(db_url(args.port))
-        try:
-            return Decimal(
-                str(
-                    await conn.fetchval(
-                        "SELECT quantity FROM medication_batches WHERE batch_number = $1",
-                        MARKER_BATCH,
-                    )
-                )
-            )
-        finally:
-            await conn.close()
-
-    baseline = asyncio.run(_baseline())
-    print(f"baseline batch quantity: {baseline}")
+    print(f"baseline batch quantity: {Decimal(10_000_000)} (via receive_batch)")
 
     commit_s = measure_commit_time(args.port)
     window_lo, window_hi = 0.005, commit_s * 1.4
@@ -472,7 +521,7 @@ def run_harness(args: argparse.Namespace) -> int:
         mode = "power" if i % 2 == 1 else "client"
         delay = random.uniform(window_lo, window_hi)
 
-        invoices_before = run_checks(args.port, baseline, MARKER_BATCH)["invoice_count"]
+        invoices_before = run_checks(args.port, MARKER_BATCH)["invoice_count"]
         proc, queue = spawn_child(args.port)
         try:
             marker = queue.get(timeout=120)
@@ -494,8 +543,8 @@ def run_harness(args: argparse.Namespace) -> int:
         else:
             kill_tree(proc.pid)
 
-        checks = run_checks(args.port, baseline, MARKER_BATCH)
-        ok_am, am_out = run_amcheck(DB_NAME)
+        checks = run_checks(args.port, MARKER_BATCH)
+        ok_am, am_out = run_amcheck(args.port, DB_NAME)
         committed = checks["invoice_count"] > invoices_before
         consistent = all(
             checks[name] == 0

@@ -25,6 +25,7 @@ restore never silently generates a key (decision 10).
 """
 
 import datetime as dt
+import hashlib
 import io
 import json
 import logging
@@ -52,6 +53,7 @@ logger = logging.getLogger(__name__)
 _NONCE_SIZE = 12
 _BACKUP_CONTEXT = b"pharmaos.backup.v1"
 BACKUP_SUFFIX = ".pharmaos-backup"
+CHECKSUM_SUFFIX = ".sha256"
 BACKUP_FORMAT = "pharmaos.backup.v1"
 # Newest schema this runtime understands (keep in lockstep with migrations —
 # a backup from a NEWER device must be rejected, not half-restored).
@@ -201,8 +203,45 @@ def create_backup(backup_dir: Path, *, database_url: str | None = None) -> Path:
     out_path = backup_dir / f"pharmaos_{stamp}{BACKUP_SUFFIX}"
     out_path.write_bytes(blob)
     os.chmod(out_path, 0o600)
+    write_checksum(out_path)
     logger.info("Backup created: %s (%d bytes)", out_path, len(blob))
     return out_path
+
+
+def write_checksum(backup_file: Path) -> Path:
+    """SHA-256 sidecar next to the backup: integrity can be checked WITHOUT
+    the backup key (corruption vs tampering; tampering is caught by GCM at
+    decrypt anyway, but a silent bit-rot shows up here immediately)."""
+    digest = hashlib.sha256(backup_file.read_bytes()).hexdigest()
+    sidecar = backup_file.with_name(backup_file.name + CHECKSUM_SUFFIX)
+    sidecar.write_text(f"{digest}  {backup_file.name}\n", encoding="ascii")
+    return sidecar
+
+
+def verify_checksum(backup_file: Path) -> bool:
+    """True when the sidecar exists and the file still hashes to it."""
+    sidecar = backup_file.with_name(backup_file.name + CHECKSUM_SUFFIX)
+    if not sidecar.is_file():
+        return False
+    expected = sidecar.read_text(encoding="ascii").split()[0].strip().lower()
+    return hashlib.sha256(backup_file.read_bytes()).hexdigest() == expected
+
+
+def prune_old_backups(backup_dir: Path, *, keep: int) -> list[Path]:
+    """Retention (release-prep phase 2): keep the newest `keep` backups,
+    delete older ones with their checksum sidecars. Returns what was deleted.
+    Refuses to run with keep < 1 — a config mistake must not wipe history."""
+    if keep < 1:
+        raise ValueError("backup retention must keep at least one backup")
+    backups = sorted(
+        (p for p in backup_dir.glob(f"*{BACKUP_SUFFIX}") if p.is_file()),
+        key=lambda p: p.stat().st_mtime,
+    )
+    victims = backups[:-keep] if len(backups) > keep else []
+    for victim in victims:
+        victim.with_name(victim.name + CHECKSUM_SUFFIX).unlink(missing_ok=True)
+        victim.unlink()
+    return victims
 
 
 def decrypt_backup(backup_file: Path) -> dict[str, bytes]:
