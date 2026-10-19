@@ -440,6 +440,21 @@ def run_checks(port: int, baseline: Decimal, batch_number: str) -> dict[str, int
     return asyncio.run(_checks_async(port, baseline, batch_number))
 
 
+def run_checks_resilient(
+    port: int, baseline: Decimal, batch_number: str, retries: int = 3, delay_s: float = 2.0
+) -> dict[str, int]:
+    """Run consistency checks with retry for post-kill connection resets."""
+    last_err: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            return run_checks(port, baseline, batch_number)
+        except Exception as exc:  # noqa: BLE001 - transient post-kill reset expected
+            last_err = exc
+            if attempt < retries:
+                time.sleep(delay_s)
+    raise RuntimeError(f"run_checks failed after {retries} retries; last error: {last_err}")
+
+
 def run_amcheck(db: str, port: int) -> tuple[bool, str]:
     proc = subprocess.run(  # noqa: S603
         [
@@ -448,6 +463,8 @@ def run_amcheck(db: str, port: int) -> tuple[bool, str]:
             "127.0.0.1",
             "--port",
             str(port),
+            "--username",
+            "postgres",
             "--database",
             db,
             "--heapallindexed",
@@ -560,7 +577,9 @@ def run_harness(args: argparse.Namespace) -> int:
         mode = "power" if i % 2 == 1 else "client"
         delay = random.uniform(window_lo, window_hi)
 
-        invoices_before = run_checks(args.port, baseline, MARKER_BATCH)["invoice_count"]
+        invoices_before = run_checks_resilient(args.port, baseline, MARKER_BATCH)[
+            "invoice_count"
+        ]
         proc, q = spawn_child(args.port)
         try:
             marker = q.get(timeout=120)
@@ -582,7 +601,7 @@ def run_harness(args: argparse.Namespace) -> int:
         else:
             kill_tree(proc.pid)
 
-        checks = run_checks(args.port, baseline, MARKER_BATCH)
+        checks = run_checks_resilient(args.port, baseline, MARKER_BATCH)
         ok_am, am_out = run_amcheck(DB_NAME, args.port)
         committed = checks["invoice_count"] > invoices_before
         consistent = all(
@@ -609,6 +628,9 @@ def run_harness(args: argparse.Namespace) -> int:
             "amcheck_output": am_out if not ok_am else "",
         }
         results.append(record)
+        results_path.write_text(
+            json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
         print(
             f"[{i:>3}/{args.iterations}] mode={mode:<6} delay={delay:.3f}s "
             f"committed={'Y' if committed else 'N'} consistent={'Y' if consistent else 'N'} "
