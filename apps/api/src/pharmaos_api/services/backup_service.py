@@ -756,7 +756,12 @@ def restore_to_cluster(
     swapped = False
     try:
         staging_dir.mkdir(parents=True)
-        _init_staging(staging_dir, db_user=db_user, db_password=db_password)
+        _init_staging(
+            staging_dir,
+            db_user=db_user,
+            db_password=db_password,
+            port=staging_port,
+        )
         _pg_ctl_start(staging_dir, parent / "pharmaos-pg-staging.log")
         _wait_ready(staging_port)
 

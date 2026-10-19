@@ -10,15 +10,30 @@
 # REAL data dir (C:\ProgramData\PharmaOS) - the same contract as the device.
 # Cleanup: -Clean removes the data dir and the keystore secrets first.
 #
+# Optional port overrides (the defaults below are deliberately temporary so a
+# developer PostgreSQL on 5433/5434 is never touched):
+#   $env:PHARMAOS_SMOKE_PG_PORT = 55433
+#   $env:PHARMAOS_SMOKE_STAGING_PORT = 55434
+#   $env:PHARMAOS_SMOKE_API_PORT = 18000
+#   $env:PHARMAOS_SMOKE_PROGRAMDATA = "$env:TEMP\PharmaOS-smoke"
 # Usage: powershell -ExecutionPolicy Bypass -File installer\smoke-test.ps1 [-Clean]
 
 param([switch]$Clean)
 
 $ErrorActionPreference = "Continue"
 $RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path
-$ApiExe = Join-Path $RepoRoot "installer\dist\pharmaos-api\pharmaos-api.exe"
+$ApiExe = Join-Path $RepoRoot "installer\dist\api\pharmaos-api.exe"
 $PgBin = Join-Path $RepoRoot "installer\vendor\pg\bin"
 $ExpectedPgVersion = "17.11"
+$PgPort = if ($env:PHARMAOS_SMOKE_PG_PORT) { [int]$env:PHARMAOS_SMOKE_PG_PORT } else { 55433 }
+$StagingPort = if ($env:PHARMAOS_SMOKE_STAGING_PORT) { [int]$env:PHARMAOS_SMOKE_STAGING_PORT } else { 55434 }
+$ApiPort = if ($env:PHARMAOS_SMOKE_API_PORT) { [int]$env:PHARMAOS_SMOKE_API_PORT } else { 18000 }
+if (@($PgPort, $StagingPort, $ApiPort) | Where-Object { $_ -lt 1024 -or $_ -gt 65535 }) {
+    throw "smoke ports must be between 1024 and 65535"
+}
+if ($PgPort -eq $StagingPort -or $PgPort -eq $ApiPort -or $StagingPort -eq $ApiPort) {
+    throw "smoke ports must be distinct"
+}
 if (-not (Test-Path $ApiExe)) { throw "build-api.ps1 first (exe missing)" }
 if (-not (Test-Path "$PgBin\initdb.exe")) { throw "fetch-binaries.ps1 first (pg missing)" }
 $pgVersion = (& "$PgBin\postgres.exe" --version) -join " "
@@ -26,13 +41,24 @@ if ($pgVersion -notmatch "(^|\s)$([regex]::Escape($ExpectedPgVersion))(\.|\s|$)"
     throw "bundled PostgreSQL mismatch: expected $ExpectedPgVersion, got $pgVersion"
 }
 Write-Host "bundled PostgreSQL: $pgVersion"
+Write-Host "smoke ports: PostgreSQL=$PgPort staging=$StagingPort API=$ApiPort"
 
-$DataDir = Join-Path $env:PROGRAMDATA "PharmaOS"
+$ProgramDataRoot = if ($env:PHARMAOS_SMOKE_PROGRAMDATA) {
+    $env:PHARMAOS_SMOKE_PROGRAMDATA
+} else {
+    $env:PROGRAMDATA
+}
+if (-not $ProgramDataRoot) { throw "PROGRAMDATA is not set" }
+# Production intentionally resolves its data root from PROGRAMDATA. The
+# override keeps this artifact-level gate runnable by a non-admin developer;
+# the default remains the real device path.
+$env:PROGRAMDATA = $ProgramDataRoot
+$DataDir = Join-Path $ProgramDataRoot "PharmaOS"
 $PgData = Join-Path $DataDir "pgdata"
 $PgLog = Join-Path $DataDir "logs\pg.log"
 $ApiLog = Join-Path $DataDir "logs\api.log"
 $BackupDir = Join-Path $DataDir "backups"
-$ApiUrl = "http://127.0.0.1:8000"
+$ApiUrl = "http://127.0.0.1:$ApiPort"
 $ScrubbedPath = "$env:SystemRoot\System32;$env:SystemRoot"
 
 if ($Clean) {
@@ -49,6 +75,8 @@ New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 $env:PATH = $ScrubbedPath
 $env:PHARMAOS_ENV = "production"
 $env:PG_BIN_DIR = $PgBin
+$env:DB_PORT = "$PgPort"
+$env:API_PORT = "$ApiPort"
 
 function Invoke-Api([string]$Path) {
     for ($i = 0; $i -lt 60; $i++) {
@@ -65,7 +93,19 @@ function Start-DeviceApi {
     # A tiny .cmd launcher sidesteps BOTH PowerShell re-quoting AND cmd /c
     # nested-quote stripping (each mangled the command line differently).
     $launcher = Join-Path $DataDir "run-api.cmd"
-    Set-Content -Path $launcher -Value "@`"$ApiExe`" >> `"$ApiLog`" 2>&1" -Encoding ASCII
+    # Win32_Process.Create uses the WMI provider's environment rather than the
+    # caller's modified PowerShell environment. Set the runtime overrides in
+    # the launcher so the child uses the same temporary ports and data root.
+    $launcherLines = @(
+        "@echo off",
+        "set `"PHARMAOS_ENV=production`"",
+        "set `"PROGRAMDATA=$ProgramDataRoot`"",
+        "set `"PG_BIN_DIR=$PgBin`"",
+        "set `"DB_PORT=$PgPort`"",
+        "set `"API_PORT=$ApiPort`"",
+        "`"$ApiExe`" >> `"$ApiLog`" 2>&1"
+    )
+    Set-Content -Path $launcher -Value ($launcherLines -join [Environment]::NewLine) -Encoding ASCII
     $cmdLine = "cmd.exe /c `"$launcher`""
     $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
         CommandLine = $cmdLine
@@ -118,11 +158,11 @@ Get-Process pharmaos-api -ErrorAction SilentlyContinue | Stop-Process -Force
 $pgdataSizeBefore = (Get-ChildItem $PgData -Recurse -File | Measure-Object Length -Sum).Sum
 Remove-Item -Recurse -Force $PgData
 New-Item -ItemType Directory -Force -Path $PgData | Out-Null
-& $ApiExe backup restore --file $backupFile
+& $ApiExe backup restore --file $backupFile --live-port $PgPort --staging-port $StagingPort
 if ($LASTEXITCODE -ne 0) { throw "restore failed" }
 $pgdataSizeAfter = (Get-ChildItem $PgData -Recurse -File | Measure-Object Length -Sum).Sum
 if ($pgdataSizeAfter -lt ($pgdataSizeBefore * 0.5)) { throw "restored pgdata suspiciously small" }
-& "$PgBin\pg_isready.exe" -h 127.0.0.1 -p 5433 | Out-Null
+& "$PgBin\pg_isready.exe" -h 127.0.0.1 -p $PgPort | Out-Null
 if ($LASTEXITCODE -ne 0) {
     & "$PgBin\pg_ctl.exe" -D $PgData start -l $PgLog
     if ($LASTEXITCODE -ne 0) { throw "pg restart after restore failed - see $PgLog" }
