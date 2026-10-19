@@ -1,5 +1,5 @@
-{
-  "generated_at": "2026-10-19T17:52:52.4871212Z",
+﻿{
+  "generated_at": "2026-10-19T22:17:31.3265750Z",
   "postgresql": {
     "version": "17.11",
     "source": "https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip",
