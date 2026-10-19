@@ -580,6 +580,20 @@ def run_harness(args: argparse.Namespace) -> int:
     amcheck_available = asyncio.run(_ensure_amcheck())
     print(f"pg_amcheck extension: {'available' if amcheck_available else 'NOT installed (amcheck skipped)'}")
 
+    # drop any stray branch_inventory rows for the QA branch so c4 reflects
+    # only the crash-test sale path, not pre-existing/cache-drift data
+    async def _purge_stray_branch_inventory() -> None:
+        conn = await asyncpg.connect(db_url(args.port))
+        try:
+            bid = await conn.fetchval("SELECT id FROM branches WHERE name = $1", MARKER_BRANCH)
+            if bid is not None:
+                await conn.execute("DELETE FROM branch_inventory WHERE branch_id = $1", bid)
+        finally:
+            await conn.close()
+
+    asyncio.run(_purge_stray_branch_inventory())
+    print("stray branch_inventory rows purged for QA branch")
+
     commit_s = measure_commit_time(args.port)
     window_lo, window_hi = 0.005, commit_s * 1.4
     print(f"kill window: {window_lo:.3f}s .. {window_hi:.3f}s (random uniform)")
