@@ -244,6 +244,31 @@ def prune_old_backups(backup_dir: Path, *, keep: int) -> list[Path]:
     return victims
 
 
+def copy_to_secondary(backup_file: Path, secondary_dir: Path) -> Path:
+    """Atomically copy a completed backup to a second local destination.
+
+    The destination is copied only after encryption has completed. A temporary
+    file plus ``os.replace`` prevents a scheduled job or a power loss from
+    leaving a plausible-looking partial backup at the second destination.
+    """
+    source = backup_file.resolve()
+    destination_dir = secondary_dir.expanduser().resolve()
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / source.name
+    if destination == source:
+        raise BackupError("secondary backup path must differ from the primary path")
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+        os.chmod(destination, 0o600)
+        write_checksum(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    logger.info("Backup copied to secondary destination: %s", destination)
+    return destination
+
+
 def decrypt_backup(backup_file: Path) -> dict[str, bytes]:
     """Decrypt a backup file and return its members {name: bytes}.
 
@@ -770,12 +795,25 @@ def restore_drill(backup_file: Path, *, drill_database_url: str) -> dict[str, in
             drill_database_url,
             "-tA",
             "-c",
-            "SELECT COUNT(*) FROM users; SELECT COUNT(*) FROM permissions;",
+            "SELECT COUNT(*) FROM users; "
+            "SELECT COUNT(*) FROM permissions; "
+            "SELECT COUNT(*) FROM medications; "
+            "SELECT COUNT(*) FROM invoices; "
+            "SELECT COUNT(*) FROM audit_logs;",
         ]
     ).stdout
-    users_count, permissions_count = (int(line) for line in out.decode().strip().splitlines())
+    values = [int(line) for line in out.decode().strip().splitlines()]
+    if len(values) != 5:
+        raise BackupError("restore drill returned an unexpected count set")
+    users_count, permissions_count, medications_count, invoices_count, audit_logs_count = values
     _parse_keys(members, require_db_password=False)  # keys bundle must parse
-    return {"users": users_count, "permissions": permissions_count}
+    return {
+        "users": users_count,
+        "permissions": permissions_count,
+        "medications": medications_count,
+        "invoices": invoices_count,
+        "audit_logs": audit_logs_count,
+    }
 
 
 def upload_to_cloud(backup_file: Path) -> bool:

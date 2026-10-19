@@ -119,6 +119,10 @@ def _backup_create(backup_dir: Path, *, cloud: bool) -> int:
     print(f"backup created: {backup_file}")
     checksum = backup_service.verify_checksum(backup_file)
     print("checksum sidecar: written" if checksum else "checksum sidecar: MISSING (error)")
+    secondary = get_settings().backup_secondary_path
+    if secondary is not None:
+        secondary_file = backup_service.copy_to_secondary(backup_file, secondary)
+        print(f"secondary copy: {secondary_file}")
     if cloud:
         uploaded = backup_service.upload_to_cloud(backup_file)
         print("cloud copy: uploaded" if uploaded else "cloud copy: skipped (not configured)")

@@ -5,6 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import asyncpg
 import pytest
 
 from pharmaos_api.services import backup_service
@@ -44,6 +45,20 @@ async def test_backup_roundtrip_and_restore_drill(
     counts = backup_service.restore_drill(backup_file, drill_database_url=drill_db_url)
     assert counts["users"] >= 1  # the seeded user made it through the drill
     assert counts["permissions"] == 44  # P3-M6 alerts.* + P3-M7 notifications.*
+
+    # The drill is a recovery test, not only a decrypt test: every business
+    # count used by the release runbook must match the source snapshot.
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    try:
+        source = {
+            "users": int(await conn.fetchval("SELECT COUNT(*) FROM users")),
+            "medications": int(await conn.fetchval("SELECT COUNT(*) FROM medications")),
+            "invoices": int(await conn.fetchval("SELECT COUNT(*) FROM invoices")),
+            "audit_logs": int(await conn.fetchval("SELECT COUNT(*) FROM audit_logs")),
+        }
+    finally:
+        await conn.close()
+    assert {key: counts[key] for key in source} == source
 
 
 def test_tampered_backup_rejected(tmp_path: Path) -> None:
@@ -101,3 +116,16 @@ def test_retention_keeps_newest_and_removes_sidecars(tmp_path: Path) -> None:
 def test_retention_refuses_to_keep_zero(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         backup_service.prune_old_backups(tmp_path, keep=0)
+
+
+def test_secondary_copy_is_atomic_and_checksum_verified(tmp_path: Path) -> None:
+    source = tmp_path / "primary" / f"one{backup_service.BACKUP_SUFFIX}"
+    secondary = tmp_path / "secondary"
+    source.parent.mkdir()
+    source.write_bytes(b"fictional backup bytes")
+
+    copied = backup_service.copy_to_secondary(source, secondary)
+
+    assert copied.read_bytes() == source.read_bytes()
+    assert backup_service.verify_checksum(copied) is True
+    assert not list(secondary.glob("*.tmp"))
