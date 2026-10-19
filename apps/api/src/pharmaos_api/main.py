@@ -354,8 +354,8 @@ def create_app(license_scheduler: bool = True) -> FastAPI:
             }
         )
 
-    @app.post("/api/v1/system/setup-complete")
-    async def system_setup_complete() -> dict[str, object]:
+    @app.post("/api/v1/system/setup-complete", response_model=None)
+    async def system_setup_complete() -> dict[str, object] | JSONResponse:
         from pharmaos_api.db import get_session_factory
         from pharmaos_api.security import keystore
         from pharmaos_api.services import installation_state
