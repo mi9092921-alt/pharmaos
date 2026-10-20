@@ -142,3 +142,23 @@
   أُرفقت المخرجات الكاملة في `docs/smoke-test-rc3.log`.
 - أُعيد تشغيل المجموعة الكاملة: `458 passed` على Python `3.12.14` وPostgreSQL
   `17.11` بإعداد builtin `C.UTF-8`.
+
+## RC4 release evidence (2026-10-20)
+
+- Release commit: `a85674fc03e1714fdd7b0dd75b8fade47677d5bb`.
+- Annotated tag: `v1.1.0-rc4`.
+- The installer was built from a clean clone at `D:\projects\pharmaos-rc4-clean-a85674f` checked out at the tag. The canonical artifact is `D:\projects\pharmaos-rc4-clean-a85674f\installer\dist\installer\PharmaOS-Setup-1.1.0.exe`.
+- Installer size: `321031014` bytes.
+- Installer SHA256: `89FBECFB507BA55FE431584174DAF063727E1DFC24C5A4943B819CD062702A74`.
+- The bundled PostgreSQL package was inspected under `installer\dist\installer\win-unpacked\resources\pg` and contains:
+  - `lib\fuzzystrmatch.dll` (56832 bytes)
+  - `share\extension\fuzzystrmatch.control` (190 bytes)
+  - `share\extension\fuzzystrmatch--1.1.sql` (1576 bytes)
+  - `share\extension\fuzzystrmatch--1.0--1.1.sql` (788 bytes)
+  - `share\extension\fuzzystrmatch--1.1--1.2.sql` (351 bytes)
+- A fresh PostgreSQL 17.11 cluster was initialized with the bundled binaries. The migration runner applied all migrations, including `20261020000100_fuzzystrmatch_arabic_search`; the initdb-created role `Mosta` was verified as `rolsuper = true`. The fresh database contains both `fuzzystrmatch` and `pg_trgm`, and the migration version is recorded in `_pharmaos_migrations`.
+- Full API suite: `459 passed` on Python `3.12.14`, PostgreSQL `17.11`, builtin `C.UTF-8`.
+- Full backup restore lifecycle passed on a fresh temporary cluster after the schema-version gate was updated for the new migration. The backup service now accepts schema version `20261020000100`.
+- Volume benchmark: `tools/release-prep/results/volume_results_20261020T020713.json`; 10000 medications and 50000 invoices. Arabic exact-search median: `154.00 ms`; Arabic typo-search median: `154.34 ms`; both stayed below one second. The recorded EXPLAIN ANALYZE plans show sequential scans for the trigram and Levenshtein fallback paths, as expected; exact FTS execution was `4.304 ms`, trigram `117.834 ms`, and Levenshtein `21.027 ms` in the benchmark database.
+- Arabic regression tests cover hamza/alef, taa marbuta/haa, yaa/alef maqsura, missing letters, and unrelated-name nonmatches.
+- Production `installer/smoke-test.ps1 -Clean`: **NOT TESTED / blocked in this environment**. The production device-init path reached Windows Credential Manager and failed with `WinError 1312` (`A specified logon session does not exist`) under the noninteractive execution context. Do not treat this as a pass; rerun it from an ordinary interactive PowerShell session or on the clean VM before transferring or approving the installer.
