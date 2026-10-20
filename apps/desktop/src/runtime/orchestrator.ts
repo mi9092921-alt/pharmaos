@@ -58,6 +58,34 @@ async function waitHttp(url: string, timeoutMs: number, what: string): Promise<v
   throw new Error(`${what} did not become healthy at ${url} within ${timeoutMs / 1000}s`);
 }
 
+/**
+ * PostgreSQL's initdb deliberately hardens the data files and can remove the
+ * daily user's inherited ACL.  The launcher runs as that same daily user, so
+ * restore Modify explicitly for only the current account before pg_ctl starts.
+ * The wildcard avoids changing the protected pgdata directory ACL itself.
+ */
+async function ensurePgDataAccess(dataDir: string, pgData: string): Promise<void> {
+  const identity = await runCapture('whoami.exe', [], dataDir, 10000);
+  const account = identity.stdout.trim().split(/\r?\n/, 1)[0] ?? '';
+  if (identity.code !== 0 || !/^[^\\\r\n]+\\[^\\\r\n]+$/.test(account)) {
+    throw new Error(
+      `could not resolve the Windows account for PostgreSQL ACLs: ${identity.stderr || identity.stdout}`,
+    );
+  }
+
+  const acl = await runCapture(
+    'icacls.exe',
+    [path.join(pgData, '*'), '/grant:r', `${account}:(M)`, '/T', '/C'],
+    dataDir,
+    120000,
+  );
+  const output = `${acl.stdout}\n${acl.stderr}`;
+  if (acl.code !== 0 || /Failed processing\s+[1-9]\d*/i.test(output)) {
+    throw new Error(`could not grant PostgreSQL data access to ${account}: ${output.trim()}`);
+  }
+  log(`boot: PostgreSQL data ACL ready for ${account}`);
+}
+
 export class Orchestrator {
   private procs: ManagedProcess[] = [];
   private stopping = false;
@@ -115,7 +143,7 @@ export class Orchestrator {
       if (!fs.existsSync(path.join(this.p.pgData, 'PG_VERSION'))) {
         log('boot: device-init (first run - initdb + keystore)');
         onProgress?.('postgres', 'جاري تهيئة قاعدة البيانات لأول مرة...');
-        const init = await runCapture(this.p.apiExe, ['device-init'], this.p.dataDir, 300000);
+        const init = await runCapture(this.p.apiExe, ['device-init'], this.p.dataDir, 300000, env);
         if (init.code !== 0) {
           return {
             ok: false,
@@ -124,6 +152,7 @@ export class Orchestrator {
           };
         }
       }
+      await ensurePgDataAccess(this.p.dataDir, this.p.pgData);
       const pgStart = await runCapture(
         path.join(this.p.pgBin, 'pg_ctl.exe'),
         ['-D', this.p.pgData, 'start', '-l', path.join(this.p.logsDir, 'pg.log')],
@@ -200,7 +229,13 @@ export class Orchestrator {
         }
       } catch (e) {
         log(`boot: setup-status HTTP query failed, falling back to CLI: ${e}`);
-        const status = await runCapture(this.p.apiExe, ['setup-status'], this.p.dataDir);
+        const status = await runCapture(
+          this.p.apiExe,
+          ['setup-status'],
+          this.p.dataDir,
+          120000,
+          env,
+        );
         try {
           setup = JSON.parse(status.stdout) as NonNullable<BootResult['setup']>;
         } catch {

@@ -22,8 +22,20 @@ param([switch]$Clean)
 
 $ErrorActionPreference = "Continue"
 $RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path
-$ApiExe = Join-Path $RepoRoot "installer\dist\api\pharmaos-api.exe"
-$PgBin = Join-Path $RepoRoot "installer\vendor\pg\bin"
+# Prefer the unpacked shipped runtime when it exists. This prevents the gate
+# from passing against the full vendor tree while the installer accidentally
+# omits a required PostgreSQL file through its packaging filters.
+$ShippedResources = Join-Path $RepoRoot "installer\dist\installer\win-unpacked\resources"
+if (Test-Path (Join-Path $ShippedResources "api\pharmaos-api.exe")) {
+    $ApiExe = Join-Path $ShippedResources "api\pharmaos-api.exe"
+    $PgBin = Join-Path $ShippedResources "pg\bin"
+    Write-Host "smoke runtime: shipped unpacked resources"
+}
+else {
+    $ApiExe = Join-Path $RepoRoot "installer\dist\api\pharmaos-api.exe"
+    $PgBin = Join-Path $RepoRoot "installer\vendor\pg\bin"
+    Write-Host "smoke runtime: build/vendor resources"
+}
 $ExpectedPgVersion = "17.11"
 $PgPort = if ($env:PHARMAOS_SMOKE_PG_PORT) { [int]$env:PHARMAOS_SMOKE_PG_PORT } else { 55433 }
 $StagingPort = if ($env:PHARMAOS_SMOKE_STAGING_PORT) { [int]$env:PHARMAOS_SMOKE_STAGING_PORT } else { 55434 }

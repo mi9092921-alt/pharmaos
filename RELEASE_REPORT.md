@@ -162,3 +162,40 @@
 - Volume benchmark: `tools/release-prep/results/volume_results_20261020T020713.json`; 10000 medications and 50000 invoices. Arabic exact-search median: `154.00 ms`; Arabic typo-search median: `154.34 ms`; both stayed below one second. The recorded EXPLAIN ANALYZE plans show sequential scans for the trigram and Levenshtein fallback paths, as expected; exact FTS execution was `4.304 ms`, trigram `117.834 ms`, and Levenshtein `21.027 ms` in the benchmark database.
 - Arabic regression tests cover hamza/alef, taa marbuta/haa, yaa/alef maqsura, missing letters, and unrelated-name nonmatches.
 - Production `installer/smoke-test.ps1 -Clean`: **PASS** on the RC4 clean-clone build, using temporary ports PostgreSQL `55473`, staging `55474`, API `18010`, and temporary `PROGRAMDATA=C:\Users\Mosta\AppData\Local\Temp\PharmaOS-smoke-rc4`. The run applied the new migration, verified all four persistence settings, created a backup, exported/imported the backup key, destroyed `pgdata`, restored it, and passed the final API health check: `M2 FULL-CHAIN GATE: PASS`.
+
+## سجل تثبيت وتشغيل PharmaOS 1.1.0 — 2026-10-20
+
+### إصلاحات المثبت والتشغيل
+
+- نُقل تشغيل `installer/install-steps.ps1` إلى مرحلة `customInstall` بعد نسخ الموارد؛ هذا يمنع تشغيله قبل وجود ملفات التطبيق.
+- ينشئ المثبت `%ProgramData%\PharmaOS\pgdata` ويضبط صلاحياته للمستخدم الذي ثبّت البرنامج، مع إبقاء مجلد البيانات محمياً وقراءة المستخدمين العاديين فقط.
+- أصبح ملف كلمة مرور `initdb` المؤقت داخل مجلد مؤقت خاص ويُحذف بعد الاستخدام، بدلاً من الكتابة إلى جذر `ProgramData`.
+- يمرر Electron بيئة التشغيل الإنتاجية و`PG_BIN_DIR` و`PHARMAOS_DATA_DIR` إلى عمليات API، لمنع استخدام PostgreSQL المطوّر الموجود في Scoop أو PATH.
+- اجتاز فحص الحزمة أدوات PostgreSQL المطلوبة، وفحص ملفات Electron locales (`ar`, `en-US`) وفحص صلاحيات `pgdata`.
+- لم تُضف استثناءات Windows Defender؛ ذلك مقصود حفاظاً على الأمن، ويجب معالجة أي بطء عبر توقيع الملفات أو سياسة مؤسسية مدروسة.
+
+### دليل التشغيل الفعلي على جهاز المستخدم
+
+- تم التثبيت والتشغيل والإعداد الأولي بنجاح بحساب Windows عادي.
+- التطبيق و`pharmaos-api` يعملان بعد التثبيت.
+- `GET /api/v1/health` أعاد `200`.
+- `GET /api/v1/license/status` أعاد:
+  - `status: active`
+  - `hwid: PHAR-RTTJ-AR6R-ZTPL-35ID`
+  - `valid_until: 2027-10-20`
+  - `days_left: 364`
+  - `needs_activation: false`
+- ملف الترخيص محفوظ في `tools/output/PHAR-RTTJ-AR6R-ZTPL-35ID.license`، ولا يحتوي هذا التقرير على محتواه أو أي كلمة مرور أو مفتاح خاص.
+
+### نتائج الاختبارات الحالية
+
+- اختبارات بوابة الترخيص وHWID وPayload: **54 ناجحة**.
+- اختبارات أداة إصدار الترخيص: **9 ناجحة**.
+- بناء Desktop TypeScript: **نجح**.
+- فحص بناء المثبت وملفات PowerShell: **نجح**.
+- اختبارات تفعيل/سلسلة الترخيص التي تحتاج قاعدة اختبار PostgreSQL على `127.0.0.1:5433`: **22 اختباراً متوقفاً** بسبب فشل مصادقة مستخدم `postgres`؛ هذا إعداد لقاعدة الاختبار وليس فشلاً في الخدمة المثبتة.
+- اختبار الواجهة اليدوي بمهارة استخدام الكمبيوتر لم يكتمل لأن جلسة CUA لم تعرض أي نافذة ثم انقطع اتصالها (`Transport closed`).
+
+### حالة الاعتماد
+
+التشغيل والترخيص المحليان ناجحان. لا يُغلق اعتماد VM الميدانية أو اختبارات العتاد والطابعة/قارئ الباركود أو الاسترجاع الكامل على جهاز منفصل إلا بعد تنفيذها فعلياً وتسجيل أدلتها في قائمة VM.

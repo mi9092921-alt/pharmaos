@@ -33,6 +33,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import time
 import uuid
 from collections.abc import Callable
@@ -577,9 +578,13 @@ def _init_staging(
     C.UTF-8 (deterministic Arabic collation, no OS locale dependency),
     UTF-8, superuser = the app role with the RESTORED password."""
     initdb = pg_bin.resolve("initdb")
-    pwfile = staging_dir.parent / f".pg-pwfile-{uuid.uuid4().hex[:8]}"
-    pwfile.write_text(db_password + "\n", encoding="utf-8")
+    # The device data root is intentionally read-only for the daily user;
+    # only pgdata/logs/backups are writable. Keep the transient initdb secret
+    # in a private per-user temp directory instead of relaxing the root ACL.
+    pw_dir = Path(tempfile.mkdtemp(prefix="pharmaos-pg-"))
+    pwfile = pw_dir / f".pg-pwfile-{uuid.uuid4().hex[:8]}"
     try:
+        pwfile.write_text(db_password + "\n", encoding="utf-8")
         _run(
             [
                 str(initdb),
@@ -598,6 +603,10 @@ def _init_staging(
         )
     finally:
         _secure_delete(pwfile)
+        try:
+            pw_dir.rmdir()
+        except OSError:
+            logger.warning("could not remove temporary initdb secret directory %s", pw_dir)
     _pin_cluster_config(staging_dir, port=port)
 
 
