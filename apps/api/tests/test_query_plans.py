@@ -157,14 +157,18 @@ async def test_sales_report_scan_is_index_backed(db_session: AsyncSession) -> No
     # at lower estimated cost. Verify the required branch-first index directly,
     # and retain the no-sequential-scan guard for the executable query shape.
     indexes = (
-        await db_session.execute(
-            text(
-                "SELECT indexdef FROM pg_indexes "
-                "WHERE schemaname = current_schema() "
-                "AND indexname = 'idx_invoices_branch_created'"
+        (
+            await db_session.execute(
+                text(
+                    "SELECT indexdef FROM pg_indexes "
+                    "WHERE schemaname = current_schema() "
+                    "AND indexname = 'idx_invoices_branch_created'"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert indexes and "(branch_id, created_at)" in indexes[0], indexes
     assert "Seq Scan" not in plan, plan
 
