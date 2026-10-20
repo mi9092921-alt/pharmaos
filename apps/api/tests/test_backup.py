@@ -5,6 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import asyncpg
 import pytest
 
 from pharmaos_api.services import backup_service
@@ -45,6 +46,20 @@ async def test_backup_roundtrip_and_restore_drill(
     assert counts["users"] >= 1  # the seeded user made it through the drill
     assert counts["permissions"] == 44  # P3-M6 alerts.* + P3-M7 notifications.*
 
+    # The drill is a recovery test, not only a decrypt test: every business
+    # count used by the release runbook must match the source snapshot.
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    try:
+        source = {
+            "users": int(await conn.fetchval("SELECT COUNT(*) FROM users")),
+            "medications": int(await conn.fetchval("SELECT COUNT(*) FROM medications")),
+            "invoices": int(await conn.fetchval("SELECT COUNT(*) FROM invoices")),
+            "audit_logs": int(await conn.fetchval("SELECT COUNT(*) FROM audit_logs")),
+        }
+    finally:
+        await conn.close()
+    assert {key: counts[key] for key in source} == source
+
 
 def test_tampered_backup_rejected(tmp_path: Path) -> None:
     backup_file = backup_service.create_backup(tmp_path)
@@ -63,3 +78,67 @@ def test_cloud_upload_noop_when_unconfigured(
     monkeypatch.delenv("BACKUP_CLOUD_BUCKET", raising=False)
     backup_file = backup_service.create_backup(tmp_path)
     assert backup_service.upload_to_cloud(backup_file) is False
+
+
+async def test_backup_checksum_sidecar_written_and_verifies(tmp_path: Path) -> None:
+    import hashlib
+
+    backup_file = backup_service.create_backup(tmp_path)
+    sidecar = backup_file.with_name(backup_file.name + backup_service.CHECKSUM_SUFFIX)
+    assert sidecar.is_file()
+    expected = hashlib.sha256(backup_file.read_bytes()).hexdigest()
+    assert sidecar.read_text(encoding="ascii").startswith(expected)
+    assert backup_service.verify_checksum(backup_file) is True
+    # corruption flips the verdict
+    backup_file.write_bytes(backup_file.read_bytes()[:-1] + b"\x00")
+    assert backup_service.verify_checksum(backup_file) is False
+
+
+def test_retention_keeps_newest_and_removes_sidecars(tmp_path: Path) -> None:
+    names = [f"pharmaos_2026010{i}T000000Z{backup_service.BACKUP_SUFFIX}" for i in range(1, 6)]
+    for i, name in enumerate(names):
+        path = tmp_path / name
+        path.write_bytes(b"x" * (10 + i))
+        path.with_name(path.name + backup_service.CHECKSUM_SUFFIX).write_text("deadbeef\n")
+        os.utime(path, (1_700_000_000 + i * 3600, 1_700_000_000 + i * 3600))
+
+    deleted = backup_service.prune_old_backups(tmp_path, keep=2)
+
+    remaining = sorted(p.name for p in tmp_path.glob(f"*{backup_service.BACKUP_SUFFIX}"))
+    assert remaining == names[-2:]
+    assert [p.name for p in deleted] == names[:3]
+    # sidecars of the pruned copies are gone too; kept ones remain
+    assert not (tmp_path / (names[0] + backup_service.CHECKSUM_SUFFIX)).exists()
+    assert not (tmp_path / (names[2] + backup_service.CHECKSUM_SUFFIX)).exists()
+    assert (tmp_path / (names[3] + backup_service.CHECKSUM_SUFFIX)).is_file()
+
+
+def test_retention_refuses_to_keep_zero(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        backup_service.prune_old_backups(tmp_path, keep=0)
+
+
+def test_new_cluster_pins_durability_contract(tmp_path: Path) -> None:
+    (tmp_path / "postgresql.conf").write_text("fsync = off\n", encoding="utf-8")
+
+    backup_service._pin_cluster_config(tmp_path, port=55433)
+
+    config = (tmp_path / "postgresql.conf").read_text(encoding="utf-8")
+    assert "wal_level = 'replica'" in config
+    assert "synchronous_commit = 'on'" in config
+    assert "fsync = 'on'" in config
+    assert "full_page_writes = 'on'" in config
+    assert "port = 55433" in config
+
+
+def test_secondary_copy_is_atomic_and_checksum_verified(tmp_path: Path) -> None:
+    source = tmp_path / "primary" / f"one{backup_service.BACKUP_SUFFIX}"
+    secondary = tmp_path / "secondary"
+    source.parent.mkdir()
+    source.write_bytes(b"fictional backup bytes")
+
+    copied = backup_service.copy_to_secondary(source, secondary)
+
+    assert copied.read_bytes() == source.read_bytes()
+    assert backup_service.verify_checksum(copied) is True
+    assert not list(secondary.glob("*.tmp"))

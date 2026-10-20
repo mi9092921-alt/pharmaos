@@ -1,0 +1,902 @@
+[
+  {
+    "iteration": 1,
+    "mode": "power",
+    "delay_s": 0.138,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 4
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 2,
+    "mode": "client",
+    "delay_s": 0.015,
+    "committed": false,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 4
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 3,
+    "mode": "power",
+    "delay_s": 0.069,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 5
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 4,
+    "mode": "client",
+    "delay_s": 0.007,
+    "committed": false,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 5
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 5,
+    "mode": "power",
+    "delay_s": 0.081,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 6
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 6,
+    "mode": "client",
+    "delay_s": 0.069,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 7
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 7,
+    "mode": "power",
+    "delay_s": 0.117,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 8
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 8,
+    "mode": "client",
+    "delay_s": 0.045,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 9
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 9,
+    "mode": "power",
+    "delay_s": 0.145,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 10
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 10,
+    "mode": "client",
+    "delay_s": 0.05,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 11
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 11,
+    "mode": "power",
+    "delay_s": 0.083,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 12
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 12,
+    "mode": "client",
+    "delay_s": 0.113,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 13
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 13,
+    "mode": "power",
+    "delay_s": 0.043,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 14
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 14,
+    "mode": "client",
+    "delay_s": 0.118,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 15
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 15,
+    "mode": "power",
+    "delay_s": 0.065,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 16
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 16,
+    "mode": "client",
+    "delay_s": 0.067,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 17
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 17,
+    "mode": "power",
+    "delay_s": 0.129,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 18
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 18,
+    "mode": "client",
+    "delay_s": 0.045,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 19
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 19,
+    "mode": "power",
+    "delay_s": 0.141,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 20
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 20,
+    "mode": "client",
+    "delay_s": 0.137,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 21
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 21,
+    "mode": "power",
+    "delay_s": 0.123,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 22
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 22,
+    "mode": "client",
+    "delay_s": 0.034,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 23
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 23,
+    "mode": "power",
+    "delay_s": 0.06,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 24
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 24,
+    "mode": "client",
+    "delay_s": 0.14,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 25
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 25,
+    "mode": "power",
+    "delay_s": 0.078,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 26
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 26,
+    "mode": "client",
+    "delay_s": 0.122,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 27
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 27,
+    "mode": "power",
+    "delay_s": 0.053,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 28
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 28,
+    "mode": "client",
+    "delay_s": 0.036,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 29
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 29,
+    "mode": "power",
+    "delay_s": 0.048,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 30
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 30,
+    "mode": "client",
+    "delay_s": 0.008,
+    "committed": false,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 30
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 31,
+    "mode": "power",
+    "delay_s": 0.043,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 31
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 32,
+    "mode": "client",
+    "delay_s": 0.083,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 32
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 33,
+    "mode": "power",
+    "delay_s": 0.043,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 33
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 34,
+    "mode": "client",
+    "delay_s": 0.008,
+    "committed": false,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 33
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 35,
+    "mode": "power",
+    "delay_s": 0.064,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 34
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 36,
+    "mode": "client",
+    "delay_s": 0.024,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 35
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 37,
+    "mode": "power",
+    "delay_s": 0.137,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 36
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 38,
+    "mode": "client",
+    "delay_s": 0.136,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 37
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 39,
+    "mode": "power",
+    "delay_s": 0.019,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 38
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 40,
+    "mode": "client",
+    "delay_s": 0.033,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 39
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 41,
+    "mode": "power",
+    "delay_s": 0.142,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 40
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 42,
+    "mode": "client",
+    "delay_s": 0.124,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 41
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 43,
+    "mode": "power",
+    "delay_s": 0.135,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 42
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 44,
+    "mode": "client",
+    "delay_s": 0.114,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 43
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 45,
+    "mode": "power",
+    "delay_s": 0.035,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 44
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 46,
+    "mode": "client",
+    "delay_s": 0.164,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 45
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 47,
+    "mode": "power",
+    "delay_s": 0.081,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 46
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 48,
+    "mode": "client",
+    "delay_s": 0.099,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 47
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 49,
+    "mode": "power",
+    "delay_s": 0.088,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": true,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 48
+    },
+    "amcheck_output": ""
+  },
+  {
+    "iteration": 50,
+    "mode": "client",
+    "delay_s": 0.069,
+    "committed": true,
+    "consistent": true,
+    "amcheck_ok": true,
+    "wal_recovery_logged": false,
+    "checks": {
+      "c1_invoice_without_movements": 0,
+      "c2_movement_without_invoice": 0,
+      "c3_invoice_movement_mismatch": 0,
+      "c4_inventory_cache_drift": 0,
+      "c5_batch_ledger_equation": 0,
+      "invoice_count": 49
+    },
+    "amcheck_output": ""
+  }
+]

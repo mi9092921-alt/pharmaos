@@ -16,6 +16,11 @@ files:
 # The frozen runtimes ride OUTSIDE the asar as real files (PostgreSQL and
 # PyInstaller trees must be executable as-is).
 asar: true
+# Keep only the locales used by the Arabic/English UI. Electron otherwise
+# copies every locale pack into the installer.
+electronLanguages:
+  - en-US
+  - ar
 extraResources:
   - from: ../../installer/dist/api
     to: api
@@ -28,9 +33,19 @@ extraResources:
     to: pg
     filter:
       # The EDB zip carries pgAdmin 4 (715MB!), docs and StackBuilder we never
-      # use - ship ONLY the server + client runtime (bin/lib/share ~139MB).
+      # use - ship ONLY the server + client runtime. Keep runtime DLLs and
+      # PostgreSQL SQL/timezone data, but omit developer/test artifacts.
       - 'bin/**/*'
+      - '!bin/stackbuilder.exe'
+      - '!bin/wx*.dll'
+      - '!bin/test*.exe'
+      - '!bin/pg_test_*.exe'
+      - '!bin/pg_regress.exe'
+      - '!bin/isolationtester.exe'
       - 'lib/**/*'
+      - '!lib/**/*.a'
+      - '!lib/**/*.lib'
+      - '!lib/pgxs/**/*'
       - 'share/**/*'
   - from: resources/watchdog.ps1
     to: watchdog.ps1

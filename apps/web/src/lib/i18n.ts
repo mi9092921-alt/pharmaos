@@ -29,6 +29,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'errors.E-VAL-001': 'بيانات غير صالحة — راجع الحقول',
     'errors.E-GEN-001': 'العنوان المطلوب غير موجود',
     'errors.E-SYS-001': 'خطأ غير متوقع — حاول مجدداً',
+    'errors.E-SET-001': 'يجب تصدير مفتاح النسخ الاحتياطي وحفظه خارج الجهاز قبل إنهاء الإعداد',
     'errors.E-LIC-001': 'مطلوب تفعيل ترخيص البرنامج',
     'errors.E-LIC-002': 'انتهت فترة السماح — البرنامج في وضع القراءة فقط، جدِّد الاشتراك',
     'errors.E-LIC-003': 'ملف الترخيص غير صالح — تأكد من الملف المُرسل',
@@ -58,10 +59,13 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'nav.cashier': 'جلسات الكاشير',
     'nav.users': 'المستخدمون',
     'nav.settings': 'الإعدادات',
+    'nav.about': 'حول PharmaOS',
     'shell.logout': 'تسجيل الخروج',
     'shell.online': 'متصل',
     'shell.offline': 'غير متصل — يعمل محلياً',
     'shell.loading': 'جارٍ التحميل…',
+    'shell.backup_key_warning':
+      'تحذير: لم يُؤكَّد حفظ مفتاح النسخ الاحتياطي خارج الجهاز. صدّره واحفظه في مكان آمن قبل الاعتماد على النسخ.',
     'shell.retry': 'إعادة المحاولة',
     'shell.boot_error_title': 'تعذر تشغيل النظام',
     'shell.boot_error_body':
@@ -197,6 +201,13 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'po.status_cancelled': 'ملغى',
     // Settings
     'settings.title': 'الإعدادات',
+    'about.title': 'حول PharmaOS',
+    'about.subtitle': 'نظام إدارة الصيدلية على الجهاز المحلي',
+    'about.scope_title': 'حدود النظام ومسؤولية الاستخدام',
+    'about.scope_body':
+      'يساعد PharmaOS في إدارة الأصناف والمخزون والدفعات والمبيعات والمرتجعات والتقارير والنسخ الاحتياطية.',
+    'about.limitations':
+      'تنبيه: النظام لا يفحص التداخلات الدوائية ولا يقرأ الوصفات عبر OCR. مسؤولية الفحص والتحقق من الوصفة على الصيدلي.',
     'settings.branch': 'بيانات الفرع',
     'settings.branch_name': 'اسم الفرع',
     'settings.currency': 'العملة',
@@ -936,6 +947,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'errors.E-VAL-001': 'Invalid data — review the fields',
     'errors.E-GEN-001': 'The requested address was not found',
     'errors.E-SYS-001': 'Unexpected error — please retry',
+    'errors.E-SET-001': 'Export and store the offline backup key before finishing setup',
     'errors.E-LIC-001': 'Software license activation required',
     'errors.E-LIC-002':
       'The grace period has ended — the system is read-only, renew the subscription',
@@ -966,10 +978,13 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'nav.cashier': 'Cash sessions',
     'nav.users': 'Users',
     'nav.settings': 'Settings',
+    'nav.about': 'About PharmaOS',
     'shell.logout': 'Sign out',
     'shell.online': 'Online',
     'shell.offline': 'Offline — working locally',
     'shell.loading': 'Loading…',
+    'shell.backup_key_warning':
+      'Warning: the backup key has not been confirmed as stored outside this device. Export it and keep it safe before relying on backups.',
     'shell.retry': 'Retry',
     'shell.boot_error_title': 'Could not start the system',
     'shell.boot_error_body':
@@ -1107,6 +1122,13 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'po.status_cancelled': 'Cancelled',
     // Settings
     'settings.title': 'Settings',
+    'about.title': 'About PharmaOS',
+    'about.subtitle': 'Local pharmacy management system',
+    'about.scope_title': 'System scope and responsibility',
+    'about.scope_body':
+      'PharmaOS helps manage products, inventory, batches, sales, returns, reports, and backups.',
+    'about.limitations':
+      'Notice: the system does not check drug interactions or read prescriptions through OCR. The pharmacist is responsible for checking interactions and prescriptions.',
     'settings.branch': 'Branch',
     'settings.branch_name': 'Branch name',
     'settings.currency': 'Currency',

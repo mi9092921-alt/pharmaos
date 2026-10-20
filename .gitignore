@@ -19,6 +19,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.rc4-pytest/
 
 # Test / coverage
 coverage/
@@ -36,6 +37,9 @@ coverage/
 
 # Local encrypted backups
 /backups/
+
+# Release-prep harness output (keep historical files local, never commit them).
+tools/release-prep/results/crash_results_*.json
 
 # Supabase local runtime
 supabase/.branches/

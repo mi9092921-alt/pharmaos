@@ -107,6 +107,8 @@ async def list_medications(
             .where(
                 text(
                     "(normalize_arabic(trade_name_ar) % normalize_arabic(:q) "
+                    "OR levenshtein_less_equal("
+                    "normalize_arabic(trade_name_ar), normalize_arabic(:q), 1) <= 1 "
                     "OR trade_name ILIKE '%' || :q || '%')"
                 ).bindparams(q=search)
             )

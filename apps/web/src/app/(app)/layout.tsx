@@ -9,7 +9,7 @@ import { Sidebar } from '@/components/sidebar';
 import { Toaster } from '@/components/toaster';
 import { Topbar } from '@/components/topbar';
 import { LicenseUploadButton } from '@/components/license-upload';
-import { ApiRequestError, fetchMe, getLicenseStatus } from '@/lib/api';
+import { ApiRequestError, fetchMe, getLicenseStatus, getSetupStatus } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
 
@@ -35,6 +35,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     queryKey: ['me'],
     queryFn: fetchMe,
     retry: false,
+  });
+  const setupQuery = useQuery({
+    queryKey: ['setup-status'],
+    queryFn: getSetupStatus,
+    enabled: !!data?.user,
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -78,6 +84,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
+        {setupQuery.data && !setupQuery.data.backup_key_exported && (
+          <div
+            role="alert"
+            className="mx-6 mt-4 rounded-[var(--radius-md)] border border-warning/50 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+          >
+            {t('shell.backup_key_warning')}
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
       <Toaster />

@@ -1,0 +1,27 @@
+{
+  "database": "pharmaos_release_perf",
+  "fictional_medications": 10000,
+  "fictional_invoices": 50000,
+  "measurements_ms": {
+    "search_medication_ms": {
+      "samples": [92.79, 101.18, 97.86, 100.49, 119.7],
+      "median": 100.49,
+      "max": 119.7
+    },
+    "daily_sales_report_ms": {
+      "samples": [202.61, 210.6, 229.06, 199.59, 276.98],
+      "median": 210.6,
+      "max": 276.98
+    },
+    "inventory_report_ms": {
+      "samples": [39.83, 35.0, 53.34, 80.11, 82.59],
+      "median": 53.34,
+      "max": 82.59
+    },
+    "complete_sale_ms": {
+      "samples": [137.42, 39.03, 26.15, 21.52, 24.14],
+      "median": 26.15,
+      "max": 137.42
+    }
+  }
+}

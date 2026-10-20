@@ -215,6 +215,8 @@ async function runSetupWizard(): Promise<void> {
           p.apiExe,
           ['bootstrap-branch', '--name', input.branchName],
           p.dataDir,
+          120000,
+          childEnv(p),
         );
         if (branch.code !== 0 && !branch.stderr.includes('already exists')) {
           throw new Error(branch.stderr || 'فشل إنشاء الفرع.');
@@ -233,7 +235,13 @@ async function runSetupWizard(): Promise<void> {
           log(`setup: scheduled tasks failed (non-fatal, retry later): ${tasksWarning}`);
         }
         // 4. the recovery key - shown ONCE (decision 5)
-        const key = await runCapture(p.apiExe, ['backup', 'export-key'], p.dataDir);
+        const key = await runCapture(
+          p.apiExe,
+          ['backup', 'export-key'],
+          p.dataDir,
+          120000,
+          childEnv(p),
+        );
         if (key.code !== 0) {
           throw new Error(key.stderr || 'فشل توليد مفتاح الاستعادة.');
         }
@@ -255,7 +263,7 @@ async function runSetupWizard(): Promise<void> {
         method: 'POST',
       });
       if (!res.ok) {
-        const done = await runCapture(p.apiExe, ['setup-complete'], p.dataDir);
+        const done = await runCapture(p.apiExe, ['setup-complete'], p.dataDir, 120000, childEnv(p));
         if (done.code !== 0) throw new Error(done.stderr || 'فشل حفظ حالة الإعداد.');
       }
       log('first-run setup complete');
@@ -282,7 +290,7 @@ async function runSetupWizard(): Promise<void> {
           throw new Error(`HTTP ${res.status}`);
         }
       } catch {
-        const st = await runCapture(p.apiExe, ['setup-status'], p.dataDir);
+        const st = await runCapture(p.apiExe, ['setup-status'], p.dataDir, 120000, childEnv(p));
         if (st.code !== 0) throw new Error(st.stderr || 'تعذر قراءة حالة الإعداد.');
         const parsed = JSON.parse(st.stdout) as { users?: number; branches?: number };
         users = parsed.users ?? 0;
@@ -295,14 +303,20 @@ async function runSetupWizard(): Promise<void> {
 
       if (branches <= 0) {
         log('setup:skip - bootstrapping default branch');
-        await runCapture(p.apiExe, ['bootstrap-branch', '--name', 'الفرع الرئيسي'], p.dataDir);
+        await runCapture(
+          p.apiExe,
+          ['bootstrap-branch', '--name', 'الفرع الرئيسي'],
+          p.dataDir,
+          120000,
+          childEnv(p),
+        );
       }
 
       const resDone = await fetch('http://127.0.0.1:8000/api/v1/system/setup-complete', {
         method: 'POST',
       });
       if (!resDone.ok) {
-        const done = await runCapture(p.apiExe, ['setup-complete'], p.dataDir);
+        const done = await runCapture(p.apiExe, ['setup-complete'], p.dataDir, 120000, childEnv(p));
         if (done.code !== 0) throw new Error(done.stderr || 'فشل حفظ حالة الإعداد.');
       }
       log('first-run skipped (owner exists) - marked complete, opening login');
@@ -323,10 +337,10 @@ async function runSetupWizard(): Promise<void> {
 async function registerScheduledTasks(winPassword: string): Promise<void> {
   const user = process.env.USERNAME ?? '';
   if (!winPassword || !user) {
-    log(
-      'scheduled tasks: skipped (no Windows password provided) - the daily backup runs only while logged on',
+    throw new Error(
+      'Windows account name and password are required to register scheduled backups; ' +
+        'without them no automatic backup task is installed.',
     );
-    return;
   }
   const tasks: Array<{ name: string; args: string; schedule: string[] }> = [
     {
@@ -368,7 +382,26 @@ async function registerScheduledTasks(winPassword: string): Promise<void> {
     if (result.code !== 0) {
       throw new Error(`task ${task.name}: ${result.stderr || result.stdout}`);
     }
-    log(`scheduled task registered: ${task.name} (user ${user}, run-whether-logged-on)`);
+    // schtasks.exe creates the trigger but has no switch for Task Scheduler's
+    // "Start the task as soon as possible after a scheduled start is missed".
+    // Set that setting explicitly so a powered-off pharmacy machine catches up
+    // after boot instead of silently skipping the 02:00 run.
+    const settings =
+      `$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable; ` +
+      `Set-ScheduledTask -TaskName '${task.name}' -Settings $settings | Out-Null`;
+    const settingsResult = await runCapture(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', settings],
+      p.dataDir,
+    );
+    if (settingsResult.code !== 0) {
+      throw new Error(
+        `task ${task.name} settings: ${settingsResult.stderr || settingsResult.stdout}`,
+      );
+    }
+    log(
+      `scheduled task registered: ${task.name} (user ${user}, run-whether-logged-on, start-when-available)`,
+    );
   }
 }
 

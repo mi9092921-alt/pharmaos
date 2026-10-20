@@ -44,6 +44,30 @@ $setup = Get-ChildItem (Join-Path $RepoRoot "installer\dist\installer") -Filter 
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $setup) { throw "installer exe missing after the build" }
 
+# Packaging gate: verify the shipped runtime, not only the source/vendor tree.
+# This catches an over-aggressive PostgreSQL filter before the EXE reaches a VM.
+$Unpacked = Join-Path $RepoRoot "installer\dist\installer\win-unpacked"
+$PgBin = Join-Path $Unpacked "resources\pg\bin"
+foreach ($tool in @("postgres.exe", "initdb.exe", "pg_ctl.exe", "pg_dump.exe", "pg_restore.exe", "psql.exe", "pg_isready.exe")) {
+    if (-not (Test-Path (Join-Path $PgBin $tool))) { throw "required PostgreSQL runtime missing from package: $tool" }
+}
+$ForbiddenPg = @(
+    (Join-Path $PgBin "stackbuilder.exe"),
+    (Join-Path $PgBin "wxmsw3211u_core_vc_x64_custom.dll"),
+    (Join-Path $Unpacked "resources\pg\lib\pgxs")
+)
+foreach ($path in $ForbiddenPg) {
+    if (Test-Path $path) { throw "development PostgreSQL artifact was packaged: $path" }
+}
+$StaticPgArtifacts = Get-ChildItem (Join-Path $Unpacked "resources\pg\lib") -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Extension -in @('.a', '.lib') }
+if ($StaticPgArtifacts) { throw "static PostgreSQL development artifacts were packaged" }
+$LocaleNames = @(Get-ChildItem (Join-Path $Unpacked "locales") -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty BaseName)
+if (@($LocaleNames | Sort-Object) -join ',' -ne 'ar,en-US') {
+    throw "unexpected Electron locales packaged: $($LocaleNames -join ',')"
+}
+Write-Host "packaging runtime gate passed: PostgreSQL tools + Electron locales verified" -ForegroundColor Green
+
 # The manifest travels with the build so M6-1 can prove tested == shipped.
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Green

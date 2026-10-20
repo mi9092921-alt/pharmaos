@@ -19,12 +19,12 @@ from pharmaos_api.licensing.errors import LicensingError
 logger = logging.getLogger(__name__)
 
 VENDOR_LICENSE_PUBLIC_KEY_PEM: str | None = """-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEATawUt5OUCHdb4mm89vKED12orZlOubuIvyDzd6nIou8=
+MCowBQYDK2VwAyEAPgDB0/q3SNz5vwQz1Ca1byoPifzIDh+4J99bKlmeUpo=
 -----END PUBLIC KEY-----
 """
 
 
-VENDOR_LICENSE_ACCEPTED_KIDS: frozenset[str] = frozenset({"03a7a211"})
+VENDOR_LICENSE_ACCEPTED_KIDS: frozenset[str] = frozenset({"0627f4cb"})
 
 
 def vendor_public_key() -> Ed25519PublicKey:

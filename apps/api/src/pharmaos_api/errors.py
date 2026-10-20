@@ -37,6 +37,7 @@ class ErrorCode:
     PRESCRIPTION_EXCEEDED = "E-RX-002"
     PRESCRIPTION_INVALID = "E-RX-003"
     NOT_FOUND = "E-GEN-001"
+    BACKUP_KEY_EXPORT_REQUIRED = "E-SET-001"
     # P4-M1 (licensing) — statuses/HTTP mapping live in the gate (M2) and
     # docs/phase4-execution-plan-licensing.md §7. Same commit closes the E-SYS-001
     # precedent (used as a literal in main.py, defined in TS only until now).
@@ -78,6 +79,9 @@ _FALLBACK_MESSAGES: dict[str, str] = {
     ErrorCode.PRESCRIPTION_EXCEEDED: "Quantity exceeds what remains on the prescription.",
     ErrorCode.PRESCRIPTION_INVALID: "Prescription item does not match this medication.",
     ErrorCode.NOT_FOUND: "The requested resource was not found.",
+    ErrorCode.BACKUP_KEY_EXPORT_REQUIRED: (
+        "Export and store the offline backup key before finishing setup."
+    ),
     ErrorCode.UNEXPECTED: "Unexpected error.",
     ErrorCode.LICENSE_REQUIRED: "License activation required.",
     ErrorCode.LICENSE_READ_ONLY: "License expired — the system is in read-only mode.",

@@ -27,6 +27,7 @@ The dedup test is the idempotency spine: repeated evaluation must refresh
 """
 
 import datetime as dt
+import os
 import uuid
 from decimal import Decimal
 
@@ -390,7 +391,8 @@ async def test_backup_overdue_inert_without_path_and_fires_on_empty_dir(
     tmp_path: object,
 ) -> None:
     """BACKUP_PATH unset → inert (nothing to measure). Set to an EMPTY dir →
-    'never backed up' IS overdue. A fresh backup file clears the alert."""
+    'never backed up' IS overdue. A fresh backup file clears the alert; a file
+    older than 36h fires it again."""
     monkeypatch.delenv("BACKUP_PATH", raising=False)
     inert = await alerts_service.evaluate_branch(db_session, branch.id)
     assert _rule(inert, "backup_overdue") == 0
@@ -409,9 +411,18 @@ async def test_backup_overdue_inert_without_path_and_fires_on_empty_dir(
 
     fresh = backup_dir / "pharmaos_2026.pharmaos-backup"
     fresh.write_bytes(b"x")
+    alerts_service.backup_service.write_checksum(fresh)
     fresh.touch()
     cleared = await alerts_service.evaluate_branch(db_session, branch.id)
     assert _rule(cleared, "backup_overdue") == 0
+
+    os.utime(fresh, (dt.datetime.now().timestamp() - 35 * 3600,) * 2)
+    still_fresh = await alerts_service.evaluate_branch(db_session, branch.id)
+    assert _rule(still_fresh, "backup_overdue") == 0
+
+    os.utime(fresh, (dt.datetime.now().timestamp() - 37 * 3600,) * 2)
+    overdue_again = await alerts_service.evaluate_branch(db_session, branch.id)
+    assert _rule(overdue_again, "backup_overdue") == 1
 
 
 # ------------------------------ lifecycle + HTTP ------------------------------

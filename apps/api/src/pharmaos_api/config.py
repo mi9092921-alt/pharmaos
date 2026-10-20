@@ -143,6 +143,13 @@ class Settings(BaseSettings):
     printer_port: int = 9100
     printer_timeout_seconds: float = 5.0
 
+    # Backup retention (release-prep phase 2): how many newest backups the
+    # daily `backup create` keeps on the device (older ones are pruned).
+    backup_keep_count: int = 14
+    # Optional second local destination (USB drive, external disk, or a
+    # network-backed folder). It is deliberately a path, not a secret.
+    backup_secondary_path: Path | None = None
+
     @property
     def resolved_database_url(self) -> str:
         """The URL the runtime actually connects with.

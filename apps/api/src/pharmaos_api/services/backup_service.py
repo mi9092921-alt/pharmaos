@@ -25,6 +25,7 @@ restore never silently generates a key (decision 10).
 """
 
 import datetime as dt
+import hashlib
 import io
 import json
 import logging
@@ -32,6 +33,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import time
 import uuid
 from collections.abc import Callable
@@ -52,10 +54,12 @@ logger = logging.getLogger(__name__)
 _NONCE_SIZE = 12
 _BACKUP_CONTEXT = b"pharmaos.backup.v1"
 BACKUP_SUFFIX = ".pharmaos-backup"
+CHECKSUM_SUFFIX = ".sha256"
+STATUS_FILENAME = "backup_status.json"
 BACKUP_FORMAT = "pharmaos.backup.v1"
 # Newest schema this runtime understands (keep in lockstep with migrations —
 # a backup from a NEWER device must be rejected, not half-restored).
-SUPPORTED_SCHEMA_VERSION = "20260711003100"
+SUPPORTED_SCHEMA_VERSION = "20261020000100"
 # PG 17 per docs/versions.md — pg_restore/dump are major-locked.
 EXPECTED_PG_MAJOR = 17
 LIVE_PORT = 5433
@@ -199,10 +203,123 @@ def create_backup(backup_dir: Path, *, database_url: str | None = None) -> Path:
 
     stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = backup_dir / f"pharmaos_{stamp}{BACKUP_SUFFIX}"
-    out_path.write_bytes(blob)
-    os.chmod(out_path, 0o600)
+    temporary = out_path.with_name(f".{out_path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_bytes(blob)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, out_path)
+        write_checksum(out_path)
+    finally:
+        temporary.unlink(missing_ok=True)
     logger.info("Backup created: %s (%d bytes)", out_path, len(blob))
     return out_path
+
+
+def _write_backup_status(backup_dir: Path, payload: dict[str, object]) -> None:
+    """Atomically record the latest backup job outcome without secrets."""
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / STATUS_FILENAME
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def record_backup_success(backup_dir: Path, backup_file: Path) -> None:
+    """Record a successful primary backup for operators and diagnostics."""
+    try:
+        _write_backup_status(
+            backup_dir,
+            {
+                "status": "success",
+                "completed_at": dt.datetime.now(dt.UTC).isoformat(),
+                "backup_file": backup_file.name,
+                "error": None,
+            },
+        )
+    except OSError:
+        logger.exception("Could not write backup success status in %s", backup_dir)
+
+
+def record_backup_failure(backup_dir: Path, error: BaseException) -> None:
+    """Record a failed scheduled/manual backup without exposing secrets."""
+    try:
+        _write_backup_status(
+            backup_dir,
+            {
+                "status": "failure",
+                "completed_at": dt.datetime.now(dt.UTC).isoformat(),
+                "backup_file": None,
+                "error": str(error)[:500],
+            },
+        )
+    except OSError:
+        logger.exception("Could not write backup failure status in %s", backup_dir)
+
+
+def write_checksum(backup_file: Path) -> Path:
+    """SHA-256 sidecar next to the backup: integrity can be checked WITHOUT
+    the backup key (corruption vs tampering; tampering is caught by GCM at
+    decrypt anyway, but a silent bit-rot shows up here immediately)."""
+    digest = hashlib.sha256(backup_file.read_bytes()).hexdigest()
+    sidecar = backup_file.with_name(backup_file.name + CHECKSUM_SUFFIX)
+    sidecar.write_text(f"{digest}  {backup_file.name}\n", encoding="ascii")
+    return sidecar
+
+
+def verify_checksum(backup_file: Path) -> bool:
+    """True when the sidecar exists and the file still hashes to it."""
+    sidecar = backup_file.with_name(backup_file.name + CHECKSUM_SUFFIX)
+    if not sidecar.is_file():
+        return False
+    expected = sidecar.read_text(encoding="ascii").split()[0].strip().lower()
+    return hashlib.sha256(backup_file.read_bytes()).hexdigest() == expected
+
+
+def prune_old_backups(backup_dir: Path, *, keep: int) -> list[Path]:
+    """Retention (release-prep phase 2): keep the newest `keep` backups,
+    delete older ones with their checksum sidecars. Returns what was deleted.
+    Refuses to run with keep < 1 — a config mistake must not wipe history."""
+    if keep < 1:
+        raise ValueError("backup retention must keep at least one backup")
+    backups = sorted(
+        (p for p in backup_dir.glob(f"*{BACKUP_SUFFIX}") if p.is_file()),
+        key=lambda p: p.stat().st_mtime,
+    )
+    victims = backups[:-keep] if len(backups) > keep else []
+    for victim in victims:
+        victim.with_name(victim.name + CHECKSUM_SUFFIX).unlink(missing_ok=True)
+        victim.unlink()
+    return victims
+
+
+def copy_to_secondary(backup_file: Path, secondary_dir: Path) -> Path:
+    """Atomically copy a completed backup to a second local destination.
+
+    The destination is copied only after encryption has completed. A temporary
+    file plus ``os.replace`` prevents a scheduled job or a power loss from
+    leaving a plausible-looking partial backup at the second destination.
+    """
+    source = backup_file.resolve()
+    destination_dir = secondary_dir.expanduser().resolve()
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / source.name
+    if destination == source:
+        raise BackupError("secondary backup path must differ from the primary path")
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+        os.chmod(destination, 0o600)
+        write_checksum(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    logger.info("Backup copied to secondary destination: %s", destination)
+    return destination
 
 
 def decrypt_backup(backup_file: Path) -> dict[str, bytes]:
@@ -339,10 +456,21 @@ def _conf_file(cluster_dir: Path) -> Path:
 
 
 def _pin_cluster_config(cluster_dir: Path, *, port: int) -> None:
-    """Pin the runtime contract on a freshly initdb'd cluster: localhost only,
-    the requested port. Later lines win, so appending is sufficient."""
+    """Pin the runtime contract on a freshly initdb'd cluster.
+
+    These durability settings are intentionally explicit rather than relying on
+    PostgreSQL defaults; the installer smoke gate asserts the same contract.
+    """
     with _conf_file(cluster_dir).open("a", encoding="utf-8") as fh:
-        fh.write(f"\nlisten_addresses = '127.0.0.1'\nport = {port}\n")
+        fh.write(
+            "\n"
+            "listen_addresses = '127.0.0.1'\n"
+            f"port = {port}\n"
+            "wal_level = 'replica'\n"
+            "synchronous_commit = 'on'\n"
+            "fsync = 'on'\n"
+            "full_page_writes = 'on'\n"
+        )
         if os.name != "nt":
             fh.write("unix_socket_directories = '/tmp'\n")
 
@@ -450,9 +578,13 @@ def _init_staging(
     C.UTF-8 (deterministic Arabic collation, no OS locale dependency),
     UTF-8, superuser = the app role with the RESTORED password."""
     initdb = pg_bin.resolve("initdb")
-    pwfile = staging_dir.parent / f".pg-pwfile-{uuid.uuid4().hex[:8]}"
-    pwfile.write_text(db_password + "\n", encoding="utf-8")
+    # The device data root is intentionally read-only for the daily user;
+    # only pgdata/logs/backups are writable. Keep the transient initdb secret
+    # in a private per-user temp directory instead of relaxing the root ACL.
+    pw_dir = Path(tempfile.mkdtemp(prefix="pharmaos-pg-"))
+    pwfile = pw_dir / f".pg-pwfile-{uuid.uuid4().hex[:8]}"
     try:
+        pwfile.write_text(db_password + "\n", encoding="utf-8")
         _run(
             [
                 str(initdb),
@@ -471,6 +603,10 @@ def _init_staging(
         )
     finally:
         _secure_delete(pwfile)
+        try:
+            pw_dir.rmdir()
+        except OSError:
+            logger.warning("could not remove temporary initdb secret directory %s", pw_dir)
     _pin_cluster_config(staging_dir, port=port)
 
 
@@ -629,7 +765,12 @@ def restore_to_cluster(
     swapped = False
     try:
         staging_dir.mkdir(parents=True)
-        _init_staging(staging_dir, db_user=db_user, db_password=db_password)
+        _init_staging(
+            staging_dir,
+            db_user=db_user,
+            db_password=db_password,
+            port=staging_port,
+        )
         _pg_ctl_start(staging_dir, parent / "pharmaos-pg-staging.log")
         _wait_ready(staging_port)
 
@@ -731,12 +872,25 @@ def restore_drill(backup_file: Path, *, drill_database_url: str) -> dict[str, in
             drill_database_url,
             "-tA",
             "-c",
-            "SELECT COUNT(*) FROM users; SELECT COUNT(*) FROM permissions;",
+            "SELECT COUNT(*) FROM users; "
+            "SELECT COUNT(*) FROM permissions; "
+            "SELECT COUNT(*) FROM medications; "
+            "SELECT COUNT(*) FROM invoices; "
+            "SELECT COUNT(*) FROM audit_logs;",
         ]
     ).stdout
-    users_count, permissions_count = (int(line) for line in out.decode().strip().splitlines())
+    values = [int(line) for line in out.decode().strip().splitlines()]
+    if len(values) != 5:
+        raise BackupError("restore drill returned an unexpected count set")
+    users_count, permissions_count, medications_count, invoices_count, audit_logs_count = values
     _parse_keys(members, require_db_password=False)  # keys bundle must parse
-    return {"users": users_count, "permissions": permissions_count}
+    return {
+        "users": users_count,
+        "permissions": permissions_count,
+        "medications": medications_count,
+        "invoices": invoices_count,
+        "audit_logs": audit_logs_count,
+    }
 
 
 def upload_to_cloud(backup_file: Path) -> bool:
