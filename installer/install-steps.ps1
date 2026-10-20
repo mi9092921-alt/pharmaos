@@ -23,6 +23,16 @@ $installerUserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().Us
 New-Item -ItemType Directory -Force -Path (Join-Path $data 'backups') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $data 'logs') | Out-Null
 New-Item -ItemType Directory -Force -Path $pgData | Out-Null
+# The licensing reconciler keeps one MAC-authenticated clock record directly
+# under the data root (the second copy is in HKCU).  The root is intentionally
+# read-only for ordinary users, so create the file while elevated and grant
+# Modify only to the installing/daily account below.  Without this explicit
+# ACL activation can appear to work in the current process, but the next API
+# boot fails when it tries to reseed the file store and reports E-LIC-007.
+$licenseStore = Join-Path $data 'license-store.json'
+if (-not (Test-Path $licenseStore)) {
+    New-Item -ItemType File -Force -Path $licenseStore | Out-Null
+}
 # Users (S-1-5-32-545): Modify on the data dirs the app writes into; the
 # PharmaOS root stays admin-owned (Users: read via RX inheritance).
 icacls (Join-Path $data 'backups') /grant '*S-1-5-32-545:(OI)(CI)M' /T | Out-Null
@@ -33,6 +43,10 @@ icacls (Join-Path $data 'logs') /grant '*S-1-5-32-545:(OI)(CI)M' /T | Out-Null
 $installerUserModify = "*$installerUserSid`:(OI)(CI)M"
 icacls $pgData /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' $installerUserModify /T | Out-Null
 icacls $data /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' '*S-1-5-32-545:RX' | Out-Null
+# The file itself needs no inheritance flags: only the daily account may
+# update it, while SYSTEM and Administrators retain recovery access.
+$installerUserFileModify = "*$installerUserSid`:(M)"
+icacls $licenseStore /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' $installerUserFileModify | Out-Null
 
 # VC++ redistributable: NOT required for the pinned binaries
 # (check-vcredist.ps1 verdict: none - statically-linked CRT). Re-run that
