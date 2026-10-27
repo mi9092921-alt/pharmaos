@@ -7,7 +7,7 @@ deduction (or vice versa).
 What it does per iteration:
   1. spawns a child process that runs sales_service.create_sale (the real
      atomic sale path: batches + stock_movements + invoice + items + audit,
-     one transaction);
+     one transaction) with a realistic 10-line cart;
   2. waits for the TXN-START marker, sleeps a RANDOM delay covering the
      transaction window, then hard-kills:
        - "client" mode: only the child (the API process died);
@@ -15,15 +15,16 @@ What it does per iteration:
          (taskkill /F /T) — the closest thing to pulling the plug;
   3. restarts the cluster (power mode), waits for WAL recovery, then checks:
        - pg_amcheck (B-tree + heap integrity — PostgreSQL's integrity_check);
-       - invoice/movement/ledger consistency SQL (c1..c5 below);
-       - branch_inventory drift (derived cache == batch truth).
+       - invoice/movement/ledger consistency SQL (c1..c5 below).
 
 Invariants checked after EVERY iteration (all must hold):
   c1: no completed invoice without sale_out movements
   c2: no sale_out movement pointing at a missing invoice
   c3: per invoice: sum(movement deltas) == -sum(item qty_smallest)
   c4: branch_inventory.cached_quantity == SUM(active batch quantities)
-  c5: batch quantity ledger equation: SUM(batches) == baseline + SUM(movements)
+  c5: stock ledger equation: SUM(batch quantities) == SUM(movement deltas)
+      (receives +sales — every batch change writes exactly one movement in
+      the same transaction, so the two sides can never legitimately diverge)
 
 Usage:
   python tools/release-prep/crash_sale_test.py run --port 5434 --iterations 50
@@ -31,7 +32,7 @@ Usage:
 
 The harness ONLY ever touches its own dedicated cluster/database
 (pharmaos_crash) — never live or test-shared data. Test data is clearly
-fictional ("GEN-TEST-CRASH" medication).
+fictional ("GEN-TEST-CRASH-*" medications).
 """
 
 from __future__ import annotations
@@ -47,15 +48,12 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 from decimal import Decimal
 from pathlib import Path
 
 DB_NAME = "pharmaos_crash"
 MARKER_BRANCH = "فرع اختبار الانقطاع"
-MARKER_MED = "GEN-TEST-CRASH"
-MARKER_BARCODE = "6229900000017"
-MARKER_BATCH = "CRASH-B1"
+MED_PREFIX = "GEN-TEST-CRASH-"
 MARKER_USER = "crash_cashier"
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
@@ -64,8 +62,15 @@ def db_url(port: int, db: str = DB_NAME) -> str:
     return f"postgresql://postgres@127.0.0.1:{port}/{db}"
 
 
+def scratch_dir() -> Path:
+    """Harness-owned scratch area (pgdata + logs) — outside the repo, per-run
+    disposable. Never points at live or project data."""
+    base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Temp"
+    return base / "pharmaos-relprep"
+
+
 def pgdata_default() -> Path:
-    return Path(r"D:\pharmaos-release-prep\pgcrash")
+    return scratch_dir() / "pgcrash"
 
 
 def pg_bin() -> Path:
@@ -83,6 +88,7 @@ def run_child(port: int) -> int:
     from pharmaos_api.db import get_session_factory
     from pharmaos_api.models import (
         Branch,
+        Medication,
         MedicationBarcode,
         User,
     )
@@ -97,18 +103,28 @@ def run_child(port: int) -> int:
             cashier = (
                 await session.execute(select(User).where(User.username == MARKER_USER))
             ).scalar_one()
-            barcode = (
-                await session.execute(
-                    select(MedicationBarcode.barcode).where(MedicationBarcode.barcode == MARKER_BARCODE)
+            # A REALISTIC multi-line cart: 10 random lines out of the seeded
+            # medications — widens the transaction so a random kill can land
+            # mid-flight (a single-line sale commits in tens of ms).
+            barcodes = (
+                (
+                    await session.execute(
+                        select(MedicationBarcode.barcode)
+                        .join(Medication, Medication.id == MedicationBarcode.medication_id)
+                        .where(Medication.trade_name.like(MED_PREFIX + "%"))
+                    )
                 )
-            ).scalar_one()
-            qty = Decimal(random.randint(1, 5))
+                .scalars()
+                .all()
+            )
+            picked = random.sample(sorted(barcodes), 10)
+            lines = [SaleLine(barcode=b, quantity=Decimal(random.randint(1, 5))) for b in picked]
             print("TXN-START", flush=True)
             t0 = time.perf_counter()
             await create_sale(
                 session,
                 branch_id=branch.id,
-                lines=[SaleLine(barcode=barcode, quantity=qty)],
+                lines=lines,
                 cashier=cashier,
             )
             print(f"TXN-COMMIT {time.perf_counter() - t0:.4f}", flush=True)
@@ -118,7 +134,7 @@ def run_child(port: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# seed: fictional branch/medication/stock — idempotent
+# seed: fictional branch/medications/stock (fresh DB per harness run)
 # ---------------------------------------------------------------------------
 
 
@@ -132,7 +148,6 @@ async def _seed_async(port: int) -> None:
         Branch,
         Medication,
         MedicationBarcode,
-        MedicationBatch,
         MedicationPackaging,
         Role,
         User,
@@ -141,12 +156,6 @@ async def _seed_async(port: int) -> None:
 
     factory = get_session_factory()
     async with factory() as session:
-        existing = (
-            await session.execute(select(Branch).where(Branch.name == MARKER_BRANCH))
-        ).scalar_one_or_none()
-        if existing is not None:
-            return
-
         role = (
             await session.execute(select(Role).where(Role.code == "cashier"))
         ).scalar_one()
@@ -174,84 +183,91 @@ async def _seed_async(port: int) -> None:
                 )
             ).scalar_one()
 
-        med = Medication(
-            trade_name=MARKER_MED,
-            trade_name_ar="دواء اختبار انقطاع (وهمي تماماً)",
-        )
-        session.add(med)
-        await session.flush()
-        strip = MedicationPackaging(
-            medication_id=med.id,
-            level=2,
-            unit_id=unit_ids["شريط"],
-            name_ar="شريط",
-            qty_in_parent=Decimal(3),
-            selling_price=Decimal("30.00"),
-            is_default_sale=True,
-        )
-        session.add_all(
-            [
-                MedicationPackaging(
-                    medication_id=med.id,
-                    level=1,
-                    unit_id=unit_ids["علبة"],
-                    name_ar="علبة",
-                    qty_in_parent=None,
-                    selling_price=Decimal("90.00"),
-                ),
-                strip,
-                MedicationPackaging(
-                    medication_id=med.id,
-                    level=3,
-                    unit_id=unit_ids["قرص"],
-                    name_ar="قرص",
-                    qty_in_parent=Decimal(10),
-                    selling_price=Decimal("3.50"),
-                ),
-            ]
-        )
-        await session.flush()
-        session.add(
-            MedicationBarcode(
-                medication_id=med.id,
-                packaging_id=strip.id,
-                barcode=MARKER_BARCODE,
-                is_primary=True,
+        # 20 fictional medications so each sale is a realistic 10-line cart.
+        for i in range(20):
+            med = Medication(
+                trade_name=f"{MED_PREFIX}{i:02d}",
+                trade_name_ar=f"دواء اختبار انقطاع {i:02d} (وهمي تماماً)",
             )
-        )
+            session.add(med)
+            await session.flush()
+            strip = MedicationPackaging(
+                medication_id=med.id,
+                level=2,
+                unit_id=unit_ids["شريط"],
+                name_ar="شريط",
+                qty_in_parent=Decimal(3),
+                selling_price=Decimal("30.00"),
+                is_default_sale=True,
+            )
+            session.add_all(
+                [
+                    MedicationPackaging(
+                        medication_id=med.id,
+                        level=1,
+                        unit_id=unit_ids["علبة"],
+                        name_ar="علبة",
+                        qty_in_parent=None,
+                        selling_price=Decimal("90.00"),
+                    ),
+                    strip,
+                    MedicationPackaging(
+                        medication_id=med.id,
+                        level=3,
+                        unit_id=unit_ids["قرص"],
+                        name_ar="قرص",
+                        qty_in_parent=Decimal(10),
+                        selling_price=Decimal("3.50"),
+                    ),
+                ]
+            )
+            await session.flush()
+            session.add(
+                MedicationBarcode(
+                    medication_id=med.id,
+                    packaging_id=strip.id,
+                    barcode=f"6229900000{i:02d}",
+                    is_primary=True,
+                )
+            )
         await session.commit()
 
     # Stock enters through the REAL receive primitive (batch row + purchase_in
     # movement + cache delta, one transaction) — never a raw INSERT, so the
     # derived cache starts consistent exactly like a live device.
-    from pharmaos_api.db import get_session_factory as _g
-    from pharmaos_api.models import Branch as _B
-    from pharmaos_api.models import Medication as _M
-    from pharmaos_api.models import User as _U
     from pharmaos_api.services.inventory_service import receive_batch
 
-    async with _g()() as session:
+    async with factory() as session:
         branch = (
-            await session.execute(select(_B).where(_B.name == MARKER_BRANCH))
+            await session.execute(select(Branch).where(Branch.name == MARKER_BRANCH))
         ).scalar_one()
-        med = (
-            await session.execute(select(_M).where(_M.trade_name == MARKER_MED))
-        ).scalar_one()
-        actor = (
-            await session.execute(select(_U).where(_U.username == MARKER_USER))
-        ).scalar_one()
-        await receive_batch(
-            session,
-            actor=actor,
-            branch_id=branch.id,
-            medication_id=med.id,
-            batch_number=MARKER_BATCH,
-            expiry_date=dt.date.today() + dt.timedelta(days=720),
-            quantity=Decimal(10_000_000),
-            purchase_price=Decimal("2.00"),
+        meds = (
+            (
+                await session.execute(
+                    select(Medication)
+                    .where(Medication.trade_name.like(MED_PREFIX + "%"))
+                    .order_by(Medication.trade_name)
+                )
+            )
+            .scalars()
+            .all()
         )
+        actor = (
+            await session.execute(select(User).where(User.username == MARKER_USER))
+        ).scalar_one()
+        for i, med in enumerate(meds):
+            await receive_batch(
+                session,
+                actor=actor,
+                branch_id=branch.id,
+                medication_id=med.id,
+                batch_number=f"CRASH-B{i:02d}",
+                expiry_date=dt.date.today() + dt.timedelta(days=720),
+                quantity=Decimal(10_000_000),
+                purchase_price=Decimal("2.00"),
+            )
         await session.commit()
-    print("seeded fictional crash-test data (via receive_batch)")
+    print(f"seeded fictional crash-test data ({len(meds)} meds via receive_batch)")
 
 
 async def _reset_db_async(port: int) -> None:
@@ -268,11 +284,9 @@ async def _reset_db_async(port: int) -> None:
 async def _install_amcheck_async(port: int) -> None:
     """Install PostgreSQL's integrity-check extension in the throwaway DB.
 
-    ``pg_amcheck`` is shipped with PostgreSQL, but it skips databases that do
-    not have the ``amcheck`` extension installed.  The crash harness owns this
-    fresh database, so enabling the extension here makes the integrity gate
-    real instead of recording a false failure for every iteration.
-    """
+    ``pg_amcheck`` skips databases without the ``amcheck`` extension — the
+    crash harness owns this fresh database, so enabling it here makes the
+    integrity gate real instead of a false failure on every iteration."""
     import asyncpg
 
     conn = await asyncpg.connect(db_url(port))
@@ -322,7 +336,7 @@ def stop_cluster_pgdata(pgdata: Path) -> None:
             pass
 
 
-def start_cluster(pgdata: Path, logfile: Path) -> None:
+def start_cluster(pgdata: Path, logfile: Path, port: int) -> None:
     # No captured pipes: pg_ctl detaches postgres.exe which inherits handles
     # and hangs communicate() (documented in backup_service._pg_ctl_start).
     subprocess.run(  # noqa: S603
@@ -335,7 +349,7 @@ def start_cluster(pgdata: Path, logfile: Path) -> None:
     )
     for _ in range(120):
         probe = subprocess.run(  # noqa: S603
-            [str(pg_bin() / "pg_isready.exe"), "-h", "127.0.0.1", "-p", "5434"],
+            [str(pg_bin() / "pg_isready.exe"), "-h", "127.0.0.1", "-p", str(port)],
             capture_output=True,
             check=False,
             timeout=10,
@@ -350,8 +364,7 @@ def start_cluster(pgdata: Path, logfile: Path) -> None:
 # consistency checks
 # ---------------------------------------------------------------------------
 
-# All five invariants (positional args: $1 = branch_id / $1 = batch_number,
-# $2 = baseline for c5). All must return 0.
+# All five invariants take $1 = branch_id and must return 0.
 CHECK_QUERIES: list[tuple[str, str]] = [
     (
         "c1_invoice_without_movements",
@@ -391,16 +404,18 @@ CHECK_QUERIES: list[tuple[str, str]] = [
     ),
     (
         "c5_batch_ledger_equation",
-        """SELECT count(*) FROM medication_batches b
-           WHERE b.batch_number = $1
-             AND b.quantity <> COALESCE((
-                 SELECT SUM(m.quantity_delta) FROM stock_movements m
-                 WHERE m.batch_id = b.id), 0)""",
+        """SELECT count(*) FROM (
+               SELECT (SELECT COALESCE(SUM(b.quantity), 0) FROM medication_batches b
+                       WHERE b.branch_id = $1 AND b.is_deleted = FALSE) AS stock,
+                      (SELECT COALESCE(SUM(m.quantity_delta), 0) FROM stock_movements m
+                       WHERE m.branch_id = $1) AS moved
+           ) led
+           WHERE led.stock <> led.moved""",
     ),
 ]
 
 
-async def _checks_async(port: int, batch_number: str) -> dict[str, int]:
+async def _checks_async(port: int) -> dict[str, int]:
     import asyncpg
 
     conn = await asyncpg.connect(db_url(port))
@@ -410,10 +425,7 @@ async def _checks_async(port: int, batch_number: str) -> dict[str, int]:
         )
         results: dict[str, int] = {}
         for name, sql in CHECK_QUERIES:
-            if name == "c5_batch_ledger_equation":
-                results[name] = int(await conn.fetchval(sql, batch_number))
-            else:
-                results[name] = int(await conn.fetchval(sql, branch_id))
+            results[name] = int(await conn.fetchval(sql, branch_id))
         results["invoice_count"] = int(
             await conn.fetchval(
                 "SELECT count(*) FROM invoices WHERE branch_id = $1", branch_id
@@ -424,8 +436,8 @@ async def _checks_async(port: int, batch_number: str) -> dict[str, int]:
         await conn.close()
 
 
-def run_checks(port: int, batch_number: str) -> dict[str, int]:
-    return asyncio.run(_checks_async(port, batch_number))
+def run_checks(port: int) -> dict[str, int]:
+    return asyncio.run(_checks_async(port))
 
 
 def run_amcheck(port: int, db: str) -> tuple[bool, str]:
@@ -456,11 +468,7 @@ def run_amcheck(port: int, db: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def read_ansi_port(port: int) -> int:  # pragma: no cover - helper clarity
-    return port
-
-
-def spawn_child(port: int) -> tuple[subprocess.Popen[str], threading.Queue[str]]:
+def spawn_child(port: int) -> tuple[subprocess.Popen[str], "queue_mod.Queue[str]"]:
     env = os.environ.copy()
     env["PHARMAOS_ENV"] = "test"
     env["DATABASE_URL"] = db_url(port)
@@ -487,8 +495,7 @@ def measure_commit_time(port: int, runs: int = 3) -> float:
     times: list[float] = []
     for _ in range(runs):
         proc, queue = spawn_child(port)
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
+        for _ in range(600):
             line = queue.get(timeout=120)
             if line.startswith("TXN-COMMIT"):
                 times.append(float(line.split()[1]))
@@ -506,7 +513,6 @@ def run_harness(args: argparse.Namespace) -> int:
     logfile = pgdata.parent / "pgcrash.log"
     reset_db(args.port)
     seed(args.port)
-    print(f"baseline batch quantity: {Decimal(10_000_000)} (via receive_batch)")
 
     commit_s = measure_commit_time(args.port)
     window_lo, window_hi = 0.005, commit_s * 1.4
@@ -521,29 +527,26 @@ def run_harness(args: argparse.Namespace) -> int:
         mode = "power" if i % 2 == 1 else "client"
         delay = random.uniform(window_lo, window_hi)
 
-        invoices_before = run_checks(args.port, MARKER_BATCH)["invoice_count"]
+        invoices_before = run_checks(args.port)["invoice_count"]
         proc, queue = spawn_child(args.port)
-        try:
-            marker = queue.get(timeout=120)
-            if marker != "TXN-START":
-                raise RuntimeError(f"child output before marker: {marker!r}")
-        except Exception:
+        marker = queue.get(timeout=120)
+        if marker != "TXN-START":
             kill_tree(proc.pid)
-            raise
+            raise RuntimeError(f"child output before marker: {marker!r}")
         time.sleep(delay)
 
         recovery_logged = False
         if mode == "power":
             kill_tree(proc.pid)
             stop_cluster_pgdata(pgdata)
-            start_cluster(pgdata, logfile)
+            start_cluster(pgdata, logfile, args.port)
             with logfile.open("r", encoding="utf-8", errors="replace") as fh:
                 tail = fh.read()[-4000:]
             recovery_logged = "automatic recovery in progress" in tail
         else:
             kill_tree(proc.pid)
 
-        checks = run_checks(args.port, MARKER_BATCH)
+        checks = run_checks(args.port)
         ok_am, am_out = run_amcheck(args.port, DB_NAME)
         committed = checks["invoice_count"] > invoices_before
         consistent = all(
@@ -583,7 +586,7 @@ def run_harness(args: argparse.Namespace) -> int:
     print("=" * 70)
     print(
         f"iterations={args.iterations} failures={failures} "
-        f"committed_mid_kill={committed_n} killed_before_commit={args.iterations - committed_n} "
+        f"committed_after_kill={committed_n} killed_before_commit={args.iterations - committed_n} "
         f"pg_crash_recoveries={recovered_n}"
     )
     print(f"results written to {results_path}")
