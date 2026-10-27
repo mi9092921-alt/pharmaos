@@ -17,6 +17,13 @@ Idempotent: rows whose trade_name already exists in the catalog are skipped
 (safe to re-run). Rows with a missing name or an unparsable price are reported
 as errors with their row numbers, never silently dropped.
 
+With update_prices=True the SAME file format also UPDATES the level-1 price of
+existing medications (the monthly price-list refresh): each matched row sets
+the packaging's selling_price and writes a price-history row carrying
+old_price -> new_price with the file's price_source. Unmatched names are
+still created; rows whose name exists WITHOUT a level-1 packaging are errors
+(nothing to update on).
+
 Performance: batched Core inserts (25k rows in seconds, not ORM-per-row).
 """
 
@@ -47,6 +54,7 @@ _BOX_UNIT_NAME = "علبة"
 @dataclass
 class SeedReport:
     created: int = 0
+    updated: int = 0
     skipped_existing: int = 0
     skipped_duplicate_in_file: int = 0
     errors: list[str] = field(default_factory=list)
@@ -54,6 +62,7 @@ class SeedReport:
     def as_dict(self) -> dict[str, Any]:
         return {
             "created": self.created,
+            "updated": self.updated,
             "skipped_existing": self.skipped_existing,
             "skipped_duplicate_in_file": self.skipped_duplicate_in_file,
             "errors": self.errors[:50],
@@ -108,7 +117,11 @@ async def _box_unit_id(session: AsyncSession) -> str:
 
 
 async def seed_catalog(
-    session: AsyncSession, *, file_path: Path, price_source: str = "seed"
+    session: AsyncSession,
+    *,
+    file_path: Path,
+    price_source: str = "seed",
+    update_prices: bool = False,
 ) -> SeedReport:
     """Load a CSV/XLSX catalog file. Returns a full report; commits in batches."""
     report = SeedReport()
@@ -119,9 +132,51 @@ async def seed_catalog(
     )
 
     existing: set[str] = set((await session.execute(select(Medication.trade_name))).scalars().all())
+    # Level-1 packaging per existing name — the price-update target (release-
+    # prep phase 5: the monthly price list refreshes via the same file format).
+    existing_l1: dict[str, tuple[Any, Any, Decimal]] = {
+        r[0]: (r[1], r[2], r[3])
+        for r in (
+            await session.execute(
+                select(
+                    Medication.trade_name,
+                    Medication.id,
+                    MedicationPackaging.id,
+                    MedicationPackaging.selling_price,
+                )
+                .join(MedicationPackaging, MedicationPackaging.medication_id == Medication.id)
+                .where(MedicationPackaging.level == 1, MedicationPackaging.is_deleted.is_(False))
+            )
+        ).all()
+    }
     unit_id = await _box_unit_id(session)
     seen: set[str] = set()
     pending: list[dict[str, Any]] = []
+    updates: list[dict[str, Any]] = []
+
+    async def flush_updates() -> None:
+        if not updates:
+            return
+        await session.execute(
+            text("UPDATE medication_packaging SET selling_price = :price WHERE id = :pkg_id"),
+            [{"pkg_id": u["pkg_id"], "price": u["price"]} for u in updates],
+        )
+        await session.execute(
+            insert(MedicationPriceHistory),
+            [
+                {
+                    "medication_id": u["med_id"],
+                    "packaging_id": u["pkg_id"],
+                    "old_price": u["old_price"],
+                    "new_price": u["price"],
+                    "price_source": price_source,
+                }
+                for u in updates
+            ],
+        )
+        await session.commit()
+        report.updated += len(updates)
+        updates.clear()
 
     async def flush() -> None:
         if not pending:
@@ -177,9 +232,6 @@ async def seed_catalog(
         if not name:
             report.errors.append(f"row {lineno}: empty commercial_name_en")
             continue
-        if name in existing:
-            report.skipped_existing += 1
-            continue
         if name in seen:
             report.skipped_duplicate_in_file += 1
             continue
@@ -189,6 +241,26 @@ async def seed_catalog(
                 raise InvalidOperation
         except InvalidOperation:
             report.errors.append(f"row {lineno}: bad price {row.get('price_egp')!r}")
+            continue
+        if name in existing:
+            if not update_prices:
+                report.skipped_existing += 1
+                continue
+            target = existing_l1.get(name)
+            if target is None:
+                report.errors.append(f"row {lineno}: {name} has no level-1 packaging to update")
+                continue
+            seen.add(name)
+            updates.append(
+                {
+                    "med_id": target[0],
+                    "pkg_id": target[1],
+                    "old_price": target[2],
+                    "price": price,
+                }
+            )
+            if len(updates) >= _BATCH:
+                await flush_updates()
             continue
         seen.add(name)
         pending.append(
@@ -207,4 +279,5 @@ async def seed_catalog(
         if len(pending) >= _BATCH:
             await flush()
     await flush()
+    await flush_updates()
     return report

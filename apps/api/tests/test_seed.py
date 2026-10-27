@@ -110,3 +110,78 @@ async def test_seeded_data_searchable_arabic(tmp_path: Path, db_session: AsyncSe
         )
     ).scalar_one()
     assert found >= 1
+
+
+async def test_update_prices_mode(tmp_path: Path, db_session: AsyncSession) -> None:
+    """Release-prep phase 5: the SAME CSV format refreshes existing items'
+    level-1 prices (old -> new in price history) when update_prices=True;
+    without the flag existing names stay skipped (idempotent seed)."""
+    marker = uuid.uuid4().hex[:6].upper()
+    path_a = _write_csv(
+        tmp_path,
+        [
+            f"UPDMED-A {marker},تحديث أ,X,Y,Z,ORAL,45.50",
+            f"UPDMED-B {marker},تحديث ب,X,Y,Z,ORAL,30.00",
+        ],
+    )
+    report_a = await seed_catalog(db_session, file_path=path_a, price_source="seed")
+    assert report_a.created == 2 and not report_a.errors
+
+    # Re-import the SAME names WITHOUT the flag: skipped, prices unchanged.
+    path_b = _write_csv(
+        tmp_path,
+        [
+            f"UPDMED-A {marker},تحديث أ,X,Y,Z,ORAL,50.00",
+            f"UPDMED-B {marker},تحديث ب,X,Y,Z,ORAL,33.00",
+        ],
+    )
+    report_b = await seed_catalog(db_session, file_path=path_b, price_source="import")
+    assert report_b.created == 0 and report_b.skipped_existing == 2 and report_b.updated == 0
+    unchanged = (
+        await db_session.execute(
+            text(
+                "SELECT p.selling_price FROM medication_packaging p "
+                "JOIN medications m ON m.id = p.medication_id "
+                "WHERE m.trade_name = :n"
+            ).bindparams(n=f"UPDMED-A {marker}")
+        )
+    ).scalar_one()
+    assert str(unchanged) == "45.50"
+
+    # WITH --update-prices: prices refreshed + history old->new recorded.
+    report_c = await seed_catalog(
+        db_session, file_path=path_b, price_source="import", update_prices=True
+    )
+    assert report_c.created == 0 and report_c.updated == 2 and not report_c.errors
+
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT p.selling_price, h.old_price, h.new_price, h.price_source "
+                "FROM medication_packaging p "
+                "JOIN medications m ON m.id = p.medication_id "
+                "JOIN medication_price_history h "
+                "  ON h.packaging_id = p.id AND h.old_price IS NOT NULL "
+                "WHERE m.trade_name IN (:a, :b) ORDER BY m.trade_name"
+            ).bindparams(a=f"UPDMED-A {marker}", b=f"UPDMED-B {marker}")
+        )
+    ).all()
+    assert [(str(r[0]), str(r[1]), str(r[2]), r[3]) for r in rows] == [
+        ("50.00", "45.50", "50.00", "import"),
+        ("33.00", "30.00", "33.00", "import"),
+    ]
+
+
+async def test_update_prices_unknown_and_unpackaged(
+    tmp_path: Path, db_session: AsyncSession
+) -> None:
+    marker = uuid.uuid4().hex[:6].upper()
+    path = _write_csv(
+        tmp_path,
+        [f"BRANDNEW {marker},جديد تماماً,X,Y,Z,ORAL,12.00"],
+    )
+    # update mode still CREATES unknown names (one file refreshes everything)
+    report = await seed_catalog(
+        db_session, file_path=path, price_source="import", update_prices=True
+    )
+    assert report.created == 1 and report.updated == 0 and not report.errors

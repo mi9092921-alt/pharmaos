@@ -476,12 +476,19 @@ async def _skeleton_sale(barcode: str, qty: str, print_host: str | None, out_fil
         return 0
 
 
-async def _catalog_seed(file_path: str, price_source: str) -> int:
-    """P1-M6: seed/import the catalog from CSV (CC0 dataset) or XLSX (staff template)."""
+async def _catalog_seed(file_path: str, price_source: str, update_prices: bool) -> int:
+    """P1-M6: seed/import the catalog from CSV (CC0 dataset) or XLSX (staff template).
+    --update-prices: the same file also refreshes existing items' level-1 prices
+    (old -> new recorded in price history) — the monthly price-list path."""
     from pharmaos_api.services.seed_service import seed_catalog
 
     async with get_session_factory()() as session:
-        report = await seed_catalog(session, file_path=Path(file_path), price_source=price_source)
+        report = await seed_catalog(
+            session,
+            file_path=Path(file_path),
+            price_source=price_source,
+            update_prices=update_prices,
+        )
     print(_json.dumps(report.as_dict(), ensure_ascii=False, indent=1))
     return 0 if not report.errors else 3
 
@@ -761,6 +768,11 @@ def main(argv: list[str] | None = None) -> int:
     c_seed = sub.add_parser("catalog-seed", help="Seed/import catalog from CSV or XLSX.")
     c_seed.add_argument("--file", required=True)
     c_seed.add_argument("--source", default="seed", choices=["seed", "import"])
+    c_seed.add_argument(
+        "--update-prices",
+        action="store_true",
+        help="Existing names get their level-1 price updated (old->new in history).",
+    )
 
     inv = sub.add_parser("inventory", help="Inventory cache maintenance.")
     inv_sub = inv.add_subparsers(dest="inventory_command", required=True)
@@ -889,7 +901,7 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch
     if args.command == "migrate":
         return _migrate(args.database_url, args.migrations_dir, args.seeds_dir)
     if args.command == "catalog-seed":
-        return asyncio.run(_catalog_seed(args.file, args.source))
+        return asyncio.run(_catalog_seed(args.file, args.source, args.update_prices))
     if args.command == "skeleton-sale":
         return asyncio.run(_skeleton_sale(args.barcode, args.qty, args.print_host, args.out_file))
     return 2
