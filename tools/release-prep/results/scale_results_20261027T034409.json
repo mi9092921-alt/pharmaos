@@ -1,0 +1,69 @@
+{
+  "args": {
+    "port": 5434,
+    "meds": 10000,
+    "invoices": 50000,
+    "skip_seed": false,
+    "measure_only": true
+  },
+  "results": {
+    "scan_ms": {
+      "p50": 1.9,
+      "p95": 3.6,
+      "max": 4.7,
+      "n": 100
+    },
+    "search_exact_ms": {
+      "p50": 5.7,
+      "p95": 7.4,
+      "max": 15.3,
+      "n": 50
+    },
+    "search_fuzzy_ms": {
+      "p50": 6.0,
+      "p95": 7.3,
+      "max": 7.8,
+      "n": 20
+    },
+    "search_miss_ms": {
+      "p50": 61.4,
+      "p95": 62.8,
+      "max": 71.7,
+      "n": 5
+    },
+    "sale_ms": {
+      "p50": 41.0,
+      "p95": 62.8,
+      "max": 120.5,
+      "n": 30
+    },
+    "report_daily_ms": {
+      "p50": 30.8,
+      "p95": 41.9,
+      "max": 70.1,
+      "n": 10
+    },
+    "report_60d_ms": {
+      "p50": 804.1,
+      "p95": 823.2,
+      "max": 859.2,
+      "n": 5
+    },
+    "report_stock_ms": {
+      "p50": 35.1,
+      "p95": 40.3,
+      "max": 57.9,
+      "n": 10
+    }
+  },
+  "verdicts": {
+    "scan_ms": true,
+    "search_exact_ms": true,
+    "search_fuzzy_ms": true,
+    "search_miss_ms": true,
+    "sale_ms": true,
+    "report_daily_ms": true,
+    "report_60d_ms": true,
+    "report_stock_ms": true
+  }
+}
