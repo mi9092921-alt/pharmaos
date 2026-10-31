@@ -298,6 +298,11 @@ def _line_dict(
             if reveal and line.system_qty_at_count is not None
             else None
         ),
+        # live batch quantity at read time — drives the review screen's
+        # stale-line highlight; hidden for blind sessions until review too
+        "system_qty_current": (
+            str(info.get("current_qty")) if reveal and info.get("current_qty") is not None else None
+        ),
         "counted_qty": str(line.counted_qty) if line.counted_qty is not None else None,
         "diff": str(line.diff) if reveal and line.diff is not None else None,
         "reason_code": line.reason_code,
@@ -402,6 +407,7 @@ async def list_lines(
     base = """
         FROM stocktake_lines sl
         JOIN medications m ON m.id = sl.medication_id
+        JOIN medication_batches mb ON mb.id = sl.batch_id
         LEFT JOIN branch_inventory si
             ON si.branch_id = sl.branch_id AND si.medication_id = sl.medication_id
         WHERE sl.session_id = :s AND NOT sl.is_deleted
@@ -412,7 +418,7 @@ async def list_lines(
     rows = (
         await session.execute(text(f"""
                 SELECT sl.id, m.trade_name, m.trade_name_ar, m.controlled_substance,
-                       mb.batch_number, mb.expiry_date, si.shelf_location
+                       mb.batch_number, mb.expiry_date, si.shelf_location, mb.quantity
                 {base}
                 ORDER BY {_SHELF_ORDER}
                 OFFSET :skip LIMIT :lim
@@ -426,6 +432,7 @@ async def list_lines(
             "batch_number": r[4],
             "expiry_date": r[5].isoformat() if r[5] else None,
             "shelf_location": r[6],
+            "current_qty": r[7],
         }
         for r in rows
     }
@@ -535,6 +542,8 @@ async def record_count(
         sess.status = "counting"
         sess.started_by = actor.id
         sess.started_at = dt.datetime.now(dt.UTC)
+    # raw SQL does not autoflush — push the pending line update down first
+    await session.flush()
     sess.lines_counted = (await session.execute(text("""
                 SELECT COUNT(*) FROM stocktake_lines
                 WHERE session_id = :s AND counted_qty IS NOT NULL AND NOT is_deleted
@@ -620,18 +629,29 @@ async def approve(
 
     last_error: Exception | None = None
     for _attempt in (1, 2):  # exactly one retry on a residual deadlock (owner point 1)
-        try:
-            return await _approve_once(
-                session, actor=actor, branch_id=branch_id, session_id=session_id, reason=reason
-            )
-        except OperationalError as e:  # asyncpg 40P01 surfaces through SQLAlchemy
-            pgcode = getattr(getattr(e, "orig", None), "sqlstate", None) or getattr(
-                getattr(e, "orig", None), "pgcode", None
-            )
-            if pgcode != "40P01":
-                raise
-            last_error = e
-            await session.rollback()
+        # EVERY attempt runs on its OWN disposable session: approval is a
+        # self-contained unit of work that commits itself, and a fresh session
+        # per attempt means a deadlocked attempt can never poison the next one
+        # (a rolled-back transaction on this SQLAlchemy/asyncpg combination
+        # leaves the same session unable to drive further IO — MissingGreenlet).
+        from pharmaos_api.db import get_session_factory
+
+        async with get_session_factory()() as attempt_session:
+            try:
+                return await _approve_once(
+                    attempt_session,
+                    actor=actor,
+                    branch_id=branch_id,
+                    session_id=session_id,
+                    reason=reason,
+                )
+            except OperationalError as e:  # asyncpg 40P01 surfaces through SQLAlchemy
+                pgcode = getattr(getattr(e, "orig", None), "sqlstate", None) or getattr(
+                    getattr(e, "orig", None), "pgcode", None
+                )
+                if pgcode != "40P01":
+                    raise
+                last_error = e  # the context manager rolls the attempt back
     raise ApiError(
         ErrorCode.STOCKTAKE_APPROVAL_RACE,
         409,

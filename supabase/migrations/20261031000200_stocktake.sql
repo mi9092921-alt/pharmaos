@@ -86,10 +86,12 @@ CREATE TRIGGER trg_stocktake_lines_touch BEFORE UPDATE ON stocktake_lines
     FOR EACH ROW EXECUTE FUNCTION touch_row();
 
 CREATE TABLE stocktake_settings (
-    branch_id       UUID PRIMARY KEY REFERENCES branches(id),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    branch_id       UUID NOT NULL UNIQUE REFERENCES branches(id),
     daily_overdue_days  INTEGER NOT NULL DEFAULT 7 CHECK (daily_overdue_days BETWEEN 1 AND 90),
     blind_default   BOOLEAN NOT NULL DEFAULT TRUE,
 
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
     sync_version    BIGINT NOT NULL DEFAULT 0,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
