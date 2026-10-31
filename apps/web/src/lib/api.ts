@@ -2084,3 +2084,143 @@ export function markAllNotificationsRead(opts: { branchId: string }) {
     { method: 'POST' },
   );
 }
+
+// ==================== Stocktake (الجرد) ====================
+
+export interface StocktakeSession {
+  id: string;
+  branch_id: string;
+  session_type: 'daily_quick' | 'weekly_cycle' | 'custom';
+  scope: Record<string, unknown>;
+  status: 'draft' | 'counting' | 'review' | 'approved' | 'cancelled';
+  blind: boolean;
+  started_by: string | null;
+  started_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  lines_expected: number;
+  lines_counted: number;
+  notes: string | null;
+  lines_needing_recount?: number;
+  applied?: number;
+  needs_recount?: number;
+  zero_diff_skipped?: number;
+  controlled_rows?: number;
+}
+
+export interface StocktakeLine {
+  id: string;
+  session_id: string;
+  batch_id: string;
+  medication_id: string;
+  trade_name: string | null;
+  trade_name_ar: string | null;
+  batch_number: string | null;
+  expiry_date: string | null;
+  shelf_location: string | null;
+  controlled_substance: boolean;
+  system_qty_at_count: string | null;
+  system_qty_current: string | null;
+  counted_qty: string | null;
+  diff: string | null;
+  reason_code: string | null;
+  note: string | null;
+  counted_by: string | null;
+  counted_at: string | null;
+  flag: string | null;
+}
+
+export function createStocktakeSession(input: {
+  branchId: string;
+  sessionType: 'daily_quick' | 'weekly_cycle' | 'custom';
+  blind?: boolean;
+  zones?: string[];
+  moversLimit?: number;
+  valueLimit?: number;
+  notes?: string;
+}) {
+  return apiFetch<StocktakeSession>('/api/v1/stocktake/sessions', {
+    method: 'POST',
+    body: JSON.stringify({
+      branch_id: input.branchId,
+      session_type: input.sessionType,
+      ...(input.blind !== undefined ? { blind: input.blind } : {}),
+      ...(input.zones?.length ? { zones: input.zones } : {}),
+      ...(input.moversLimit ? { movers_limit: input.moversLimit } : {}),
+      ...(input.valueLimit ? { value_limit: input.valueLimit } : {}),
+      ...(input.notes ? { notes: input.notes } : {}),
+    }),
+  });
+}
+
+export function listStocktakeSessions(branchId: string, opts: { status?: string } = {}) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (opts.status) params.set('status', opts.status);
+  return apiFetch<{ items: StocktakeSession[]; total: number }>(
+    `/api/v1/stocktake/sessions?${params.toString()}`,
+  );
+}
+
+export function getStocktakeSession(branchId: string, sessionId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(`/api/v1/stocktake/sessions/${sessionId}?${params.toString()}`);
+}
+
+export function listStocktakeLines(
+  branchId: string,
+  sessionId: string,
+  opts: { skip?: number; limit?: number } = {},
+) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<{ items: StocktakeLine[]; total: number }>(
+    `/api/v1/stocktake/sessions/${sessionId}/lines?${params.toString()}`,
+  );
+}
+
+export function recordStocktakeCount(
+  lineId: string,
+  countedQty: string,
+  opts: { reasonCode?: string; note?: string } = {},
+) {
+  return apiFetch<StocktakeLine>(`/api/v1/stocktake/lines/${lineId}/count`, {
+    method: 'POST',
+    body: JSON.stringify({
+      counted_qty: countedQty,
+      ...(opts.reasonCode ? { reason_code: opts.reasonCode } : {}),
+      ...(opts.note ? { note: opts.note } : {}),
+    }),
+  });
+}
+
+export function submitStocktakeSession(branchId: string, sessionId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(
+    `/api/v1/stocktake/sessions/${sessionId}/submit?${params.toString()}`,
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export function approveStocktakeSession(branchId: string, sessionId: string, reason: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(
+    `/api/v1/stocktake/sessions/${sessionId}/approve?${params.toString()}`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
+export function cancelStocktakeSession(branchId: string, sessionId: string, reason: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(
+    `/api/v1/stocktake/sessions/${sessionId}/cancel?${params.toString()}`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
+export function stocktakeExportCsvUrl(branchId: string, sessionId: string): string {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return `/api/v1/stocktake/sessions/${sessionId}/export.csv?${params.toString()}`;
+}
