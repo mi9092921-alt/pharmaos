@@ -70,7 +70,11 @@ def normalize_shelf_location(raw: str | None) -> str | None:
 
 
 # Low-stock threshold: reorder point if set, else the minimum level (0 = untracked).
-_LOW_THRESHOLD = "COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0), 0)"
+# THE single definition of "low stock" — the alerts engine (alerts_service) imports
+# this exact fragment so the stock list, the reports and the alerts can never
+# disagree about which items are low (F3).
+LOW_STOCK_THRESHOLD_SQL = "COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0), 0)"
+_LOW_THRESHOLD = LOW_STOCK_THRESHOLD_SQL  # internal shorthand (list/report queries)
 # Expiry-alert horizons (CLAUDE.md ALERT_RULES): a batch expiring within 30 days
 # is CRITICAL, within 90 days is a WARNING. 60 is the middle reporting window the
 # dashboard shows between the two (30 / 60 / 90).

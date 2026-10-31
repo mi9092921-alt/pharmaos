@@ -97,17 +97,26 @@ class Finding:
 
 
 async def _eval_low_stock(session: AsyncSession, branch_id: uuid.UUID) -> list[Finding]:
-    """cached_quantity <= reorder_point (and > 0 — zero is out_of_stock's job)."""
-    rows = (await session.execute(text("""
-                SELECT bi.medication_id, bi.cached_quantity, bi.reorder_point,
+    """cached_quantity within the SHARED low-stock threshold (and > 0 — zero is
+    out_of_stock's job). The threshold fragment is imported from
+    inventory_service (F3): reorder_point if set, else min_stock_level — the
+    alert and the stock list can no longer disagree."""
+    threshold = inventory_service.LOW_STOCK_THRESHOLD_SQL
+    stmt = text(f"""
+                SELECT bi.medication_id, bi.cached_quantity,
+                       COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0))
+                           AS reorder_point,
                        COALESCE(m.trade_name_ar, m.trade_name) AS name
                 FROM branch_inventory bi
                 JOIN medications m ON m.id = bi.medication_id
                 WHERE bi.branch_id = :b AND NOT bi.is_deleted AND NOT m.is_deleted
-                  AND bi.reorder_point IS NOT NULL
+                  AND {threshold} > 0
                   AND bi.cached_quantity > 0
-                  AND bi.cached_quantity <= bi.reorder_point
-                """).bindparams(b=branch_id))).all()
+                  AND bi.cached_quantity <= {threshold}
+                """).bindparams(
+        b=branch_id
+    )  # noqa: S608 (fragment is a module constant; values are bound)
+    rows = (await session.execute(stmt)).all()
     return [
         Finding(
             rule_key="low_stock",

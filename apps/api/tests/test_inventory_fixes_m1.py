@@ -330,3 +330,49 @@ async def test_adjust_locked_no_lost_update_vs_concurrent_sale(
     assert (await _cache(db_session, bid, med_id)) == 50
     drift_rows = await inventory_service.drift_check(db_session, branch.id)
     assert drift_rows == [], "cache == SUM(active batches) must hold after the race"
+
+
+# --------------------------------- F3 ---------------------------------
+
+
+async def test_low_stock_alert_uses_shared_threshold(db_session: AsyncSession, branch: Branch):
+    """F3: ONE definition of low stock. An item tracked ONLY by min_stock_level
+    (no reorder_point) must fire the low_stock alert AND appear in the
+    low-stock list — before the fix the alert ignored min_stock_level."""
+    from sqlalchemy import text as _text
+
+    from pharmaos_api.services import alerts_service, inventory_service
+
+    actor = await _actor(db_session)
+    med = Medication(trade_name=f"FixF3 {uuid.uuid4().hex[:6]}", trade_name_ar="دواء اختبار")
+    db_session.add(med)
+    await db_session.flush()
+    await inventory_service.receive_batch(
+        db_session,
+        actor=actor,
+        branch_id=branch.id,
+        medication_id=med.id,
+        batch_number=f"B-{uuid.uuid4().hex[:6]}",
+        expiry_date=dt.date.today() + dt.timedelta(days=300),
+        quantity=Decimal(10),
+        purchase_price=Decimal("2.00"),
+    )
+    await db_session.commit()
+    # track ONLY via min_stock_level (reorder_point stays NULL)
+    await db_session.execute(
+        _text(
+            "UPDATE branch_inventory SET min_stock_level = 15 "
+            "WHERE branch_id = :b AND medication_id = :m"
+        ).bindparams(b=branch.id, m=med.id)
+    )
+    await db_session.commit()
+
+    report = await alerts_service.evaluate_branch(db_session, branch.id)
+    findings = report["findings"]
+    assert isinstance(findings, dict)
+    assert findings["low_stock"] == 1, "min_stock_level-only item must alert"
+
+    rows, _total = await inventory_service.list_inventory(
+        db_session, branch_id=branch.id, low_stock_only=True
+    )
+    assert any(r["medication_id"] == str(med.id) for r in rows), "list must agree with the alert"
