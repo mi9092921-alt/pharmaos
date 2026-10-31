@@ -69,8 +69,10 @@ class PurchaseOrder(MandatoryColumnsMixin, Base):
 
 
 class PurchaseItem(MandatoryColumnsMixin, Base):
-    """One purchase-order line. Quantities in the SMALLEST unit (tablet/unit);
-    packaging_id is the ordered level (reference); unit_cost is per smallest unit."""
+    """One purchase-order line. Quantities/cost are AT THE ORDERED PACKAGING
+    LEVEL (the packaging_id level the line was written in — box/strip/tablet);
+    receiving converts to the smallest unit for the batch ledger
+    (see purchase_service.receive)."""
 
     __tablename__ = "purchase_items"
 

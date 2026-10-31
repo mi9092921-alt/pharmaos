@@ -60,6 +60,9 @@ class ReceiveIn(BaseModel):
     quantity: Decimal = Field(gt=0, le=Decimal("1000000"))
     purchase_price: Decimal = Field(ge=0)
     supplier_id: uuid.UUID | None = None
+    # Optional packaging level: when set, quantity/purchase_price are at that
+    # level (e.g. boxes) and are converted to the smallest unit for the batch.
+    packaging_id: uuid.UUID | None = None
     # P2-M3: 2D-scanned pack serials + their GTIN (both optional).
     gtin: str | None = Field(default=None, max_length=14)
     serials: list[str] = Field(default_factory=list, max_length=1000)
@@ -175,6 +178,7 @@ async def receive_stock(
         quantity=body.quantity,
         purchase_price=body.purchase_price,
         supplier_id=body.supplier_id,
+        packaging_id=body.packaging_id,
         gtin=body.gtin,
         serials=body.serials,
         shelf_location=body.shelf_location,

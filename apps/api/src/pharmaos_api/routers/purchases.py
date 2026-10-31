@@ -152,7 +152,7 @@ class ReceiveIn(BaseModel):
 
 async def _order_response(session: AsyncSession, po_id: uuid.UUID) -> dict[str, object]:
     po = await posvc.get_purchase_order(session, po_id)
-    return success_envelope(posvc.to_dict(po, await posvc.get_items(session, po_id)))
+    return success_envelope(await posvc.to_dict(session, po, await posvc.get_items(session, po_id)))
 
 
 @router.get("/purchases/orders")
@@ -208,7 +208,7 @@ async def create_order(
             for line in body.lines
         ],
     )
-    return success_envelope(posvc.to_dict(po, items))
+    return success_envelope(await posvc.to_dict(session, po, items))
 
 
 @router.post("/purchases/orders/{po_id}/submit")

@@ -25,8 +25,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pharmaos_api.audit import AuditAction
 from pharmaos_api.errors import ApiError, ErrorCode
-from pharmaos_api.models import Branch, Medication, MedicationBatch, StockMovement, User
-from pharmaos_api.services import audit_service, pack_serial_service
+from pharmaos_api.models import (
+    Branch,
+    Medication,
+    MedicationBatch,
+    MedicationPackaging,
+    StockMovement,
+    User,
+)
+from pharmaos_api.services import audit_service, catalog_service, pack_serial_service
 from pharmaos_api.services.csv_safe import csv_safe
 
 _BATCH_STATUSES = {"active", "quarantined", "expired", "recalled", "depleted"}
@@ -227,8 +234,30 @@ async def receive_stock(
     gtin: str | None = None,
     serials: list[str] | None = None,
     shelf_location: str | None = None,
+    packaging_id: uuid.UUID | None = None,
 ) -> MedicationBatch:
-    """Receive one batch as a standalone atomic operation (commits)."""
+    """Receive one batch as a standalone atomic operation (commits).
+
+    Without packaging_id, quantity/purchase_price are taken as the SMALLEST
+    unit (back-compat + the GS1 per-pack path). With packaging_id, they are at
+    that packaging level (e.g. boxes at 120/box) and are converted to the
+    smallest unit for the batch ledger — same rule as PO receiving."""
+    if packaging_id is not None:
+        pkg = (
+            await session.execute(
+                select(MedicationPackaging).where(
+                    MedicationPackaging.id == packaging_id,
+                    MedicationPackaging.is_deleted.is_(False),
+                )
+            )
+        ).scalar_one_or_none()
+        if pkg is None or pkg.medication_id != medication_id:
+            raise ApiError(
+                ErrorCode.VALIDATION_FAILED, 422, message="Packaging does not match medication."
+            )
+        factor = await catalog_service.smallest_unit_factor(session, medication_id, pkg.level)
+        quantity = (quantity * factor).quantize(Decimal("0.001"))
+        purchase_price = (purchase_price / factor).quantize(Decimal("0.01"))
     batch = await receive_batch(
         session,
         actor=actor,

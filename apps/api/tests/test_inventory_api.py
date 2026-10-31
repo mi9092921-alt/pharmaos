@@ -9,13 +9,14 @@ validation mapping, and that the derived cache is observable through the API.
 
 import datetime as dt
 import uuid
+from decimal import Decimal
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pharmaos_api.models import Branch, Medication, Role, User
+from pharmaos_api.models import Branch, Medication, MedicationPackaging, Role, User
 from pharmaos_api.security.passwords import hash_password
 
 FUTURE = (dt.date.today() + dt.timedelta(days=365)).isoformat()
@@ -124,6 +125,109 @@ async def test_receive_rejects_expired_via_api(admin, branch, db_session: AsyncS
     )
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "E-STK-002"
+
+
+async def _unit_id(db_session: AsyncSession) -> str:
+    uid = (
+        await db_session.execute(text("SELECT id FROM units WHERE NOT is_deleted LIMIT 1"))
+    ).scalar_one_or_none()
+    if uid is None:
+        uid = (
+            await db_session.execute(
+                text("INSERT INTO units (name_ar) VALUES (:n) RETURNING id").bindparams(
+                    n=f"وحدة {uuid.uuid4().hex[:6]}"
+                )
+            )
+        ).scalar_one()
+        await db_session.commit()
+    return str(uid)
+
+
+async def _make_chain_med(db_session: AsyncSession) -> tuple[str, str, str]:
+    """علبة(1) → شريط(2، 3/علبة) → قرص(3، 10/شريط) — factor(علبة) = 30 قرصاً;
+    returns (medication_id, box_packaging_id, other_med_packaging_id)."""
+    unit_id = await _unit_id(db_session)
+    med = Medication(trade_name=f"CHAIN {uuid.uuid4().hex[:6]}", trade_name_ar="دواء متسلسل")
+    db_session.add(med)
+    other = Medication(trade_name=f"OTHER {uuid.uuid4().hex[:6]}", trade_name_ar="دواء آخر")
+    db_session.add(other)
+    await db_session.flush()
+    box = MedicationPackaging(
+        medication_id=med.id,
+        level=1,
+        unit_id=unit_id,
+        name_ar="علبة",
+        selling_price=Decimal("130.00"),
+        is_default_sale=True,
+    )
+    strip = MedicationPackaging(
+        medication_id=med.id,
+        level=2,
+        unit_id=unit_id,
+        name_ar="شريط",
+        qty_in_parent=Decimal("3"),
+        selling_price=Decimal("45.00"),
+    )
+    tablet = MedicationPackaging(
+        medication_id=med.id,
+        level=3,
+        unit_id=unit_id,
+        name_ar="قرص",
+        qty_in_parent=Decimal("10"),
+        selling_price=Decimal("5.00"),
+    )
+    other_pkg = MedicationPackaging(
+        medication_id=other.id,
+        level=1,
+        unit_id=unit_id,
+        name_ar="علبة أخرى",
+        selling_price=Decimal("10.00"),
+    )
+    db_session.add_all([box, strip, tablet, other_pkg])
+    await db_session.commit()
+    return str(med.id), str(box.id), str(other_pkg.id)
+
+
+async def test_receive_with_packaging_level_converts_to_smallest(
+    admin, branch, db_session: AsyncSession
+):
+    """2 علب @ 120/علبة → دفعة 60 قرصاً بسعر 4.00/قرص (نفس قاعدة استلام
+    أوامر الشراء)."""
+    client, csrf = admin
+    med_id, box_pkg, _ = await _make_chain_med(db_session)
+    r = await _receive(
+        client,
+        csrf,
+        branch_id=str(branch.id),
+        medication_id=med_id,
+        qty="2",
+        packaging_id=box_pkg,
+        purchase_price="120",
+    )
+    assert r.status_code == 200, r.text
+    batch = r.json()["data"]
+    assert Decimal(batch["quantity"]) == Decimal("60")
+    assert Decimal(batch["purchase_price"]) == Decimal("4.00")
+    inv = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    mine = next(x for x in inv.json()["data"] if x["medication_id"] == med_id)
+    assert Decimal(mine["cached_quantity"]) == Decimal("60")
+
+
+async def test_receive_rejects_packaging_from_other_medication(
+    admin, branch, db_session: AsyncSession
+):
+    client, csrf = admin
+    med_id, _, other_pkg = await _make_chain_med(db_session)
+    r = await _receive(
+        client,
+        csrf,
+        branch_id=str(branch.id),
+        medication_id=med_id,
+        qty="2",
+        packaging_id=other_pkg,
+    )
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "E-VAL-001"
 
 
 async def test_receive_requires_purchase_permission(client, branch, db_session: AsyncSession):
