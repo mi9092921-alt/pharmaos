@@ -750,14 +750,28 @@ async def rebuild_cache(session: AsyncSession, branch_id: uuid.UUID) -> int:
     return int(count)
 
 
-async def get_batch(session: AsyncSession, batch_id: uuid.UUID) -> MedicationBatch:
-    batch = (
-        await session.execute(
-            select(MedicationBatch).where(
-                MedicationBatch.id == batch_id, MedicationBatch.is_deleted.is_(False)
-            )
-        )
-    ).scalar_one_or_none()
+async def get_batch(
+    session: AsyncSession,
+    batch_id: uuid.UUID,
+    *,
+    for_update: bool = False,
+    branch_id: uuid.UUID | None = None,
+) -> MedicationBatch:
+    """Fetch a live batch, optionally under a row lock and/or branch-scoped.
+
+    Mutating callers MUST pass for_update=True: the adjust/status paths are
+    read-modify-write on an ABSOLUTE quantity, so an unlocked read races any
+    concurrent sale (lost update). With the lock, the ordering matches the
+    sale path exactly — batch row first, then branch_inventory (the
+    apply_cache_delta upsert) — so adjust-vs-sale cannot deadlock."""
+    stmt = select(MedicationBatch).where(
+        MedicationBatch.id == batch_id, MedicationBatch.is_deleted.is_(False)
+    )
+    if branch_id is not None:
+        stmt = stmt.where(MedicationBatch.branch_id == branch_id)
+    if for_update:
+        stmt = stmt.with_for_update()
+    batch = (await session.execute(stmt)).scalar_one_or_none()
     if batch is None:
         raise ApiError(ErrorCode.VALIDATION_FAILED, 404, message="Batch not found.")
     return batch

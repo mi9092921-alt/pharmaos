@@ -3,17 +3,33 @@
 F1 — adjust_batch on a depleted batch: a positive delta with a valid expiry
 reactivates the batch (sellable again via FEFO, cache updated by the
 generalized active-window rule). An expired depleted batch stays depleted.
+
+F2 — get_batch(for_update=True): the adjust/status paths lock the batch row
+before their absolute-quantity write, matching the sale path's lock order
+(batch → branch_inventory). The concurrency test below runs two REAL pooled
+connections with forced interleaving (no mocks): a sale blocked on the locked
+batch, then the adjust committing first — both effects must survive.
 """
 
+import asyncio
 import datetime as dt
 import uuid
+from decimal import Decimal
 
 import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pharmaos_api.models import Branch, Medication, MedicationBatch, Role, User
+from pharmaos_api.models import (
+    Branch,
+    Medication,
+    MedicationBarcode,
+    MedicationBatch,
+    MedicationPackaging,
+    Role,
+    User,
+)
 from pharmaos_api.security.passwords import hash_password
 
 FUTURE = (dt.date.today() + dt.timedelta(days=365)).isoformat()
@@ -187,3 +203,130 @@ async def test_adjust_active_positive_delta_cache_unchanged_semantics(
     r = await _adjust(client, csrf, batch["id"], "7", "زيادة فعلي")
     assert r.status_code == 200
     assert (await _cache(db_session, bid, med_id)) == 17
+
+
+# --------------------------------- F2 ---------------------------------
+
+
+async def _actor(db_session: AsyncSession) -> User:
+    """A real super_admin row to pass to service-level calls (no HTTP auth)."""
+    username = await _seed_user(db_session, "super_admin")
+    return (await db_session.execute(select(User).where(User.username == username))).scalar_one()
+
+
+async def _sellable_setup(
+    db_session: AsyncSession, branch: Branch, actor: User
+) -> tuple[str, str, str]:
+    """Medication + strip barcode + ONE batch of 55 tablets, cache-consistent
+    (received through the real receive_batch primitive, not raw ORM)."""
+    from sqlalchemy import text as _text
+
+    from pharmaos_api.services import inventory_service
+
+    med = Medication(trade_name=f"FixF2 {uuid.uuid4().hex[:6]}", trade_name_ar="دواء اختبار")
+    db_session.add(med)
+    await db_session.flush()
+    unit_ids = {}
+    for name_ar in ("علبة", "شريط", "قرص"):
+        unit_ids[name_ar] = (
+            await db_session.execute(
+                _text(
+                    "INSERT INTO units (name_ar) VALUES (:n) "
+                    "ON CONFLICT (name_ar) DO UPDATE SET name_ar=EXCLUDED.name_ar RETURNING id"
+                ).bindparams(n=name_ar)
+            )
+        ).scalar_one()
+    strip = MedicationPackaging(
+        medication_id=med.id,
+        level=2,
+        unit_id=unit_ids["شريط"],
+        name_ar="شريط",
+        qty_in_parent=Decimal(10),
+        selling_price=Decimal("30.00"),
+        is_default_sale=True,
+    )
+    tablet = MedicationPackaging(
+        medication_id=med.id,
+        level=3,
+        unit_id=unit_ids["قرص"],
+        name_ar="قرص",
+        # qty_in_parent of the DEEPER level = units per parent: 1 strip = 10 tablets
+        qty_in_parent=Decimal(10),
+        selling_price=Decimal("3.50"),
+    )
+    db_session.add_all([strip, tablet])
+    await db_session.flush()
+    barcode = f"622{uuid.uuid4().int % 10**10:010d}"
+    db_session.add(
+        MedicationBarcode(
+            medication_id=med.id, packaging_id=strip.id, barcode=barcode, is_primary=True
+        )
+    )
+    batch = await inventory_service.receive_batch(
+        db_session,
+        actor=actor,
+        branch_id=branch.id,
+        medication_id=med.id,
+        batch_number=f"B-{uuid.uuid4().hex[:6]}",
+        expiry_date=dt.date.today() + dt.timedelta(days=300),
+        quantity=Decimal(55),
+        purchase_price=Decimal("2.00"),
+    )
+    await db_session.commit()
+    return barcode, str(batch.id), str(med.id)
+
+
+async def test_adjust_locked_no_lost_update_vs_concurrent_sale(
+    db_session: AsyncSession, branch: Branch
+):
+    """Two REAL pooled connections: T1 locks the batch, T2's full create_sale
+    BLOCKS on the row lock, T1's adjust commits first — final quantity must
+    reflect BOTH effects (55 + 5 - 10 = 50). Without the F2 lock, the adjust
+    would write its stale absolute value and the sale's -10 would vanish
+    (final 60) — that is the lost update this test pins."""
+    from sqlalchemy.ext.asyncio import AsyncSession as SessionAlias
+
+    from pharmaos_api.db import get_engine
+    from pharmaos_api.services import inventory_service, sales_service
+    from pharmaos_api.services.sales_service import SaleLine
+
+    barcode, batch_id, med_id = await _sellable_setup(db_session, branch, await _actor(db_session))
+
+    actor = await _actor(db_session)
+
+    s1 = SessionAlias(get_engine())  # T1: adjust transaction
+    s2 = SessionAlias(get_engine())  # T2: concurrent sale
+    try:
+        locked = await inventory_service.get_batch(s1, uuid.UUID(batch_id), for_update=True)
+        assert locked.quantity == 55  # read UNDER the row lock
+
+        sale_task = asyncio.create_task(
+            sales_service.create_sale(
+                s2,
+                branch_id=branch.id,
+                lines=[SaleLine(barcode=barcode, quantity=Decimal(1))],  # 1 strip = 10 tablets
+                cashier=actor,
+            )
+        )
+        await asyncio.sleep(0.5)
+        assert not sale_task.done(), "sale must be blocked on the batch row lock"
+
+        # T1 applies its count correction on the locked read and commits,
+        # releasing the lock — T2 then proceeds on the FRESH quantity.
+        await inventory_service.adjust_batch(
+            s1, actor=actor, batch=locked, quantity_delta=Decimal(5), reason="تصحيح جرد"
+        )
+        invoice = await sale_task
+        assert invoice.total == Decimal("30.00")
+    finally:
+        await s1.close()
+        await s2.close()
+
+    fresh = await inventory_service.get_batch(db_session, uuid.UUID(batch_id))
+    assert fresh.quantity == 50, "55 (receive) + 5 (adjust) - 10 (sale): no lost update"
+    assert fresh.status == "active"
+
+    bid = str(branch.id)
+    assert (await _cache(db_session, bid, med_id)) == 50
+    drift_rows = await inventory_service.drift_check(db_session, branch.id)
+    assert drift_rows == [], "cache == SUM(active batches) must hold after the race"

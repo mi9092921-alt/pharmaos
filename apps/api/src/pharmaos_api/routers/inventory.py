@@ -193,7 +193,8 @@ async def adjust_batch(
 ) -> dict[str, object]:
     """Manual adjustment (count correction / damage) — reason is mandatory, audited."""
     enforce_csrf(request)
-    batch = await svc.get_batch(session, batch_id)
+    # F2: lock the row — absolute-quantity write must not race a concurrent sale.
+    batch = await svc.get_batch(session, batch_id, for_update=True)
     batch = await svc.adjust_batch(
         session, actor=actor, batch=batch, quantity_delta=body.quantity_delta, reason=body.reason
     )
@@ -211,7 +212,8 @@ async def set_batch_status(
 ) -> dict[str, object]:
     """Change batch status. Quarantine/recall removes the batch from sellable stock."""
     enforce_csrf(request)
-    batch = await svc.get_batch(session, batch_id)
+    # F2: lock the row — status + cache must not race a concurrent sale.
+    batch = await svc.get_batch(session, batch_id, for_update=True)
     batch = await svc.set_batch_status(
         session, actor=actor, batch=batch, status=body.status, reason=body.reason
     )
