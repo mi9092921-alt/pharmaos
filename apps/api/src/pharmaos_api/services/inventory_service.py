@@ -267,12 +267,19 @@ async def adjust_batch(
         raise ApiError(ErrorCode.STOCK_INSUFFICIENT, 409)
 
     # Only ACTIVE batches contribute to the derived cache. Adjusting a
-    # quarantined/expired/recalled/depleted batch still moves the batch truth
-    # (a stock_movement) but must NOT touch the cache, or the invariant drifts.
+    # quarantined/expired/recalled batch still moves the batch truth (a
+    # stock_movement) but must NOT touch the cache, or the invariant drifts.
+    # A DEPLETED batch that regains positive quantity (count correction) comes
+    # back to active when its expiry is still valid — otherwise the stock is
+    # stranded (invisible to FEFO and the cache).
+    old_quantity = batch.quantity
     was_active = batch.status == "active"
-    batch.quantity = batch.quantity + quantity_delta
-    if batch.quantity == 0 and batch.status == "active":
+    new_quantity = old_quantity + quantity_delta
+    if batch.status == "active" and new_quantity == 0:
         batch.status = "depleted"
+    elif batch.status == "depleted" and new_quantity > 0 and batch.expiry_date >= dt.date.today():
+        batch.status = "active"
+    batch.quantity = new_quantity
     batch.updated_by = actor.id
     session.add(
         StockMovement(
@@ -285,8 +292,11 @@ async def adjust_batch(
             created_by=actor.id,
         )
     )
-    if was_active:
-        await apply_cache_delta(session, batch.branch_id, batch.medication_id, quantity_delta)
+    cache_delta = (new_quantity if batch.status == "active" else Decimal(0)) - (
+        old_quantity if was_active else Decimal(0)
+    )
+    if cache_delta != 0:
+        await apply_cache_delta(session, batch.branch_id, batch.medication_id, cache_delta)
     await audit_service.record(
         session,
         AuditAction.STOCK_ADJUSTED,
