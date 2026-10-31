@@ -117,6 +117,7 @@ async def _eval_low_stock(session: AsyncSession, branch_id: uuid.UUID) -> list[F
                 FROM branch_inventory bi
                 JOIN medications m ON m.id = bi.medication_id
                 WHERE bi.branch_id = :b AND NOT bi.is_deleted AND NOT m.is_deleted
+                  AND bi.is_tracked
                   AND {threshold} > 0
                   AND bi.cached_quantity > 0
                   AND bi.cached_quantity <= {threshold}
@@ -149,6 +150,7 @@ async def _eval_out_of_stock(session: AsyncSession, branch_id: uuid.UUID) -> lis
                 FROM branch_inventory bi
                 JOIN medications m ON m.id = bi.medication_id
                 WHERE bi.branch_id = :b AND NOT bi.is_deleted AND NOT m.is_deleted
+                  AND bi.is_tracked
                   AND bi.cached_quantity = 0
                 """).bindparams(b=branch_id))).all()
     return [

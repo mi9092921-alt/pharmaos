@@ -180,6 +180,26 @@ async def receive_batch(
         )
     )
     await apply_cache_delta(session, branch_id, medication_id, quantity)
+    # Shortages hook (النواقص): if the cached total now passes the shared
+    # threshold, open shortage rows close as received (re-armed) and waiting
+    # customers get an in-app notification. Lazy import — shortage_service
+    # imports this module. Same transaction; the caller commits.
+    from pharmaos_api.services import shortage_service
+
+    await shortage_service.close_on_receive(
+        session,
+        branch_id=branch_id,
+        medication_id=medication_id,
+        new_total=(
+            await session.execute(
+                text(
+                    "SELECT cached_quantity FROM branch_inventory "
+                    "WHERE branch_id = :b AND medication_id = :m"
+                ),
+                {"b": branch_id, "m": medication_id},
+            )
+        ).scalar_one(),
+    )
     if shelf_location is not None:
         code = normalize_shelf_location(shelf_location)
         if code is not None:

@@ -59,7 +59,7 @@ STATUS_FILENAME = "backup_status.json"
 BACKUP_FORMAT = "pharmaos.backup.v1"
 # Newest schema this runtime understands (keep in lockstep with migrations —
 # a backup from a NEWER device must be rejected, not half-restored).
-SUPPORTED_SCHEMA_VERSION = "20261031000200"
+SUPPORTED_SCHEMA_VERSION = "20261031000300"
 # PG 17 per docs/versions.md — pg_restore/dump are major-locked.
 EXPECTED_PG_MAJOR = 17
 LIVE_PORT = 5433

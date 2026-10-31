@@ -416,3 +416,47 @@ class StocktakeSettings(MandatoryColumnsMixin, Base):
     blind_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("TRUE")
     )
+
+
+class ShortageItem(MandatoryColumnsMixin, Base):
+    """النواقص — pharmacy (own stockouts, auto-fed from the alert engine) and
+    market (customer requests the branch cannot fill). Auto-sync never
+    resurrects a staff-closed item: closed rows carry suppress_auto_resync
+    until stock actually arrives (recovered → cleared)."""
+
+    __tablename__ = "shortage_items"
+
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    medication_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("medications.id"), nullable=True
+    )
+    name_text: Mapped[str] = mapped_column(String(255), nullable=False)
+    qty_needed: Mapped[Decimal] = mapped_column(
+        Numeric(12, 3), nullable=False, server_default=text("1")
+    )
+    status: Mapped[str] = mapped_column(String(15), nullable=False, server_default=text("'open'"))
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id"), nullable=True
+    )
+    purchase_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=True
+    )
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    ask_count: Mapped[int] = mapped_column(nullable=False, server_default=text("1"))
+    last_asked_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ordered_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    suppress_auto_resync: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
