@@ -65,6 +65,10 @@ _ALERT_RULES: dict[str, dict[str, str]] = {
     # Shelf slots (M5): ONE aggregate per branch — a per-medication alert
     # would flood notifications on the first evaluation after rollout.
     "missing_location": {"severity": "warning", "entity_type": "branch"},
+    # Stocktake (owner plan M2): no approved session within the branch's
+    # daily_overdue_days — with a grace period so fresh installs stay silent
+    # (branch.created_at + max(daily_overdue_days, 7)).
+    "stocktake_overdue": {"severity": "warning", "entity_type": "branch"},
 }
 
 _BACKLOG_HOURS = 24
@@ -441,6 +445,44 @@ async def _eval_missing_location(session: AsyncSession, branch_id: uuid.UUID) ->
     ]
 
 
+async def _eval_stocktake_overdue(session: AsyncSession, branch_id: uuid.UUID) -> list[Finding]:
+    """No approved stocktake session within the branch's daily_overdue_days
+    (default 7 — floor of 7 so a misconfigured 1-day branch is not nagged
+    hourly). Grace: the countdown starts from the branch's creation when no
+    session was ever approved, so brand-new installations do not start with
+    an immediate overdue warning. One branch aggregate, clearing on the next
+    approved session."""
+    row = (await session.execute(text("""
+                WITH st AS (
+                    SELECT COALESCE(MAX(s.daily_overdue_days), 7) AS days
+                    FROM stocktake_settings s WHERE s.branch_id = :b
+                )
+                SELECT GREATEST(st.days, 7)::int,
+                       (SELECT MAX(ss.approved_at) FROM stocktake_sessions ss
+                        WHERE ss.branch_id = :b AND ss.status = 'approved'
+                          AND NOT ss.is_deleted),
+                       (SELECT MIN(br.created_at) FROM branches br WHERE br.id = :b)
+                FROM st
+                """).bindparams(b=branch_id))).one()
+    days, last_approved, branch_created = row
+    reference = last_approved or branch_created
+    if reference is None:
+        return []
+    if reference.tzinfo is None:  # defensive: TIMESTAMPTZ arrives tz-aware
+        reference = reference.replace(tzinfo=dt.UTC)
+    if dt.datetime.now(dt.UTC) < reference + dt.timedelta(days=days):
+        return []
+    return [
+        Finding(
+            rule_key="stocktake_overdue",
+            entity_type="branch",
+            entity_id=None,
+            params={"days": str(int(days))},
+            dedup_key="stocktake_overdue",
+        )
+    ]
+
+
 _EVALUATORS = {
     "low_stock": _eval_low_stock,
     "out_of_stock": _eval_out_of_stock,
@@ -455,6 +497,7 @@ _EVALUATORS = {
     "backup_overdue": _eval_backup_overdue,
     "inventory_drift": _eval_inventory_drift,
     "missing_location": _eval_missing_location,
+    "stocktake_overdue": _eval_stocktake_overdue,
 }
 
 # ---------------------------------------------------------------------------
