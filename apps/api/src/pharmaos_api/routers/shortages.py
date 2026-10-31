@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pharmaos_api.db import get_session
-from pharmaos_api.deps import get_current_user, require_permission
+from pharmaos_api.deps import get_current_user, require_any_permission, require_permission
 from pharmaos_api.errors import success_envelope
 from pharmaos_api.models import User
 from pharmaos_api.security.csrf import enforce_csrf
@@ -25,6 +25,9 @@ router = APIRouter(prefix="/api/v1/shortages", tags=["shortages"])
 _view = Depends(require_permission("inventory.view"))
 _edit = Depends(require_permission("inventory.edit"))
 _po = Depends(require_permission("purchases.create"))
+# POS "customer asked": a cashier (sales.create) may record a market request —
+# staff with inventory.edit may create anything.
+_create = Depends(require_any_permission("inventory.edit", "sales.create"))
 
 
 class CreateShortageIn(BaseModel):
@@ -92,7 +95,7 @@ async def create_shortage(
     request: Request,
     session: AsyncSession = Depends(get_session),
     actor: User = Depends(get_current_user),
-    _: None = _edit,
+    _: None = _create,
 ) -> dict[str, object]:
     enforce_csrf(request)
     from decimal import Decimal

@@ -30,6 +30,7 @@ import {
   listInventoryBranches,
   listSuppliers,
   type MedOption,
+  createShortage,
   parseGs1,
   rebuildCache,
   receiveStock,
@@ -293,6 +294,27 @@ function StockTab({
                       {canEdit && (
                         <Button size="sm" variant="outline" onClick={() => setSettingsFor(r)}>
                           {t('inventory.stock_settings')}
+                        </Button>
+                      )}
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={async () => {
+                            try {
+                              await createShortage({
+                                branchId,
+                                kind: 'pharmacy',
+                                source: 'manual',
+                                medicationId: r.medication_id,
+                              });
+                              toast.success(t('shortages.added'));
+                            } catch (e) {
+                              onErr(e);
+                            }
+                          }}
+                        >
+                          {t('shortages.add_to_list')}
                         </Button>
                       )}
                       <Button
@@ -1107,6 +1129,28 @@ function ExpiryAlertsTab({ branchId, canAdjust }: { branchId: string; canAdjust:
                         <td className="p-2 tabular-nums text-slate-600">{b.days_left}</td>
                         <td className="p-2 tabular-nums text-slate-800">{fmt(b.quantity)}</td>
                         <td className="p-2 tabular-nums text-slate-800">{b.value}</td>
+                        <td className="p-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={async () => {
+                              try {
+                                await createShortage({
+                                  branchId,
+                                  kind: 'pharmacy',
+                                  source: 'manual',
+                                  medicationId: b.medication_id,
+                                  notes: `${t('inventory.expiry_tab')} ${b.expiry_date}`,
+                                });
+                                toast.success(t('shortages.added'));
+                              } catch (e) {
+                                onErr(e);
+                              }
+                            }}
+                          >
+                            {t('shortages.add_to_list')}
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

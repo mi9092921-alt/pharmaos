@@ -2224,3 +2224,161 @@ export function stocktakeExportCsvUrl(branchId: string, sessionId: string): stri
   const params = new URLSearchParams({ branch_id: branchId });
   return `/api/v1/stocktake/sessions/${sessionId}/export.csv?${params.toString()}`;
 }
+
+// ==================== Shortages (النواقص) ====================
+
+export interface ShortageItem {
+  id: string;
+  branch_id: string;
+  kind: 'pharmacy' | 'market';
+  source: 'auto_out_of_stock' | 'auto_low_stock' | 'manual' | 'customer_request';
+  medication_id: string | null;
+  name_text: string;
+  qty_needed: string;
+  status: 'open' | 'ordered' | 'received' | 'unavailable' | 'cancelled';
+  supplier_id: string | null;
+  purchase_order_id: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  ask_count: number;
+  last_asked_at: string | null;
+  ordered_at: string | null;
+  received_at: string | null;
+  last_checked_at: string | null;
+  suppress_auto_resync: boolean;
+  notes: string | null;
+}
+
+export function listShortages(
+  branchId: string,
+  opts: { kind?: string; status?: string; search?: string; skip?: number; limit?: number } = {},
+) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (opts.kind) params.set('kind', opts.kind);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.search) params.set('search', opts.search);
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<{ items: ShortageItem[]; total: number }>(
+    `/api/v1/shortages?${params.toString()}`,
+  );
+}
+
+export function createShortage(input: {
+  branchId: string;
+  kind: 'pharmacy' | 'market';
+  source: 'manual' | 'customer_request';
+  medicationId?: string;
+  nameText?: string;
+  qtyNeeded?: string;
+  customerName?: string;
+  customerPhone?: string;
+  notes?: string;
+}) {
+  return apiFetch<ShortageItem>('/api/v1/shortages', {
+    method: 'POST',
+    body: JSON.stringify({
+      branch_id: input.branchId,
+      kind: input.kind,
+      source: input.source,
+      ...(input.medicationId ? { medication_id: input.medicationId } : {}),
+      ...(input.nameText ? { name_text: input.nameText } : {}),
+      ...(input.qtyNeeded ? { qty_needed: input.qtyNeeded } : {}),
+      ...(input.customerName ? { customer_name: input.customerName } : {}),
+      ...(input.customerPhone ? { customer_phone: input.customerPhone } : {}),
+      ...(input.notes ? { notes: input.notes } : {}),
+    }),
+  });
+}
+
+export function patchShortage(
+  branchId: string,
+  shortageId: string,
+  patch: {
+    status?: ShortageItem['status'];
+    supplierId?: string;
+    qtyNeeded?: string;
+    notes?: string;
+  },
+) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<ShortageItem>(`/api/v1/shortages/${shortageId}?${params.toString()}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.supplierId ? { supplier_id: patch.supplierId } : {}),
+      ...(patch.qtyNeeded ? { qty_needed: patch.qtyNeeded } : {}),
+      ...(patch.notes ? { notes: patch.notes } : {}),
+    }),
+  });
+}
+
+export function shortageAskAgain(branchId: string, shortageId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<ShortageItem>(`/api/v1/shortages/${shortageId}/ask-again?${params.toString()}`, {
+    method: 'POST',
+  });
+}
+
+export function bulkShortages(
+  branchId: string,
+  ids: string[],
+  action: string,
+  supplierId?: string,
+) {
+  return apiFetch<{ updated: number }>('/api/v1/shortages/bulk', {
+    method: 'POST',
+    body: JSON.stringify({
+      ids,
+      action,
+      ...(supplierId ? { supplier_id: supplierId } : {}),
+    }),
+  });
+}
+
+export function createShortagePo(
+  branchId: string,
+  ids: string[],
+  supplierId: string,
+  notes?: string,
+) {
+  return apiFetch<{ po_id: string; po_number: string; items: number }>(
+    '/api/v1/shortages/create-po',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        branch_id: branchId,
+        ids,
+        supplier_id: supplierId,
+        ...(notes ? { notes } : {}),
+      }),
+    },
+  );
+}
+
+export function syncShortages(branchId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<{ rows_affected: number }>(`/api/v1/shortages/sync?${params.toString()}`, {
+    method: 'POST',
+  });
+}
+
+export interface SubstituteItem {
+  medication_id: string;
+  name: string;
+  scientific_name: string | null;
+  on_hand: string;
+}
+
+export function getShortageSubstitutes(branchId: string, shortageId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<{ warning_key: string; items: SubstituteItem[] }>(
+    `/api/v1/shortages/${shortageId}/substitutes?${params.toString()}`,
+  );
+}
+
+export function shortagesExportCsvUrl(branchId: string, kind?: string): string {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (kind) params.set('kind', kind);
+  return `/api/v1/shortages/export.csv?${params.toString()}`;
+}

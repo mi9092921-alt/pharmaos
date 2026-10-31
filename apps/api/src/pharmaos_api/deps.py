@@ -64,3 +64,31 @@ def require_permission(permission_code: str) -> Callable[..., Awaitable[None]]:
             raise ApiError(ErrorCode.PERMISSION_DENIED, 403)
 
     return _check
+
+
+def require_any_permission(*permission_codes: str) -> Callable[..., Awaitable[None]]:
+    """Endpoint guard for ALTERNATIVE permissions (any one suffices) — e.g. the
+    shortage create accepts inventory.edit (staff) OR sales.create (a cashier
+    recording a customer request from the POS)."""
+
+    async def _check(
+        current_user: User = Depends(get_current_user),
+        session: AsyncSession = Depends(get_session),
+    ) -> None:
+        if current_user.role_id is None:
+            raise ApiError(ErrorCode.PERMISSION_DENIED, 403)
+        stmt = (
+            select(RolePermission.id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(
+                RolePermission.role_id == current_user.role_id,
+                RolePermission.is_deleted.is_(False),
+                Permission.code.in_(permission_codes),
+                Permission.is_deleted.is_(False),
+            )
+            .limit(1)
+        )
+        if (await session.execute(stmt)).scalar_one_or_none() is None:
+            raise ApiError(ErrorCode.PERMISSION_DENIED, 403)
+
+    return _check
