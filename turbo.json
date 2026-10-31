@@ -16,6 +16,7 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "check:i18n": {},
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
