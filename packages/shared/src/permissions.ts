@@ -53,6 +53,11 @@ export const PERMISSIONS: Record<string, readonly SystemRoleCode[]> = {
   'inventory.delete': ['super_admin', 'branch_manager'],
   'inventory.adjust': ['super_admin', 'branch_manager', 'pharmacist'],
   'inventory.purchase': ['super_admin', 'branch_manager'],
+  // الجرد: العد (بدون اعتماد) — الكاشير يعد الأصناف العادية فقط؛ أسطر
+  // المخدرات يرفضها الخدم على الكاشير (فحص الدور داخل الخدمة).
+  'inventory.count': ['super_admin', 'branch_manager', 'pharmacist', 'cashier'],
+  // اعتماد جلسة الجرد: مدير فقط — فروقات الجرد تتحرك بها الكمية فعليًا.
+  'inventory.stocktake_approve': ['super_admin', 'branch_manager'],
 
   // =================== المبيعات ===================
   'sales.view': ALL_ROLES,

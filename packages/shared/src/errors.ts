@@ -9,6 +9,10 @@
 export const ERROR_CODES = {
   STOCK_INSUFFICIENT: 'E-STK-001', // المخزون غير كافٍ
   BATCH_EXPIRED: 'E-STK-002', // الدفعة منتهية/محجورة
+  STOCKTAKE_INVALID_STATE: 'E-STK-003', // حالة جلسة جرد لا تسمح بالعملية
+  STOCKTAKE_APPROVAL_RACE: 'E-STK-004', // تعارض تزامن أثناء الاعتماد — أعد المحاولة
+  SHORTAGE_DUPLICATE: 'E-SRT-001', // الصنف مفتوح بالفعل في النواقص لنفس النوع
+  SHORTAGE_INVALID_STATE: 'E-SRT-002', // حالة صنف نواقص لا تسمح بالعملية
   VALIDATION_FAILED: 'E-VAL-001',
   UNAUTHORIZED: 'E-AUTH-001',
   PERMISSION_DENIED: 'E-AUTH-002',

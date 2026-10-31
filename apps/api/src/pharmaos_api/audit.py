@@ -19,6 +19,15 @@ class AuditAction:
     BATCH_EXPIRED_DISPENSED = "batch.expired_dispensed"
     BATCH_QUARANTINED = "batch.quarantined"
     CONTROLLED_SUBSTANCE_DISPENSED = "controlled_substance.dispensed"
+    # Stocktake (الجرد)
+    STOCKTAKE_CREATED = "stocktake.created"
+    STOCKTAKE_COUNT_RECORDED = "stocktake.count_recorded"
+    STOCKTAKE_SUBMITTED = "stocktake.submitted"
+    STOCKTAKE_APPROVED = "stocktake.approved"
+    STOCKTAKE_CANCELLED = "stocktake.cancelled"
+    # Shortages (النواقص)
+    SHORTAGE_CREATED = "shortage.created"
+    SHORTAGE_UPDATED = "shortage.updated"
     # Compliance (Egypt)
     ERECEIPT_SUBMITTED = "ereceipt.submitted"
     ERECEIPT_FAILED = "ereceipt.failed"
