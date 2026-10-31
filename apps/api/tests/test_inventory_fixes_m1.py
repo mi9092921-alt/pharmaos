@@ -376,3 +376,34 @@ async def test_low_stock_alert_uses_shared_threshold(db_session: AsyncSession, b
         db_session, branch_id=branch.id, low_stock_only=True
     )
     assert any(r["medication_id"] == str(med.id) for r in rows), "list must agree with the alert"
+
+
+# --------------------------------- F5 ---------------------------------
+
+
+async def test_shelf_import_empty_sheet_clear_422(admin, branch):
+    """An empty workbook must be diagnosed as EMPTY, not as the generic
+    'Unreadable workbook.' (F5)."""
+    import io as _io
+
+    import openpyxl
+
+    client, csrf = admin
+    wb = openpyxl.Workbook()  # zero rows — not even a header
+    buf = _io.BytesIO()
+    wb.save(buf)
+    wb.close()
+    r = await client.post(
+        "/api/v1/inventory/shelf-import",
+        data={"branch_id": str(branch.id), "dry_run": "true"},
+        files={
+            "file": (
+                "shelf.xlsx",
+                buf.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 422, r.text
+    assert "empty" in r.json()["error"]["message"].lower()

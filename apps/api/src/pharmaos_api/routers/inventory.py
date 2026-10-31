@@ -324,7 +324,12 @@ async def import_shelf_locations(
         wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
         ws = wb.active
         iterator = ws.iter_rows(values_only=True)
-        header = [str(h).strip().lower() if h is not None else "" for h in next(iterator)]
+        header_row = next(iterator, None)
+        if header_row is None:
+            # an EMPTY sheet used to surface as the generic "Unreadable
+            # workbook." — name the actual problem instead (F5).
+            raise ValueError("sheet is empty: expected a header row")
+        header = [str(h).strip().lower() if h is not None else "" for h in header_row]
         missing = [c for c in svc.SHELF_IMPORT_COLUMNS if c not in header]
         if missing:
             raise ValueError(f"missing columns: {missing}")

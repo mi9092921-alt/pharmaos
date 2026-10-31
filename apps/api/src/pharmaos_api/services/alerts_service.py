@@ -102,7 +102,10 @@ async def _eval_low_stock(session: AsyncSession, branch_id: uuid.UUID) -> list[F
     inventory_service (F3): reorder_point if set, else min_stock_level — the
     alert and the stock list can no longer disagree."""
     threshold = inventory_service.LOW_STOCK_THRESHOLD_SQL
-    stmt = text(f"""
+    rows = (
+        await session.execute(
+            text(
+                f"""
                 SELECT bi.medication_id, bi.cached_quantity,
                        COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0))
                            AS reorder_point,
@@ -113,10 +116,10 @@ async def _eval_low_stock(session: AsyncSession, branch_id: uuid.UUID) -> list[F
                   AND {threshold} > 0
                   AND bi.cached_quantity > 0
                   AND bi.cached_quantity <= {threshold}
-                """).bindparams(
-        b=branch_id
-    )  # noqa: S608 (fragment is a module constant; values are bound)
-    rows = (await session.execute(stmt)).all()
+                """  # noqa: S608 (interpolated fragment is a module constant; values are bound)
+            ).bindparams(b=branch_id)
+        )
+    ).all()
     return [
         Finding(
             rule_key="low_stock",
