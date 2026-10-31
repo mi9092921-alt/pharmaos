@@ -86,6 +86,38 @@ async function ensurePgDataAccess(dataDir: string, pgData: string): Promise<void
   log(`boot: PostgreSQL data ACL ready for ${account}`);
 }
 
+/**
+ * The licensing reconciler keeps one MAC-authenticated record at
+ * <dataDir>\license-store.json. The installer pre-creates that file with
+ * Modify for the Users group (install-steps.ps1), but an upgrade/repair run
+ * or a wiped data root can leave it missing while the data root itself stays
+ * read-only (Users:RX) — every licensing write then fails with
+ * EACCES/EPERM, the state machine degrades to "error" and the middleware
+ * 503s all business routes (observed live in the 2026-10-30 VM round).
+ * Probe writability at boot and log a loud, actionable warning so this
+ * failure mode is visible instead of surfacing as a silent 503 storm.
+ * The launcher deliberately cannot self-heal here: the data root is
+ * admin-owned by design, so only the installer (elevated) can fix the ACL.
+ */
+async function ensureLicenseStoreAccess(dataDir: string): Promise<void> {
+  const licenseStore = path.join(dataDir, 'license-store.json');
+  let handle;
+  try {
+    // 'a' creates the file when missing and never truncates existing content.
+    handle = await fs.promises.open(licenseStore, 'a');
+  } catch (e) {
+    log(
+      `boot: WARNING license store is not writable (${licenseStore}): ` +
+        `${e instanceof Error ? e.message : String(e)} — activation and licensing ` +
+        `writes will fail and business routes will return 503. Re-run the installer ` +
+        `as administrator, or grant the daily user Modify on the file.`,
+    );
+    return;
+  }
+  await handle.close();
+  log('boot: license store writable');
+}
+
 export class Orchestrator {
   private procs: ManagedProcess[] = [];
   private stopping = false;
@@ -153,6 +185,7 @@ export class Orchestrator {
         }
       }
       await ensurePgDataAccess(this.p.dataDir, this.p.pgData);
+      await ensureLicenseStoreAccess(this.p.dataDir);
       const pgStart = await runCapture(
         path.join(this.p.pgBin, 'pg_ctl.exe'),
         ['-D', this.p.pgData, 'start', '-l', path.join(this.p.logsDir, 'pg.log')],

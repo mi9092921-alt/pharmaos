@@ -1,0 +1,25 @@
+== Step 2: post-restore data verification — 2026-10-31T00:34:41+02:00 ==
+-- login with restored credentials --
+login token acquired: {...
+-- customers list (national_id must READ BACK decrypted) --
+{"success": false, "error": {"code": "E-LIC-001", "message": "License activation required."}}
+-- medications (distinctive test rows must exist) --
+{"success": false, "error": {"code": "E-LIC-001", "message": "License activation required."}}
+-- inventory drift-check (expect rc=0) --
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "drift_rows": []
+ }
+}
+drift-check exit code: 0
+-- DR finding: after restore, business APIs returned E-LIC-001 (license activation required) --
+-- re-activation with the same license file (POST /license/activate) --
+{"success":true,"data":{"status":"active","hwid":"PHAR-RTTJ-AR6R-ZTPL-35ID","valid_until":"2027-10-20T19:08:53.470440Z","days_left":354,"needs_activation":false}}
+-- status after --
+{"success":true,"data":{"status":"active","hwid":"PHAR-RTTJ-AR6R-ZTPL-35ID","valid_until":"2027-10-20T19:08:53.470440Z","days_left":354,"needs_activation":false}}
+-- customers list after re-activation (national_id decrypted) --
+{"success":true,"data":[{"id":"e1e27b1d-05a2-446c-baf7-70a3665921d2","name":"عميل جولة VM","phone":"01000000001","loyalty_points":0,"is_active":true,"has_national_id":true,"has_insurance_number":false}],"meta":{"page":1,"total":1,"per_page":5}}
+-- medications --
+{"success":true,"data":[{"id":"bd745d1e-d0b9-4ecf-a9b5-446b7238ca9d","trade_name":"VMRoundUniqueMed","trade_name_ar":"دواء جولة VM الفريد","scientific_name":"VM-Test-Ingredient","manufacturer":"VM-Round Pharma","drug_class":null,"route":null,"requires_prescription":false,"controlled_substance":false,"storage_conditions":null,"eda_registration_no":null,"gtin":null,"is_medicine":true,"is_active":true},{"id":"05c622f1-704c-4638-b9a3-a1bd298d4ce1","trade_name":"VMRoundUniqueMed","trade_name_ar":"دواء جولة VM الفريد","scientific_name":"VM-Test-Ingredient","manufacturer":"VM-Round Pharma","drug_class":null,"route":null,"requires_prescription":false,"controlled_substance":false,"storage_conditions":null,"eda_registration_no":null,"gtin":null,"is_medicine":true,"is_active":true}],"meta":{"page":1,"total":2,"per_page":5}}-- customer detail (national_id read-back after restore) --
+{"success":true,"data":{"id":"e1e27b1d-05a2-446c-baf7-70a3665921d2","name":"عميل جولة VM","phone":"01000000001","loyalty_points":0,"is_active":true,"has_national_id":true,"has_insurance_number":false,"national_id":"29901011234567","insurance_number":null,"notes":"بيانات اختبار جولة VM 2026-10-31","created_at":"2026-10-30T22:29:35.090339+00:00"}}
+EXPECTED national_id: 29901011234567 (created pre-restore)

@@ -1,0 +1,4 @@
+== License activation — 2026-10-30T09:33:14+02:00 ==
+method: POST http://127.0.0.1:8000/api/v1/license/activate with tools/output/PHAR-RTTJ-AR6R-ZTPL-35ID.license
+(equivalent to the product's own UI-referenced tool activate-pharmaos.bat; HWID matched: PHAR-RTTJ-AR6R-ZTPL-35ID)
+NOTE: license is a dev-issued artifact pre-existing in the repo, not operator-supplied for this round (deviation documented)

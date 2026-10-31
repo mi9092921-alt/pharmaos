@@ -380,7 +380,34 @@ async function registerScheduledTasks(winPassword: string): Promise<void> {
     ];
     const result = await runCapture('schtasks.exe', finalArgs, p.dataDir);
     if (result.code !== 0) {
-      throw new Error(`task ${task.name}: ${result.stderr || result.stdout}`);
+      // The password-verified task ("run whether user is logged on") failed —
+      // typically a mistyped or rotated Windows password ("The user name or
+      // password is incorrect"). Fall back to an interactive-token task for
+      // the current user (no password needed): it runs while the user is
+      // logged on, which still covers a pharmacy's working day. Losing the
+      // run-when-logged-off capability is strictly better than having NO
+      // scheduled backup at all (observed live in the 2026-10-30 VM round:
+      // the wrong password left the device with zero tasks and a permanent
+      // 36-hour backup alert).
+      const fallbackArgs = [
+        '/Create',
+        '/F',
+        '/TN',
+        task.name,
+        '/TR',
+        `"${p.apiExe}" ${task.args}`,
+        ...task.schedule,
+      ];
+      const fallback = await runCapture('schtasks.exe', fallbackArgs, p.dataDir);
+      if (fallback.code !== 0) {
+        throw new Error(
+          `task ${task.name}: ${result.stderr || result.stdout} | fallback: ${fallback.stderr || fallback.stdout}`,
+        );
+      }
+      log(
+        `scheduled task registered with interactive-token fallback: ${task.name} ` +
+          `(password verification failed: ${result.stderr || result.stdout})`,
+      );
     }
     // schtasks.exe creates the trigger but has no switch for Task Scheduler's
     // "Start the task as soon as possible after a scheduled start is missed".

@@ -1,0 +1,87 @@
+== Step 5: app restart continuity x3 (surrogate for Windows restart; normal user token via explorer) — 2026-10-31T00:48:48+02:00 ==
+NOTE: full Windows restarts end the automation session on this bare-metal round; app-level restarts are the documented surrogate
+
+=== ROUND 1 ===
+-- graceful close --
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 9164.
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 4720.
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 4140.
+ERROR: The process "PharmaOS.exe" with PID 4612 could not be terminated.
+Reason: This process can only be terminated forcefully (with /F option).
+-- ports after close (must be free) --
+all free
+-- orphan check (any leftover app processes) --
+leftover=0
+-- relaunch (normal user token) --
+-- boot: health 200 after ~8s --
+-- process inventory (single instance each) --
+
+Name         Count
+----         -----
+node             1
+PharmaOS         4
+pharmaos-api     1
+postgres         9
+
+
+
+=== ROUND 2 ===
+-- graceful close --
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 4736.
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 11760.
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 2996.
+ERROR: The process "PharmaOS.exe" with PID 4356 could not be terminated.
+Reason: This process can only be terminated forcefully (with /F option).
+-- ports after close (must be free) --
+all free
+-- orphan check (any leftover app processes) --
+leftover=0
+-- relaunch (normal user token) --
+-- boot: health 200 after ~8s --
+-- process inventory (single instance each) --
+
+Name         Count
+----         -----
+node             1
+PharmaOS         4
+pharmaos-api     1
+postgres         9
+
+
+
+=== ROUND 3 ===
+-- graceful close --
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 13868.
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 13052.
+SUCCESS: Sent termination signal to the process "PharmaOS.exe" with PID 796.
+ERROR: The process "PharmaOS.exe" with PID 224 could not be terminated.
+Reason: This process can only be terminated forcefully (with /F option).
+-- ports after close (must be free) --
+all free
+-- orphan check (any leftover app processes) --
+leftover=0
+-- relaunch (normal user token) --
+-- boot: health 200 after ~8s --
+-- process inventory (single instance each) --
+
+Name         Count
+----         -----
+node             1
+PharmaOS         4
+pharmaos-api     1
+postgres         9
+
+
+
+=== scheduled tasks state (after 3 restarts) ===
+NOTE: launcher log earlier recorded: setup: scheduled tasks failed (non-fatal, retry later): task PharmaOS-Backup: ERROR: The user name or password is incorrect.
+-> the daily backup scheduled task was NEVER created on this machine (product finding)
+
+=== manual backup (post-restarts) ===
+backup created: C:\ProgramData\PharmaOS\backups\pharmaos_20261030T225128Z.pharmaos-backup
+checksum sidecar: written
+drwxr-xr-x 1 Mosta 197609      0 Oct 31 00:51 .
+drwxr-xr-x 1 Mosta 197609      0 Oct 31 00:51 ..
+-rw-r--r-- 1 Mosta 197609    165 Oct 31 00:51 backup_status.json
+-rw-r--r-- 1 Mosta 197609 225308 Oct 31 00:51 pharmaos_20261030T225128Z.pharmaos-backup
+-rw-r--r-- 1 Mosta 197609    109 Oct 31 00:51 pharmaos_20261030T225128Z.pharmaos-backup.sha256

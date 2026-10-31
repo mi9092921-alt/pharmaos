@@ -1,0 +1,12 @@
+== Gate 0: installer SHA256 provenance check — captured 2026-10-29T23:59:04+02:00 ==
+-- file on disk --
+-rwxr-xr-x 1 Mosta 197609 246813086 Oct 20 23:26 D:/projects/pharmaos/installer/dist/installer/PharmaOS-Setup-1.1.0.exe
+SHA256 hash of D:\projects\pharmaos\installer\dist\installer\PharmaOS-Setup-1.1.0.exe:
+1661c926e9744c52ba13b5685b6aad682a24cab74f40d9f9eab7140d79271026
+CertUtil: -hashfile command completed successfully.
+
+-- comparison --
+computed   : 1661C926E9744C52BA13B5685B6AAD682A24CAB74F40D9F9EAB7140D79271026  (size 246813086)
+rc3 record : EF77DE1679078B13F3BF5F4A63D94258AE98FD92883C235B8E4B7B286BD5572F  (size 320998366, RELEASE_REPORT.md:145)
+rc4 record : 89FBECFB507BA55FE431584174DAF063727E1DFC24C5A4943B819CD062702A74  (size 321031014, RELEASE_REPORT.md:158)
+VERDICT: on-disk installer matches NEITHER recorded artifact -> provenance unresolved

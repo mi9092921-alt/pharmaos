@@ -1,0 +1,43 @@
+== dev postgres (port 5433) command line, captured before stopping — 2026-10-30T00:09:39+02:00 ==
+
+
+ProcessId   : 6852
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe"  -D 
+              "C:/Users/Mosta/AppData/Local/Temp/pharmaos-relprep/pgtest"  
+
+ProcessId   : 5532
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="checkpointer" 5564
+
+ProcessId   : 5664
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="bgwriter" 5560
+
+ProcessId   : 8620
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="wal_writer" 5520
+
+ProcessId   : 7648
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="autovacuum launcher" 5508
+
+ProcessId   : 5232
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="bgworker" 5484
+
+ProcessId   : 2516
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe"  -D 
+              "C:/Users/Mosta/AppData/Local/Temp/pharmaos-relprep/pgcrash"  
+
+ProcessId   : 10652
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="checkpointer" 5528
+
+ProcessId   : 6244
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="bgwriter" 5536
+
+ProcessId   : 5856
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="wal_writer" 5500
+
+ProcessId   : 10372
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="autovacuum launcher" 5484
+
+ProcessId   : 2032
+CommandLine : "D:/projects/pharmaos/installer/vendor/pg/bin/postgres.exe" --forkchild="bgworker" 5472
+
+
+

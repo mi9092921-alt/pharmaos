@@ -1,0 +1,12 @@
+== Gate 0: PharmaOS traces pre-exist on this machine (must be absent on clean VM) — captured 2026-10-29T23:59:04+02:00 ==
+-- C:/ProgramData/PharmaOS --
+total 16
+drwxr-xr-x 1 Mosta 197609 0 Oct 20 20:46 .
+drwxr-xr-x 1 Mosta 197609 0 Oct  8 00:48 ..
+drwxr-xr-x 1 Mosta 197609 0 Oct 20 19:02 backups
+drwxr-xr-x 1 Mosta 197609 0 Oct 20 21:14 logs
+drwxr-xr-x 1 Mosta 197609 0 Oct 21 00:32 pgdata
+-- C:/Program Files/PharmaOS --
+total 16
+drwxr-xr-x 1 Mosta 197609 0 Oct  8 17:00 .
+drwxr-xr-x 1 Mosta 197609 0 Oct 13 14:22 ..

@@ -1,0 +1,105 @@
+== Step 6: catalog import — 2026-10-31T00:54:10+02:00 ==
+DEVIATION: no operator-certified catalog file was provided -> self-made 4-row test CSV used (checksum recorded); certified-source item stays blocked
+file: D:/projects/pharmaos/evidence/vm-round-2026-10-29/step6-test-catalog.csv
+SHA256: fb91849d666ad316984db5328b9cfe2c7f6854da639c15d40a67c31d96669835
+-- import via product CLI (--source import) --
+{
+ "created": 3,
+ "skipped_existing": 1,
+ "skipped_duplicate_in_file": 0,
+ "errors": [],
+ "error_count": 0
+}
+import exit code: 0
+-- fuzzy search tests (deliberate typos) with timing --
+query='كونكر'
+  http=200 time=0.028925s
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import json;d=json.load(open('/tmp/fz.json',encoding='utf-8'))['data'];print('  results:',[(x['trade_name_ar'] or x['trade_name']) for x in d])
+                            ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/fz.json'
+query='سيتال جوله'
+  http=200 time=0.030187s
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import json;d=json.load(open('/tmp/fz.json',encoding='utf-8'))['data'];print('  results:',[(x['trade_name_ar'] or x['trade_name']) for x in d])
+                            ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/fz.json'
+query='اوجمنتين'
+  http=200 time=0.017469s
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import json;d=json.load(open('/tmp/fz.json',encoding='utf-8'))['data'];print('  results:',[(x['trade_name_ar'] or x['trade_name']) for x in d])
+                            ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/fz.json'
+query='دواء جوله'
+  http=200 time=0.012458s
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import json;d=json.load(open('/tmp/fz.json',encoding='utf-8'))['data'];print('  results:',[(x['trade_name_ar'] or x['trade_name']) for x in d])
+                            ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/fz.json'
+-- fuzzy search results (corrected capture) --
+query='?????' http=200 time=0.012146s
+   results: []
+query='????? ????' http=200 time=0.015195s
+   results: ['سيتال جولة VM']
+query='????????' http=200 time=0.024194s
+   results: ['أوجمنتين جولة VM']
+query='???? ????' http=200 time=0.013464s
+   results: ['دواء جولة VM الفريد', 'دواء جولة VM الفريد']
+-- purchase cycle to stock an imported item (سيتال جولة VM) --
+-- 1) create supplier --
+{"success":true,"data":{"id":"dd4c74ed-7c8f-41b2-a7bc-8eb120a053a1","name":"???? ?????? ???? VM","contact_name":null,"phone":"01000000002","email":null,"address":null,"tax_registration_no":null,"payment_terms":null,"is_active":true,"notes":null}}
+-- 2) find imported medication + packaging --
+[["d018911e-c596-492f-bb0f-bf3d696b5712", "سيتال جولة VM"]]
+-- medication detail (packaging ids) --
+{"packaging": [["09c782ae-de38-49be-b0c9-75333cc00da8", 1, "علبة", "18.50"]]}
+-- 3) create PO --
+{"success":true,"data":{"id":"e478ea40-8b42-4793-9d7b-a9d75ca38f58","branch_id":"b6d7d664-c2a0-4c67-a522-8eae3cd9bea5","supplier_id":"dd4c74ed-7c8f-41b2-a7bc-8eb120a053a1","po_number":"PO-20261031-0001","status":"draft","order_date":"2026-10-31","expected_date":null,"currency_code":"EGP","subtotal":
+POID=3fdfd217-8e57-4540-af91-8992ec04c6f9 ITEMID=3fdfd217-8e57-4540-af91-8992ec04c6f9
+-- 4) submit --
+submit http=404
+-- 5) approve --
+approve http=404
+-- 6) receive (batch VM-B1, expiry 2027-12-31, qty 10) --
+{"success":false,"error":{"code":"E-VAL-001","message":"Purchase order not found."}}
+-- corrected: PO detail to get purchase_item id --
+ITEMID=3fdfd217-8e57-4540-af91-8992ec04c6f9
+-- submit --
+submit http=200
+-- approve --
+approve http=200
+-- receive --
+{"success":true,"data":{"id":"e478ea40-8b42-4793-9d7b-a9d75ca38f58","branch_id":"b6d7d664-c2a0-4c67-a522-8eae3cd9bea5","supplier_id":"dd4c74ed-7c8f-41b2-a7bc-8eb120a053a1","po_number":"PO-20261031-0001","status":"received","order_date":"2026-10-31","expected_date":null,"currency_code":"EGP","subtota
+-- inventory now --
+[('سيتال جولة VM', '10.000'), ('بنادول تجريبي ٥٠٠', '290.000')]
+-- 7) sell imported item (سيتال جولة VM x1) --
+{"success":false,"error":{"code":"E-VAL-001","message":"Sale line needs a barcode or medication_id + packaging_id."}}
+
+sale round-trip: 0.207s
+-- inventory after sale (سيتال must be 9) --
+[('سيتال جولة VM', '10.000'), ('بنادول تجريبي ٥٠٠', '290.000')]
+-- drift-check --
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "drift_rows": []
+ }
+}
+drift rc=0
+-- 7-retry) sell with packaging_id --
+{"success":true,"data":{"invoice_id":"7530e0c5-2254-4307-8b54-36a28542d7c8","invoice_number":"INV-20261031-0002","currency_code":"EGP","subtotal":"18.50","discount_amount":"0.00","tax_amount":"0.00","total":"18.50","points_redeemed":0,"payment_method":"cash","tendered_amount":"25.00","change_amount":"6.50","cash_session_id":null,"customer_id":null,"points_earned":null,"items":[{"medication_id":"d018911e-c596-492f-bb0f-bf3d696b5712","batch_id":"8e877fa7-980a-451e-91f2-c882b7dacb82","quantity":"1.000","qty_smallest":"1.000","line_total":"18.50"}]}}
+
+-- inventory after (سيتال must be 9) --
+[('سيتال جولة VM', '9.000'), ('بنادول تجريبي ٥٠٠', '290.000')]
+-- drift-check --
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "drift_rows": []
+ }
+}
+drift rc=0
+== Duplication probe: ONE UI click — 2026-10-31T01:24:49+02:00 ==
+total meds: 7
+probe rows: [('DupProbe-1793402634602', '062a3e94-d7b1-4e50-b8e2-e91917da0ae3')]

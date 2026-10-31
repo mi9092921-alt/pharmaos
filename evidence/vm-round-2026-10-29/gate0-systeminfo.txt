@@ -1,0 +1,12 @@
+== Gate 0: machine identity check (task rule #1) — captured 2026-10-29T23:58:50+02:00 ==
+VERDICT: FAIL — physical bare-metal dev machine, NOT a clean VM
+Host Name:                 DESKTOP-8LAOL7M
+OS Name:                   Microsoft Windows 10 Pro
+OS Version:                10.0.19045 N/A Build 19045
+System Manufacturer:       Dell Inc.
+System Model:              Latitude 5580
+System Type:               x64-based PC
+BIOS Version:              Dell Inc. 1.35.0, 1/29/2024
+Total Physical Memory:     16,024 MB
+                           [04]: Hyper-V Virtual Ethernet Adapter
+Hyper-V Requirements:      A hypervisor has been detected. Features required for Hyper-V will not be displayed.

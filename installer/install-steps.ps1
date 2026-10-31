@@ -43,10 +43,16 @@ icacls (Join-Path $data 'logs') /grant '*S-1-5-32-545:(OI)(CI)M' /T | Out-Null
 $installerUserModify = "*$installerUserSid`:(OI)(CI)M"
 icacls $pgData /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' $installerUserModify /T | Out-Null
 icacls $data /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' '*S-1-5-32-545:RX' | Out-Null
-# The file itself needs no inheritance flags: only the daily account may
-# update it, while SYSTEM and Administrators retain recovery access.
+# The file itself needs no inheritance flags: the daily account may update
+# it, while SYSTEM and Administrators retain recovery access. Grant the Users
+# GROUP (not only the installing account) Modify: an administrator installs
+# but a different daily account runs the app, and a missing/stale per-SID
+# grant made the API fail every licensing write (E-LIC-007 / PermissionError
+# -> status "error" -> middleware 503s all business routes; observed live in
+# the 2026-10-30 VM round). Tampering risk is covered by the MAC over the
+# record (LOCK-2) — a forged file degrades licensing, it cannot extend it.
 $installerUserFileModify = "*$installerUserSid`:(M)"
-icacls $licenseStore /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' $installerUserFileModify | Out-Null
+icacls $licenseStore /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' '*S-1-5-32-545:(M)' $installerUserFileModify | Out-Null
 
 # VC++ redistributable: NOT required for the pinned binaries
 # (check-vcredist.ps1 verdict: none - statically-linked CRT). Re-run that

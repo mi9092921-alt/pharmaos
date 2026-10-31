@@ -1,0 +1,39 @@
+== Step 1 verification bundle — 2026-10-30T09:33:33+02:00 ==
+
+-- GET /api/v1/health --
+{"success":true,"data":{"status":"ok"}}
+-- netstat listening ports 5433/8000/3000 --
+  TCP    127.0.0.1:3000         0.0.0.0:0              LISTENING       10704
+  TCP    127.0.0.1:5433         0.0.0.0:0              LISTENING       7868
+  TCP    127.0.0.1:8000         0.0.0.0:0              LISTENING       3216
+
+-- pgdata location (must be %ProgramData%\PharmaOS\pgdata) --
+/c/ProgramData/PharmaOS/pgdata/PG_VERSION
+17
+(PG_VERSION file present in C:\ProgramData\PharmaOS\pgdata)
+
+-- CLI setup-status --
+{
+  "users": 1,
+  "branches": 1,
+  "setup_complete": true,
+  "last_completed_step": "complete",
+  "backup_key_exported": true
+}
+
+-- CLI license status --
+{"success":true,"data":{"status":"active","hwid":"PHAR-RTTJ-AR6R-ZTPL-35ID","valid_until":"2027-10-20T19:08:53.470440Z","days_left":355,"needs_activation":false}}
+-- boot log excerpt (device-init/migrate trail) --
+2026-10-30T07:19:48.991Z boot: device-init (first run - initdb + keystore)
+2026-10-30T07:20:16.944Z boot: PostgreSQL data ACL ready for desktop-8laol7m\mosta
+2026-10-30T07:20:17.832Z boot: spawning api & web in parallel
+2026-10-30T07:20:38.111Z boot: watchdog
+2026-10-30T07:20:38.131Z boot: setup-status
+2026-10-30T07:20:38.216Z boot: setup-status HTTP query failed, falling back to CLI: Error: HTTP 423
+2026-10-30T07:21:17.857Z setup failed: password policy violations: password.missing_number, password.missing_special
+2026-10-30T07:21:34.464Z setup failed: password policy violations: password.missing_special
+2026-10-30T07:22:57.458Z setup: scheduled tasks failed (non-fatal, retry later): task PharmaOS-Backup: ERROR: The user name or password is incorrect.
+2026-10-30T07:29:10.316Z first-run setup complete
+
+-- product CLI path as installed --
+D:\Program Files\PharmaOS\resources\api\pharmaos-api.exe

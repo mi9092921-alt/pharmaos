@@ -1,0 +1,89 @@
+- complementary:
+  - generic: PharmaOS
+  - navigation:
+    - link "الرئيسية":
+      - /url: /
+    - link "نقطة البيع":
+      - /url: /pos
+    - link "كتالوج الأدوية":
+      - /url: /catalog
+    - link "المخزون":
+      - /url: /inventory
+    - link "المشتريات":
+      - /url: /purchases
+    - link "العملاء":
+      - /url: /customers
+    - link "المرتجعات":
+      - /url: /returns
+    - link "الوصفات الطبية":
+      - /url: /prescriptions
+    - link "المصروفات":
+      - /url: /finance
+    - link "الامتثال":
+      - /url: /compliance
+    - link "جلسات الكاشير":
+      - /url: /cashier
+    - link "التنبيهات":
+      - /url: /alerts
+    - link "مركز الإشعارات":
+      - /url: /notifications
+    - link "التقارير":
+      - /url: /reports
+    - link "المستخدمون":
+      - /url: /users
+    - link "الإعدادات":
+      - /url: /settings
+    - link "حول PharmaOS":
+      - /url: /about
+- banner:
+  - generic: متصل
+  - button "الإشعارات":
+    - generic: "2"
+  - generic: PharmaOS
+  - generic: مالك النظام
+  - button "تسجيل الخروج"
+- main:
+  - heading "التقارير" [level=1]
+  - generic: الفرع
+  - combobox:
+    - option "PharmaOS" [selected]
+  - button "المبيعات"
+  - button "المخزون"
+  - button "الربحية"
+  - button "الموردون"
+  - button "العملاء"
+  - button "مستوى المخزون"
+  - button "التقييم"
+  - button "الحركة"
+  - button "الانتهاء والهدر"
+  - checkbox "المنخفض/النافد فقط"
+  - text: المنخفض/النافد فقط
+  - link "تصدير CSV":
+    - /url: /api/v1/reports/inventory/stock-level/export?branch_id=b6d7d664-c2a0-4c67-a522-8eae3cd9bea5
+  - generic: إجمالي الأصناف
+  - generic: "2"
+  - generic: أصناف منخفضة
+  - generic: "0"
+  - generic: أصناف نافدة
+  - generic: "0"
+  - table:
+    - rowgroup:
+      - row "الدواء المتوفر حد إعادة الطلب الحالة":
+        - columnheader "الدواء"
+        - columnheader "المتوفر"
+        - columnheader "حد إعادة الطلب"
+        - columnheader "الحالة"
+    - rowgroup:
+      - row "سيتال جولة VM 9 — طبيعي":
+        - cell "سيتال جولة VM"
+        - cell "9"
+        - cell "—"
+        - cell "طبيعي":
+          - generic: طبيعي
+      - row "بنادول تجريبي ٥٠٠ 290 — طبيعي":
+        - cell "بنادول تجريبي ٥٠٠"
+        - cell "290"
+        - cell "—"
+        - cell "طبيعي":
+          - generic: طبيعي
+- alert

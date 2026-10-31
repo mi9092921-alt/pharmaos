@@ -1,0 +1,18 @@
+== Step 2: key export + external safekeeping — 2026-10-31T00:30:34+02:00 ==
+Deviation note: 'outside the VM' approximated as D: volume (different from data dir C:);
+on a real round this key+backup go to removable media / another machine.
+
+-- backup export-key (printed to file, not shown in logs beyond this evidence) --
+\u26a0\ufe0f  Store this backup key OFFLINE (paper/sealed envelope). Without it, backups cannot be restored after device loss.
+4612cb1efbf7714355e7094c550b32eec967ab1c2bdf7e1797f4fc245874d8ce
+
+-- verify backup SHA256 matches sidecar --
+16a37b8ecbd4b6ebd57dd45ab284f7fe6c51b76355625776c3b76cc7508aefdb  pharmaos_20261030T223013Z.pharmaos-backup
+16a37b8ecbd4b6ebd57dd45ab284f7fe6c51b76355625776c3b76cc7508aefdb
+-- external safekeeping dir --
+total 222
+drwxr-xr-x 1 Mosta 197609      0 Oct 31 00:30 .
+drwxr-xr-x 1 Mosta 197609      0 Oct 31 00:30 ..
+-rw-r--r-- 1 Mosta 197609     66 Oct 31 00:30 backup-recovery-key.txt
+-rw-r--r-- 1 Mosta 197609 215068 Oct 31 00:30 pharmaos_20261030T223013Z.pharmaos-backup
+-rw-r--r-- 1 Mosta 197609    109 Oct 31 00:30 pharmaos_20261030T223013Z.pharmaos-backup.sha256

@@ -1,0 +1,13 @@
+== Step 2: encrypted backup create + key export — 2026-10-31T00:30:10+02:00 ==
+
+-- backup create (default backup dir = C:\ProgramData\PharmaOS\backups) --
+backup created: C:\ProgramData\PharmaOS\backups\pharmaos_20261030T223013Z.pharmaos-backup
+checksum sidecar: written
+
+-- backups dir listing --
+total 218
+drwxr-xr-x 1 Mosta 197609      0 Oct 31 00:30 .
+drwxr-xr-x 1 Mosta 197609      0 Oct 30 10:20 ..
+-rw-r--r-- 1 Mosta 197609    165 Oct 31 00:30 backup_status.json
+-rw-r--r-- 1 Mosta 197609 215068 Oct 31 00:30 pharmaos_20261030T223013Z.pharmaos-backup
+-rw-r--r-- 1 Mosta 197609    109 Oct 31 00:30 pharmaos_20261030T223013Z.pharmaos-backup.sha256

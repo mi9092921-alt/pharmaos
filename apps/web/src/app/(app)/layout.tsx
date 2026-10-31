@@ -42,6 +42,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     enabled: !!data?.user,
     staleTime: 60_000,
   });
+  // Live license gate (P4-M2): a session can outlive its license. The
+  // cold-boot E-LIC gate below only fires when the FIRST /me fails, so a
+  // license that degrades mid-session (tamper / key_lost / error /
+  // unlicensed) used to leave every page rendered with 503 toasts (observed
+  // live in the 2026-10-30 VM round). Poll the allowlisted status endpoint
+  // and re-gate the whole shell. grace/read_only keep the app usable per the
+  // licensing ladder; a failed poll (offline) keeps pages up — offline-first.
+  const licenseQuery = useQuery({
+    queryKey: ['license-status'],
+    queryFn: getLicenseStatus,
+    retry: false,
+    refetchInterval: 30_000,
+    enabled: !!data?.user,
+    staleTime: 10_000,
+  });
+  const licenseOperational =
+    licenseQuery.data === undefined ||
+    ['active', 'grace', 'read_only'].includes(licenseQuery.data.status);
 
   useEffect(() => {
     if (data?.user) setUser(data.user);
@@ -71,6 +89,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // HWID instead of hanging — the full /activation upload flow lands in P4-M3.
   if (isError && code !== null && code.startsWith('E-LIC-')) {
     return <LicenseRequiredScreen code={code} onRetry={() => void refetch()} />;
+  }
+
+  // Live re-gate: the license degraded while a session was already loaded.
+  if (data?.user && !licenseOperational) {
+    return (
+      <LicenseRequiredScreen
+        code="E-LIC-001"
+        onRetry={() => {
+          void licenseQuery.refetch();
+          void refetch();
+        }}
+      />
+    );
   }
 
   if (isError || !data?.user) {

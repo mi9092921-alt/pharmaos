@@ -1,0 +1,23 @@
+== Step 3 ROUND 2: race — sale POST fired then immediate force-kill — 2026-10-31T00:44:10+02:00 ==
+expected: invoice EITHER fully committed (stock 299) OR fully absent (stock 300); partial = FAIL
+-- curl response (may be truncated/empty if killed mid-flight) --
+{"success":true,"data":{"invoice_id":"9e4eb0c8-8155-49d4-9b92-aef8fb7ee06e","invoice_number":"INV-20261031-0001","currency_code":"EGP","subtotal":"30.00","discount_amount":"0.00","tax_amount":"0.00","total":"30.00","points_redeemed":0,"payment_method":"cash","tendered_amount":"50.00","change_amount":"20.00","cash_session_id":null,"customer_id":null,"points_earned":null,"items":[{"medication_id":"52170389-87ae-4b09-9bad-96f41c43f47d","batch_id":"5c264fdd-f11e-401b-a6ac-c0126e82e126","quantity":"1.000","qty_smallest":"10.000","line_total":"30.00"}]}}
+killed during flight; relaunching...
+API up after ~8s
+-- pg recovery --
+2026-10-31 00:44:34.609 EET [1480] LOG:  database system was interrupted; last known up at 2026-10-31 00:42:47 EET
+2026-10-31 00:44:35.353 EET [1480] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-10-31 00:44:35.453 EET [1480] LOG:  redo done at 0/1CCC770 system usage: CPU: user: 0.00 s, system: 0.04 s, elapsed: 0.08 s
+-- license --
+{"success":true,"data":{"status":"active","hwid":"PHAR-RTTJ-AR6R-ZTPL-35ID","valid_until":"2027-10-20T19:08:53.470440Z",
+-- inventory (300=rolled back, 299=committed) --
+cached_quantity":"290.000"
+-- drift-check --
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "drift_rows": []
+ }
+}
+drift rc=0
+-- today sales report --
+{"success":false,"error":{"code":"E-VAL-001","message":"Validation failed.","details":[{"loc":["query","date_from"],"type":"missing"},{"loc":["query","date_to"],"type":"missing"}]}}

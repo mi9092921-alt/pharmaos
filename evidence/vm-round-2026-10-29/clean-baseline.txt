@@ -1,0 +1,10 @@
+== Clean baseline before install — 2026-10-30T00:12:57+02:00 ==
+removed: D:\Program Files\PharmaOS (empty leftover), C:\Program Files\PharmaOS (empty leftover), C:\ProgramData\PharmaOS (old logs copied to evidence/old-install-logs, pgdata+empty backups deleted per operator authorization)
+-- verification --
+ls: cannot access 'D:/Program Files/PharmaOS': No such file or directory
+C:/Program Files/PharmaOS
+C:/ProgramData/PharmaOS
+-- ports 5433/8000/3000 --
+all free
+-- pharmaos processes --
+0

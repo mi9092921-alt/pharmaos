@@ -1,0 +1,4 @@
+== Step 2: clean-device simulation — 2026-10-31T00:32:19+02:00 ==
+1) graceful close: taskkill WM_CLOSE -> orchestrator shutdown (web->api->postgres), ports freed
+2) elevated rd /s /q C:\ProgramData\PharmaOS (operator-approved UAC) = fresh device state
+3) next: app relaunch (fresh device-init + keystore), then CLI import-key + restore from D:\vm-round-external-2026-10-31

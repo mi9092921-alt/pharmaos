@@ -1,0 +1,10 @@
+== Step 7: reports JSON evidence — 2026-10-31T01:02:42+02:00 ==
+-- sales report (today) --
+{"success":true,"data":{"date_from":"2026-10-31","date_to":"2026-10-31","granularity":"day","summary":{"gross_sales":"48.50","subtotal":"48.50","discount_total":"0.00","tax_total":"0.00","refunds_total":"0.00","net_sales":"48.50","invoice_count":2,"refund_count":0,"avg_invoice":"24.25"},"by_payment_method":[{"method":"cash","count":2,"total":"48.50"}],"by_refund_method":[],"trend":[{"bucket":"2026-10-31","count":2,"total":"48.50"}],"top_items":[{"medication_id":"52170389-87ae-4b09-9bad-96f41c43f47d","name":"Panadol Demo 500mg","name_ar":"بنادول تجريبي ٥٠٠","qty_smallest":"10.000","revenue":"30.00"},{"medication_id":"d018911e-c596-492f-bb0f-bf3d696b5712","name":"Cetal VM Round","name_ar":"سيتال جولة VM","qty_smallest":"1.000","revenue":"18.50"}]}}
+-- stock-level report --
+{"success":true,"data":{"branch_id":"b6d7d664-c2a0-4c67-a522-8eae3cd9bea5","items":[{"medication_id":"d018911e-c596-492f-bb0f-bf3d696b5712","trade_name":"Cetal VM Round","trade_name_ar":"سيتال جولة VM","cached_quantity":"9.000","min_stock_level":"0.000","reorder_point":null,"shelf_location":null,"low_stock":false,"status":"ok"},{"medication_id":"52170389-87ae-4b09-9bad-96f41c43f47d","trade_name":"Panadol Demo 500mg","trade_name_ar":"بنادول تجريبي ٥٠٠","cached_quantity":"290.000","min_stock_level":"0.000","reorder_point":null,"shelf_location":"A3","low_stock":false,"status":"ok"}],"pagination":{"skip":0,"limit":50,"total":2},"summary":{"total_skus":2,"low_stock_count":0,"out_of_stock_count":0}}}
+-- audit trail (last 5) --
+{"success":false,"error":{"code":"E-GEN-001","message":"The requested resource was not found."}}
+-- users+permissions (RBAC) --
+{"success":true,"data":[{"id":"443d9e42-8272-4379-9847-6bf3214a2de2","username":"PharmaOS","full_name":"PharmaOS","role":"super_admin","phone":null,"is_active":true,"created_at":"2026-10-30T07:22:54.403755+00:00"}],"meta":{"page":1,"total":1,"per_page":5}}-- audit trail (config router) --
+{"success":false,"error":{"code":"E-GEN-001","message":"The requested resource was not found."}}
