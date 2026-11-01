@@ -495,3 +495,116 @@ async def test_import_unsupported_type(admin, branch):
     resp = await _post_import(client, csrf, branch.id, b"hello", name="catalog.txt")
     assert resp.status_code == 422
     assert "Unsupported" in resp.json()["error"]["message"]
+
+
+# --------------------------- all-or-nothing execute ---------------------------
+
+
+async def test_import_execute_aborts_on_any_rejected_row(admin, branch, db_session: AsyncSession):
+    """ALL-OR-NOTHING: one bad row in an execute call aborts the WHOLE import —
+    even fully-valid rows in the same file write NOTHING (review decision:
+    a partial stock import is worse than a failed one)."""
+    client, csrf = admin
+    before_meds = await _med_count(db_session)
+    name = f"AbortOK {uuid.uuid4().hex[:6]}"
+    payload = _xlsx(
+        [
+            _row(name, price_egp="5.00", quantity="3", batch_number="B-OK"),
+            _row("Abort Bad Row", price_egp="not-a-price"),
+        ]
+    )
+    resp = await _post_import(client, csrf, branch.id, payload, dry_run=False)
+    assert resp.status_code == 200, resp.text
+    report = resp.json()["data"]
+    assert report["aborted"] is True
+    assert report["created"] == 0 and report["batches"] == 0
+    assert [r["reason"] for r in report["rejected"]] == ["bad_price"]
+    assert await _med_count(db_session) == before_meds, "valid row wrote nothing either"
+
+
+async def test_import_execute_aborts_on_apply_failure_rolls_back(
+    admin, branch, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """An apply-time failure (a race that passed validation) rolls back the
+    ENTIRE transaction — medications, packaging, prices, batches, cache — and
+    the response names the failing row."""
+    from pharmaos_api.errors import ApiError, ErrorCode
+    from pharmaos_api.services import inventory_service
+
+    client, csrf = admin
+    before_meds = await _med_count(db_session)
+    before_batches = (
+        await db_session.execute(text("SELECT count(*) FROM medication_batches"))
+    ).scalar_one()
+
+    real_receive = inventory_service.receive_batch
+    calls = {"n": 0}
+
+    async def flaky_receive(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:  # 2nd batch row "races" at apply time
+            raise ApiError(ErrorCode.STOCK_INSUFFICIENT, 422, message="simulated race")
+        return await real_receive(*args, **kwargs)
+
+    monkeypatch.setattr(inventory_service, "receive_batch", flaky_receive)
+
+    n1, n2 = f"Rollback1 {uuid.uuid4().hex[:6]}", f"Rollback2 {uuid.uuid4().hex[:6]}"
+    payload = _xlsx(
+        [
+            _row(n1, price_egp="5.00", quantity="3", batch_number="B-R1"),
+            _row(n2, price_egp="6.00", quantity="4", batch_number="B-R2"),
+        ]
+    )
+    resp = await _post_import(client, csrf, branch.id, payload, dry_run=False)
+    assert resp.status_code == 200, resp.text
+    report = resp.json()["data"]
+    assert report["aborted"] is True
+    assert [r["reason"] for r in report["rejected"]] == ["apply_failed"]
+    assert report["rejected"][0]["row"] == 3
+    assert await _med_count(db_session) == before_meds, "first row rolled back too"
+    after_batches = (
+        await db_session.execute(text("SELECT count(*) FROM medication_batches"))
+    ).scalar_one()
+    assert after_batches == before_batches
+    cache = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM branch_inventory bi JOIN medications m "
+                "ON m.id = bi.medication_id WHERE m.trade_name IN (:a, :b)"
+            ).bindparams(a=n1, b=n2)
+        )
+    ).scalar_one()
+    assert cache == 0, "cache deltas rolled back too"
+
+
+async def test_import_10k_rows_single_transaction(admin, branch, db_session: AsyncSession):
+    """Size probe (~10k rows, the review's requested scale): one transaction,
+    timed — total wall clock is the lock-duration proxy (there is exactly ONE
+    commit). Prints the duration; the ceiling guards against pathology."""
+    import time as time_module
+
+    client, csrf = admin
+    stamp = uuid.uuid4().hex[:6]
+    payload = _csv_bytes(
+        [
+            _row(
+                f"Bulk {stamp} {i}",
+                price_egp="10.00",
+                quantity="5",
+                batch_number=f"BLK-{i}",
+                purchase_price="7.00",
+            )
+            for i in range(10_000)
+        ]
+    )
+    started = time_module.perf_counter()
+    resp = await _post_import(client, csrf, branch.id, payload, name="bulk10k.csv", dry_run=False)
+    elapsed = time_module.perf_counter() - started
+    assert resp.status_code == 200, resp.text
+    report = resp.json()["data"]
+    assert report["aborted"] is False
+    assert report["created"] == 10_000
+    assert report["batches"] == 10_000
+    assert report["quantity_total"] == "50000.000"
+    print(f"\n10k-row import: {elapsed:.1f}s (single transaction)")
+    assert elapsed < 300, f"10k-row import regressed badly: {elapsed:.1f}s"

@@ -2402,6 +2402,8 @@ export interface CatalogRejectedRow {
 export interface CatalogImportReport {
   branch_id: string;
   dry_run: boolean;
+  /** execute: everything rolled back because some rows failed */
+  aborted?: boolean;
   total: number;
   /** dry_run preview counts */
   to_create?: number;

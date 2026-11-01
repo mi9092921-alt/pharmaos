@@ -55,6 +55,11 @@ export function CatalogImportModal({ open, onClose }: { open: boolean; onClose: 
     mutationFn: () => importCatalog(file as File, effectiveBranch, false),
     onSuccess: (data) => {
       setReport(data);
+      if (data.aborted) {
+        // all-or-nothing: nothing was written — the report lists every failing row
+        toast.error(t('catalog.import_aborted'));
+        return;
+      }
       setApplied(true);
       toast.success(t('catalog.import_result_ok'));
       qc.invalidateQueries({ queryKey: ['medications'] });

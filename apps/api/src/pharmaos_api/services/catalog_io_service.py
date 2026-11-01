@@ -34,7 +34,7 @@ import io
 import uuid
 from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -394,10 +394,10 @@ async def import_catalog(
     """Upsert catalog rows + create batches on the selected branch.
 
     dry_run validates everything and writes nothing; execute re-validates
-    fully (a preview may be stale) then applies: bulk medication/packaging
+    fully (a preview may be stale) then applies — bulk medication/packaging
     inserts, idempotent field/price updates, and one receive_batch per
-    quantity row — committed in chunks so a 25k-row file stays one clean
-    sequence of transactions.
+    quantity row — in ONE transaction (all-or-nothing): any failing row rolls
+    the whole import back and the response names every failing row.
     """
     branch = await session.get(Branch, branch_id)
     if branch is None or branch.is_deleted or not branch.is_active:
@@ -582,9 +582,27 @@ async def import_catalog(
             "rejected": rejected,
         }
 
-    # --------------- execute (fully re-validated above in THIS call) --------
-    # Releases the unit upsert row lock immediately (same as the seeder); safe
-    # here because nothing has been written yet in this transaction.
+    # --------------- execute — ALL-OR-NOTHING (review decision) -------------
+    # ANY failing row — a validation rejection, or an apply-time failure like a
+    # raced stale batch — aborts the WHOLE import: everything rolls back and
+    # the response lists every failing row. A partial catalog/stock import is
+    # worse than a failed one. dry_run stays the zero-write preview.
+    if rejected:
+        return {
+            "branch_id": str(branch_id),
+            "dry_run": False,
+            "aborted": True,
+            "total": len(rows),
+            "created": 0,
+            "updated": 0,
+            "batches": 0,
+            "quantity_total": "0",
+            "rejected": sorted(rejected, key=lambda e: cast("int", e["row"])),
+        }
+
+    # Releases the unit upsert row lock immediately (same as the seeder) — its
+    # internal commit lands BEFORE any import write, so the single import
+    # transaction below is unaffected by it.
     unit_id = await seed_service._box_unit_id(session)  # noqa: SLF001 — house style (svc._UNSET)
 
     # 1) Creates — one medication per new name key (later rows with the same
@@ -649,7 +667,6 @@ async def import_catalog(
         )
         for p in chunk:
             created_med_ids[p["identity"]] = by_name[p["name_key"]]
-        await session.commit()
 
     # 2) Field updates — merged first-wins per medication, empty cells keep
     #    the current value (COALESCE); trade_name is never touched.
@@ -684,7 +701,6 @@ async def import_catalog(
                 """),
             [{"id": med_id, "actor": actor.id, **vals} for med_id, vals in field_chunk],
         )
-        await session.commit()
 
     price_list = list(price_updates.items())
     for chunk_start in range(0, len(price_list), _BATCH):
@@ -706,13 +722,15 @@ async def import_catalog(
                 for med_id, price in price_chunk
             ],
         )
-        await session.commit()
 
     # 3) Batches — one receive_batch per quantity row (batch row + purchase_in
-    #    movement + cache delta inside this tx; committed in chunks).
+    #    movement + cache delta, all inside THIS transaction). A validation
+    #    failure here (raced stale/expired batch) is COLLECTED, not swallowed —
+    #    the loop finishes so the response can name every failing row, then
+    #    everything above rolls back.
     applied_batches = 0
     quantity_total = Decimal("0")
-    apply_errors = list(rejected)
+    apply_errors: list[dict[str, object]] = []
     applied_rows: list[dict[str, object]] = []
     for p in valid:
         if p["batch"] is None:
@@ -738,8 +756,20 @@ async def import_catalog(
         applied_batches += 1
         quantity_total += p["batch"]["quantity"]
         applied_rows.append({"row": p["row"], "trade_name": p["name"]})
-        if applied_batches % _BATCH == 0:
-            await session.commit()
+
+    if apply_errors:
+        await session.rollback()  # all-or-nothing: nothing persists
+        return {
+            "branch_id": str(branch_id),
+            "dry_run": False,
+            "aborted": True,
+            "total": len(rows),
+            "created": 0,
+            "updated": 0,
+            "batches": 0,
+            "quantity_total": "0",
+            "rejected": sorted(apply_errors, key=lambda e: cast("int", e["row"])),
+        }
 
     await audit_service.record(
         session,
@@ -755,16 +785,17 @@ async def import_catalog(
             "filename": filename,
         },
     )
-    await session.commit()
+    await session.commit()  # the ONE commit — all rows or none
 
     return {
         "branch_id": str(branch_id),
         "dry_run": False,
+        "aborted": False,
         "total": len(rows),
         "created": len(created_med_ids),
         "updated": len(field_updates) + len(price_updates),
         "batches": applied_batches,
         "quantity_total": str(quantity_total),
         "rows": applied_rows[:50],
-        "rejected": sorted(apply_errors, key=lambda e: e["row"]),
+        "rejected": [],
     }

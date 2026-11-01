@@ -619,8 +619,10 @@ async def approve(
 ) -> dict[str, object]:
     """Apply every counted diff in ONE transaction (deadlock-safe), then
     approve. Lines whose live quantity moved against the diff (sale after
-    count) are flagged needs_recount and skipped — approval never fails
-    wholesale. Controlled diffs additionally write the append-only
+    count) make approval REFUSE with E-STK-005 — their needs_recount flags are
+    committed separately first (the refusal must not erase them), the session
+    stays `review`, and `record_count` settles them before re-approval.
+    Controlled diffs additionally write the append-only
     controlled_substance_log(source='stocktake')."""
     if not reason.strip():
         raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Reason is required.")
@@ -697,27 +699,55 @@ async def _approve_once(
         locked_batches = {b.id: b for b in rows}
 
     controlled_rows: list[ControlledSubstanceLog] = []
-    applied = needs_recount = skipped_zero = 0
+    applied = skipped_zero = 0
+
+    # PHASE 1 — detect un-settleable lines WITHOUT writing anything. A line a
+    # sale moved against its diff (or with a missing batch/snapshot) cannot be
+    # settled, and approval now REFUSES wholesale (review decision: flagged
+    # lines must never dangle behind an `approved` session — `record_count`
+    # refuses recounts on approved sessions, so the variance would strand).
+    # The flags are committed SEPARATELY before the rejection: raising inside
+    # this transaction would roll them back and the manager would never learn
+    # WHICH lines to recount. No batch movement has been written yet, so this
+    # commit carries flags only — approval stays all-or-nothing.
+    stale: list[StocktakeLine] = []
+    settleable_deltas: dict[uuid.UUID, Decimal] = {}
     for line in lines:
         batch = locked_batches.get(line.batch_id)
         if batch is None:  # batch deleted mid-session — cannot settle
-            line.flag = "needs_recount"
-            needs_recount += 1
+            stale.append(line)
             continue
         if line.system_qty_at_count is None or line.counted_qty is None:
-            line.flag = "needs_recount"  # defensive: cannot settle without a snapshot
-            needs_recount += 1
+            stale.append(line)  # defensive: cannot settle without a snapshot
             continue
         delta = line.counted_qty - line.system_qty_at_count
-        if delta == 0:
-            skipped_zero += 1
+        if delta != 0 and batch.quantity + delta < 0:
+            stale.append(line)
             continue
-        if batch.quantity + delta < 0:
-            # A sale moved the batch against the diff after the count — the
-            # line is stale: flag it for a recount, never fail the session.
+        settleable_deltas[line.id] = delta
+    if stale:
+        for line in stale:
             line.flag = "needs_recount"
             line.updated_by = actor.id
-            needs_recount += 1
+        await session.commit()  # flags ONLY — settlement has not started
+        raise ApiError(
+            ErrorCode.STOCKTAKE_RECOUNT_REQUIRED,
+            422,
+            message=f"{len(stale)} line(s) need a recount before approval.",
+            details={
+                "flagged_lines": [
+                    {"line_id": str(ln.id), "batch_id": str(ln.batch_id)} for ln in stale
+                ]
+            },
+        )
+
+    # PHASE 2 — every counted line is settleable here: apply all diffs and
+    # approve in ONE atomic transaction.
+    for line in lines:
+        batch = locked_batches[line.batch_id]
+        delta = settleable_deltas[line.id]
+        if delta == 0:
+            skipped_zero += 1
             continue
         movement = await _apply_batch_adjustment(
             session,
@@ -764,7 +794,6 @@ async def _approve_once(
         entity_id=sess.id,
         metadata={
             "applied": applied,
-            "needs_recount": needs_recount,
             "zero_diff_skipped": skipped_zero,
             "controlled_rows": len(controlled_rows),
             "reason": reason.strip(),
@@ -775,7 +804,6 @@ async def _approve_once(
     return {
         **_session_dict(sess),
         "applied": applied,
-        "needs_recount": needs_recount,
         "zero_diff_skipped": skipped_zero,
         "controlled_rows": len(controlled_rows),
     }
@@ -839,9 +867,12 @@ async def export_csv(
                 csv_safe(str(line.get("batch_number") or "")),
                 csv_safe(str(line.get("expiry_date") or "")),
                 csv_safe(str(line.get("shelf_location") or "")),
-                csv_safe(str(line.get("system_qty_at_count") or "")),
-                csv_safe(str(line.get("counted_qty") or "")),
-                csv_safe(str(line.get("diff") or "")),
+                # NUMERIC columns stay raw: csv_safe would prefix a negative
+                # diff like -2 with ' (formula-injection guard), turning it
+                # into text Excel cannot sum. The guard exists for free text.
+                str(line.get("system_qty_at_count") or ""),
+                str(line.get("counted_qty") or ""),
+                str(line.get("diff") or ""),
                 csv_safe(str(line.get("reason_code") or "")),
                 csv_safe(str(line.get("note") or "")),
                 csv_safe(str(line.get("flag") or "")),

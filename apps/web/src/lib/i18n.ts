@@ -429,6 +429,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.import_row': 'الصف',
     'catalog.import_name': 'الاسم',
     'catalog.import_result_ok': 'تم تنفيذ الاستيراد',
+    'catalog.import_aborted':
+      'أُلغي الاستيراد بالكامل (لم يُكتب شيء) — صحّح الصفوف المرفوضة وأعد المحاولة',
     'catalog.export_branch': 'اختر الفرع…',
     'catalog.export_all': 'كاتلوج فقط (بدون كميات)',
     'catalog.export_no_branch': 'أنشئ فرعًا أولًا لتفعيل التصدير بالكميات',
@@ -558,6 +560,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.total_batches': 'إجمالي الدفعات',
     'errors.E-STK-001': 'الكمية غير كافية في المخزون',
     'errors.E-STK-002': 'الدفعة منتهية الصلاحية — لا يمكن استلامها',
+    'errors.E-STK-005':
+      'اعتماد مرفوض: أسطر بحاجة لإعادة عدّ — علاماتها محفوظة، أعد عدّها ثم أعد الاعتماد',
     'errors.E-CAT-001': 'الباركود مسجّل بالفعل',
     'errors.E-TT-002': 'رقم تسلسلي مكرر للعبوة (GTIN + التسلسل) — منتج غير ممتثل',
     'errors.E-SYN-001': 'تعارض في رقم الفاتورة — أعد إتمام البيع',
@@ -1505,6 +1509,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.import_row': 'Row',
     'catalog.import_name': 'Name',
     'catalog.import_result_ok': 'Import applied',
+    'catalog.import_aborted':
+      'Import fully rolled back (nothing written) — fix the rejected rows and retry',
     'catalog.export_branch': 'Choose branch…',
     'catalog.export_all': 'Catalog only (no quantities)',
     'catalog.export_no_branch': 'Create a branch to enable quantity export',
@@ -1635,6 +1641,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.total_batches': 'Total batches',
     'errors.E-STK-001': 'Insufficient stock',
     'errors.E-STK-002': 'Batch is expired — cannot receive',
+    'errors.E-STK-005':
+      'Approval rejected: lines need a recount — flags are saved; recount them then re-approve',
     'errors.E-CAT-001': 'Barcode is already registered',
     'errors.E-TT-002': 'Duplicate pack serial (GTIN + serial) — non-compliant product',
     'errors.E-SYN-001': 'Invoice number conflict — retry the sale',

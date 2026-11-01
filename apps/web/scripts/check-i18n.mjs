@@ -37,4 +37,5 @@ if (missingInEn.length || missingInAr.length) {
   if (missingInAr.length) console.error('keys missing in AR:', missingInAr);
   process.exit(1);
 }
-console.log(`i18n parity OK — ${ar.size} keys in both dictionaries`);
+process.stdout.write(`i18n parity OK — ${ar.size} keys in both dictionaries
+`);

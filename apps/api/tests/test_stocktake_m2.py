@@ -291,17 +291,30 @@ async def test_csv_export_escapes_formula_injection(admin, branch, db_session: A
 # ------------------------------ needs_recount ------------------------------
 
 
-async def test_sale_after_count_flags_needs_recount_not_failure(
+async def _sell(db_session: AsyncSession, branch, med, batch, delta: str) -> None:
+    """Move a batch as a sale would (quantity + cache + movement) so the
+    live-vs-snapshot staleness check has something real to catch."""
+    from pharmaos_api.services.inventory_service import apply_cache_delta
+
+    actor = await _actor(db_session)
+    batch.quantity = batch.quantity + Decimal(delta)
+    batch.updated_by = actor.id
+    await apply_cache_delta(db_session, branch.id, med.id, Decimal(delta))
+    await db_session.commit()
+
+
+async def test_sale_after_count_rejects_approval_flags_survive(
     admin, branch, db_session: AsyncSession
 ):
     """A sale between count and approval moves the live batch against the diff:
-    that line is flagged needs_recount and SKIPPED — the session still approves
-    and other lines apply (owner point 3)."""
+    approval now REFUSES with E-STK-005 (owner decision 1) — the session stays
+    `review`, NOTHING settles (no partial movements), and the needs_recount
+    flags SURVIVE the rejection (committed separately, not rolled back)."""
     client, csrf = admin
     med_a = await _make_med(db_session, name="StaleA")
     med_b = await _make_med(db_session, name="StaleB")
     batch_a = await _receive_batch(db_session, branch, med_a, "50")
-    await _receive_batch(db_session, branch, med_b, "30")
+    batch_b = await _receive_batch(db_session, branch, med_b, "30")
     bid = str(branch.id)
 
     sess = await _create_session(client, csrf, bid)
@@ -309,7 +322,7 @@ async def test_sale_after_count_flags_needs_recount_not_failure(
     line_a = next(ln for ln in lines if ln["batch_id"] == str(batch_a.id))
     line_b = next(ln for ln in lines if ln["batch_id"] != str(batch_a.id))
 
-    r1 = await _count(client, csrf, line_a["id"], "45")  # diff -5
+    r1 = await _count(client, csrf, line_a["id"], "45")  # diff -5 (snapshot 50)
     r2 = await _count(client, csrf, line_b["id"], "35")  # diff +5
     assert r1.status_code == r2.status_code == 200
 
@@ -319,15 +332,8 @@ async def test_sale_after_count_flags_needs_recount_not_failure(
         headers={"X-CSRF-Token": csrf},
     )
 
-    # SELL OUT batch_a entirely after the count (live 50 -> 0): 0 + (-5) < 0
-    from pharmaos_api.services.inventory_service import apply_cache_delta
-
-    actor = await _actor(db_session)
-    batch_a.quantity = 0
-    batch_a.status = "depleted"
-    batch_a.updated_by = actor.id
-    await apply_cache_delta(db_session, branch.id, med_a.id, Decimal(-50))
-    await db_session.commit()
+    # SELL batch_a down to 2 after the count: 2 + (-5) < 0 → stale
+    await _sell(db_session, branch, med_a, batch_a, "-48")
 
     appr = await client.post(
         f"{ST}/sessions/{sess['id']}/approve",
@@ -335,18 +341,93 @@ async def test_sale_after_count_flags_needs_recount_not_failure(
         headers={"X-CSRF-Token": csrf},
         json={"reason": "اعتماد مع سطر قديم"},
     )
-    assert appr.status_code == 200, appr.text
-    data = appr.json()["data"]
-    assert data["applied"] == 1, "the healthy line applies"
-    assert data["needs_recount"] == 1, "the stale line flags, never fails the session"
+    assert appr.status_code == 422, appr.text
+    err = appr.json()["error"]
+    assert err["code"] == "E-STK-005"
+    assert [ln["line_id"] for ln in err["details"]["flagged_lines"]] == [line_a["id"]]
 
+    # the session did NOT approve, and NOTHING moved (all-or-nothing)
+    session_row = (
+        await db_session.execute(
+            select(StocktakeSession).where(StocktakeSession.id == uuid.UUID(sess["id"]))
+        )
+    ).scalar_one()
+    await db_session.refresh(session_row)
+    assert session_row.status == "review", "the refusal keeps the session open"
     flagged = (
         await db_session.execute(
             select(StocktakeLine).where(StocktakeLine.id == uuid.UUID(line_a["id"]))
         )
     ).scalar_one()
     await db_session.refresh(flagged)
-    assert flagged.flag == "needs_recount" and flagged.adjustment_movement_id is None
+    assert flagged.flag == "needs_recount", "flags survive the rejected approval"
+    assert flagged.adjustment_movement_id is None
+    healthy = (
+        await db_session.execute(
+            select(StocktakeLine).where(StocktakeLine.id == uuid.UUID(line_b["id"]))
+        )
+    ).scalar_one()
+    await db_session.refresh(healthy)
+    assert healthy.adjustment_movement_id is None, "no partial settlement"
+    await db_session.refresh(batch_b)
+    assert batch_b.quantity == Decimal("30"), "healthy batch untouched by the refusal"
+
+    drift = await client.get("/api/v1/inventory/drift", params={"branch_id": bid})
+    assert drift.json()["data"]["ok"] is True
+
+
+async def test_recount_flagged_line_then_approval_settles(admin, branch, db_session: AsyncSession):
+    """The full recovery flow the refusal demands: recount the flagged line
+    (fresh snapshot under lock), then approve — the real variance settles and
+    the flag clears (the previously-missing settlement test)."""
+    client, csrf = admin
+    med_a = await _make_med(db_session, name="RecountA")
+    batch_a = await _receive_batch(db_session, branch, med_a, "50")
+    bid = str(branch.id)
+
+    sess = await _create_session(client, csrf, bid)
+    lines = await _lines(client, sess["id"], bid)
+    line_a = next(ln for ln in lines if ln["batch_id"] == str(batch_a.id))
+
+    await _count(client, csrf, line_a["id"], "45")  # diff -5 (snapshot 50)
+    await client.post(
+        f"{ST}/sessions/{sess['id']}/submit",
+        params={"branch_id": bid},
+        headers={"X-CSRF-Token": csrf},
+    )
+    await _sell(db_session, branch, med_a, batch_a, "-48")  # live 2: 2 + (-5) < 0
+
+    appr1 = await client.post(
+        f"{ST}/sessions/{sess['id']}/approve",
+        params={"branch_id": bid},
+        headers={"X-CSRF-Token": csrf},
+        json={"reason": "سطر قديم"},
+    )
+    assert appr1.status_code == 422 and appr1.json()["error"]["code"] == "E-STK-005"
+
+    # recount AFTER the refusal — record_count takes a fresh snapshot (2)
+    r = await _count(client, csrf, line_a["id"], "1")  # true variance: 1 missing
+    assert r.status_code == 200, r.text
+
+    appr2 = await client.post(
+        f"{ST}/sessions/{sess['id']}/approve",
+        params={"branch_id": bid},
+        headers={"X-CSRF-Token": csrf},
+        json={"reason": "تسوية بعد إعادة العد"},
+    )
+    assert appr2.status_code == 200, appr2.text
+    data = appr2.json()["data"]
+    assert data["applied"] == 1
+
+    await db_session.refresh(batch_a)
+    assert batch_a.quantity == Decimal("1"), "the recounted diff settled for real"
+    flagged = (
+        await db_session.execute(
+            select(StocktakeLine).where(StocktakeLine.id == uuid.UUID(line_a["id"]))
+        )
+    ).scalar_one()
+    await db_session.refresh(flagged)
+    assert flagged.flag is None and flagged.adjustment_movement_id is not None
 
     drift = await client.get("/api/v1/inventory/drift", params={"branch_id": bid})
     assert drift.json()["data"]["ok"] is True
