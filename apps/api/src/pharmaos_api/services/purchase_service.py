@@ -7,8 +7,12 @@ REUSES inventory_service.receive_batch (batch + purchase_in movement + derived
 through the one inventory ledger, and a whole multi-line receipt is ONE atomic
 transaction (receive_batch does not commit; this service commits once).
 
-Quantities are in the smallest unit (matching medication_batches); packaging_id
-is the ordered level (reference); unit_cost is per smallest unit. No dedicated
+PO-line quantities are AT THE ORDERED PACKAGING LEVEL (the packaging_id level
+the line was written in — box/strip/tablet), like invoice_items store the
+sale-level display quantity; unit_cost is per that level. The BATCH LEDGER
+stays in the smallest unit (CLAUDE.md): receiving converts via
+catalog_service.smallest_unit_factor (qty x factor into the batch,
+unit_cost / factor as the per-smallest purchase price). No dedicated
 audit action exists for POs in CLAUDE.md's AUDITED_OPERATIONS — the
 stock_movements ledger is the receipt trail. Permissions (router):
 create/submit/cancel = purchases.create, approve = purchases.approve,
@@ -33,7 +37,7 @@ from pharmaos_api.models import (
     Supplier,
     User,
 )
-from pharmaos_api.services import inventory_service
+from pharmaos_api.services import catalog_service, inventory_service
 
 MAX_PAGE_SIZE = 100
 _OPEN_FOR_RECEIVE = {"approved", "partially_received"}
@@ -81,8 +85,8 @@ def _po_dict(po: PurchaseOrder) -> dict[str, object]:
     }
 
 
-def _item_dict(item: PurchaseItem) -> dict[str, object]:
-    return {
+def _item_dict(item: PurchaseItem, pkg: MedicationPackaging | None = None) -> dict[str, object]:
+    d: dict[str, object] = {
         "id": str(item.id),
         "medication_id": str(item.medication_id),
         "packaging_id": str(item.packaging_id),
@@ -90,12 +94,28 @@ def _item_dict(item: PurchaseItem) -> dict[str, object]:
         "qty_received": str(item.qty_received),
         "unit_cost": str(item.unit_cost),
         "line_total": str(item.line_total),
+        "packaging_name_ar": None,
+        "packaging_level": None,
     }
+    if pkg is not None:
+        d["packaging_name_ar"] = pkg.name_ar
+        d["packaging_level"] = pkg.level
+    return d
 
 
-def to_dict(po: PurchaseOrder, items: list[PurchaseItem]) -> dict[str, object]:
+async def to_dict(
+    session: AsyncSession, po: PurchaseOrder, items: list[PurchaseItem]
+) -> dict[str, object]:
     body = _po_dict(po)
-    body["items"] = [_item_dict(i) for i in items]
+    packaging: dict[uuid.UUID, MedicationPackaging] = {}
+    if items:
+        rows = await session.execute(
+            select(MedicationPackaging).where(
+                MedicationPackaging.id.in_([i.packaging_id for i in items])
+            )
+        )
+        packaging = {p.id: p for p in rows.scalars().all()}
+    body["items"] = [_item_dict(i, packaging.get(i.packaging_id)) for i in items]
     return body
 
 
@@ -182,6 +202,10 @@ async def create_purchase_order(
             raise ApiError(
                 ErrorCode.VALIDATION_FAILED, 422, message="Unknown medication/packaging."
             )
+        # Fail fast: the level chain below the ordered level must be complete,
+        # otherwise receiving could not convert this line into smallest-unit
+        # batches (batches are the smallest-unit ledger — CLAUDE.md).
+        await catalog_service.smallest_unit_factor(session, line.medication_id, pkg.level)
 
     subtotal = sum((line.qty_ordered * line.unit_cost for line in lines), Decimal("0"))
     po = PurchaseOrder(
@@ -305,7 +329,12 @@ async def receive(
 
     Each line creates a batch through the inventory receiving primitive
     (reference_type='purchase_order'); the PO status is recomputed from the
-    per-line received quantities (received when every line is fully received)."""
+    per-line received quantities (received when every line is fully received).
+
+    Receipt quantities and the PO's unit_cost are at the line's ordered
+    packaging level (e.g. boxes); the batch is written in the SMALLEST unit:
+    quantity = qty x factor, purchase_price = unit_cost / factor (mirrors the
+    sale flow's conversion through catalog_service.smallest_unit_factor)."""
     _require_status(po, _OPEN_FOR_RECEIVE)
     if not receipts:
         raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="No receipt lines.")
@@ -317,6 +346,23 @@ async def receive(
             raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Line is not on this PO.")
         if line.quantity <= 0:
             raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Quantity must be positive.")
+        pkg = (
+            await session.execute(
+                select(MedicationPackaging).where(
+                    MedicationPackaging.id == item.packaging_id,
+                    MedicationPackaging.is_deleted.is_(False),
+                )
+            )
+        ).scalar_one_or_none()
+        if pkg is None:
+            # Soft-deleted between PO creation and receiving — no conversion
+            # basis. A clean 422 (not a 500); the atomic transaction rolls back.
+            raise ApiError(
+                ErrorCode.VALIDATION_FAILED,
+                422,
+                message="Packaging level of this line is no longer available.",
+            )
+        factor = await catalog_service.smallest_unit_factor(session, item.medication_id, pkg.level)
         await inventory_service.receive_batch(
             session,
             actor=actor,
@@ -324,8 +370,8 @@ async def receive(
             medication_id=item.medication_id,
             batch_number=line.batch_number,
             expiry_date=line.expiry_date,
-            quantity=line.quantity,
-            purchase_price=item.unit_cost,
+            quantity=(line.quantity * factor).quantize(Decimal("0.001")),
+            purchase_price=(item.unit_cost / factor).quantize(Decimal("0.01")),
             supplier_id=po.supplier_id,
             reference_type="purchase_order",
             reference_id=po.id,
