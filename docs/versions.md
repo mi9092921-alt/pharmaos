@@ -4,6 +4,18 @@
 > pinned in lockfiles; no open ranges (`^`/`~`) for critical packages. Upgrades happen as one
 > tested wave, between phases only. Every upgrade is recorded here with its rationale.
 
+## RC-A phase 3 — web unit-test stack (added 2026-11)
+
+| Package                   | Version | Rationale                                                   |
+| ------------------------- | ------- | ----------------------------------------------------------- |
+| vitest                    | 5.0.5   | Test runner for packages/ui (turbo `test` task, CI js job). |
+| jsdom                     | 30.1.3  | DOM environment for component tests.                        |
+| @testing-library/react    | 16.3.3  | React 19-compatible component testing.                      |
+| @testing-library/jest-dom | 7.0.1   | DOM matchers (`toBeDisabled`…).                             |
+| @vitejs/plugin-react      | 6.1.2   | JSX transform for tests.                                    |
+
+All pinned exactly per the governing rule; upgraded only as one tested wave.
+
 ## Approved matrix (from CLAUDE.md v1.1 — verified & pinned at project start)
 
 ### Runtime

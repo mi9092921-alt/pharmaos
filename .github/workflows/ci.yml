@@ -48,6 +48,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
+      - run: pnpm check:i18n
+      - run: pnpm test
 
   python:
     name: Python — ruff / black / mypy / pytest (PostgreSQL 17)
