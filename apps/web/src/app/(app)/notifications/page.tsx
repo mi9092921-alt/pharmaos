@@ -12,7 +12,8 @@ import {
   markNotificationRead,
   type NotificationRow,
 } from '@/lib/api';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
+import { toast } from '@/lib/toast-store';
 
 const PRIORITY_TONE: Record<NotificationRow['priority'], 'danger' | 'warning' | 'primary'> = {
   critical: 'danger',
@@ -85,6 +86,7 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
   const readAllMutation = useMutation({
     mutationFn: () => markAllNotificationsRead({ branchId }),
@@ -92,6 +94,7 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
 
   if (branchesQuery.isLoading) {

@@ -14,7 +14,8 @@ import {
   resolveAlert,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
+import { toast } from '@/lib/toast-store';
 
 const SEV_TONE: Record<AlertSeverity, 'warning' | 'danger'> = {
   warning: 'warning',
@@ -58,14 +59,17 @@ export default function AlertsPage() {
   const ackMutation = useMutation({
     mutationFn: (id: string) => acknowledgeAlert(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
   const resolveMutation = useMutation({
     mutationFn: (id: string) => resolveAlert(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
   const evaluateMutation = useMutation({
     mutationFn: () => evaluateAlerts({ branchId }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
   });
 
   if (branchesQuery.isLoading) {

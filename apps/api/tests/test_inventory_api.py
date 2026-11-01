@@ -415,3 +415,107 @@ async def test_drift_and_rebuild_endpoints(admin, branch, db_session: AsyncSessi
     assert rebuilt.status_code == 200, rebuilt.text
     after = await client.get("/api/v1/inventory/drift", params={"branch_id": str(branch.id)})
     assert after.json()["data"]["ok"] is True
+
+
+# ------------------------------ stock settings semantics (RC-A) ------------------------------
+
+
+async def test_stock_settings_numeric_null_is_noop_shelf_clears_only_explicit(
+    admin, branch, db_session: AsyncSession
+):
+    """RC wave-A contract, pinned server-side: numeric NULLs are legacy no-ops
+    (COALESCE keeps the stored value) while shelf_location NULL is the ONLY
+    explicit clear (the _UNSET sentinel distinguishes absent from null). The
+    web settings modal relies on exactly these two halves."""
+    client, csrf = admin
+    med_id = await _make_med(db_session)
+    r = await _receive(client, csrf, branch_id=str(branch.id), medication_id=med_id, qty="50")
+    assert r.status_code == 200, r.text
+
+    h = {"X-CSRF-Token": csrf}
+    url = "/api/v1/inventory/settings"
+    base = {"branch_id": str(branch.id), "medication_id": med_id}
+
+    r = await client.patch(
+        url,
+        headers=h,
+        json={**base, "reorder_point": "10", "max_stock_level": "100", "shelf_location": "b7"},
+    )
+    assert r.status_code == 200, r.text
+
+    # Untouched numeric fields sent as null → stored values survive (COALESCE).
+    # shelf rides along UNCHANGED: a patch with EVERY numeric null and no shelf
+    # is rejected server-side with E-VAL-001 "Nothing to update." (pinned here).
+    r = await client.patch(
+        url,
+        headers=h,
+        json={
+            **base,
+            "reorder_point": None,
+            "min_stock_level": None,
+            "max_stock_level": None,
+            "shelf_location": "b7",
+        },
+    )
+    assert r.status_code == 200, r.text
+    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
+    assert Decimal(row["reorder_point"]) == 10
+    assert Decimal(row["max_stock_level"]) == 100  # NUMERIC serializes "100.000"
+    assert row["shelf_location"] == "B7"  # normalized, unchanged → preserved
+
+    # ABSENT shelf key (exclude_unset) → also a no-op, never a clear.
+    r = await client.patch(url, headers=h, json={**base, "min_stock_level": "5"})
+    assert r.status_code == 200, r.text
+    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
+    assert row["shelf_location"] == "B7"
+    assert Decimal(row["max_stock_level"]) == 100  # untouched numeric again preserved
+
+    # Explicit shelf null is the ONLY clear path.
+    r = await client.patch(url, headers=h, json={**base, "shelf_location": None})
+    assert r.status_code == 200, r.text
+    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
+    assert row["shelf_location"] is None
+    assert Decimal(row["max_stock_level"]) == 100
+
+    # …and an all-null patch WITHOUT any meaningful field is rejected outright.
+    r = await client.patch(
+        url,
+        headers=h,
+        json={
+            **base,
+            "reorder_point": None,
+            "min_stock_level": None,
+            "max_stock_level": None,
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["message"] == "Nothing to update."
+
+
+async def test_list_inventory_exposes_max_stock_level(admin, branch, db_session: AsyncSession):
+    """RC wave-A: the stock-on-hand list carries max_stock_level so the web
+    settings modal can PRE-FILL it (it previously showed blank and the value
+    looked lost even though COALESCE kept it server-side)."""
+    client, csrf = admin
+    med_id = await _make_med(db_session)
+    r = await _receive(client, csrf, branch_id=str(branch.id), medication_id=med_id)
+    assert r.status_code == 200, r.text
+
+    r = await client.patch(
+        "/api/v1/inventory/settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "branch_id": str(branch.id),
+            "medication_id": med_id,
+            "max_stock_level": "100",
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    assert listed.status_code == 200, listed.text
+    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
+    assert Decimal(row["max_stock_level"]) == 100  # NUMERIC serializes "100.000"

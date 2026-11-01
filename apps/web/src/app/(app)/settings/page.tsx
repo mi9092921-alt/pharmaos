@@ -137,6 +137,19 @@ export default function SettingsPage() {
     );
   }
 
+  // Settings load FAILED for an existing branch: never offer the save form on
+  // BLANK defaults — an editor hitting Save here would wipe real settings.
+  if (settingsQuery.isError) {
+    return (
+      <div className="mx-auto max-w-md py-12 text-center space-y-4">
+        <p className="text-danger font-medium">{formatApiErrorMessage(settingsQuery.error)}</p>
+        <Button variant="outline" onClick={() => void settingsQuery.refetch()}>
+          {t('common.retry')}
+        </Button>
+      </div>
+    );
+  }
+
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   return (

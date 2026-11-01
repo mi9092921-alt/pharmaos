@@ -183,9 +183,7 @@ export default function UsersPage() {
                 <Button type="submit" disabled={createMut.isPending}>
                   {createMut.isPending ? t('users.creating') : t('users.create')}
                 </Button>
-                {formError && (
-                  <span className="text-sm text-danger">{t(`errors.${formError}`)}</span>
-                )}
+                {formError && <span className="text-sm text-danger">{formError}</span>}
               </div>
             </form>
           </CardContent>
