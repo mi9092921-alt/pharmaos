@@ -25,6 +25,7 @@ import {
   type StocktakeSession,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
+import { formatDateTime } from '@/lib/format';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 import { Badge, Button, Card, CardContent, Input, Label, Select, Spinner } from '@pharmaos/ui';
@@ -385,7 +386,10 @@ function CountScreen({
               ))}
             </Select>
           </div>
-          <Button onClick={() => commitQty()} disabled={!target || countMut.isPending}>
+          <Button
+            onClick={() => commitQty()}
+            disabled={!target || !qty.trim() || !Number.isFinite(Number(qty)) || countMut.isPending}
+          >
             {t('stocktake.record')}
           </Button>
         </CardContent>
@@ -644,38 +648,48 @@ function HistoryScreen({
       </div>
       <Card>
         <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs text-slate-500">
-                <th className="p-2 text-start">{t('stocktake.col_type')}</th>
-                <th className="p-2 text-start">{t('stocktake.col_status')}</th>
-                <th className="p-2 text-start">{t('stocktake.col_progress')}</th>
-                <th className="p-2 text-start">{t('stocktake.col_started')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((s) => (
-                <tr
-                  key={s.id}
-                  className="cursor-pointer border-b border-border hover:bg-slate-50"
-                  onClick={() => onOpen(s.id, s.status)}
-                >
-                  <td className="p-2">
-                    <TypeLabel type={s.session_type} />
-                  </td>
-                  <td className="p-2">
-                    <StatusBadge status={s.status} />
-                  </td>
-                  <td className="p-2 tabular-nums">
-                    {s.lines_counted}/{s.lines_expected}
-                  </td>
-                  <td className="p-2 text-xs text-slate-500">
-                    {s.started_at ? new Date(s.started_at).toLocaleString() : '—'}
-                  </td>
+          {sessionsQuery.isLoading ? (
+            <div className="flex justify-center py-10">
+              <Spinner />
+            </div>
+          ) : sessions.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-500">
+              {t('stocktake.history_empty')}
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-slate-500">
+                  <th className="p-2 text-start">{t('stocktake.col_type')}</th>
+                  <th className="p-2 text-start">{t('stocktake.col_status')}</th>
+                  <th className="p-2 text-start">{t('stocktake.col_progress')}</th>
+                  <th className="p-2 text-start">{t('stocktake.col_started')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sessions.map((s) => (
+                  <tr
+                    key={s.id}
+                    className="cursor-pointer border-b border-border hover:bg-slate-50"
+                    onClick={() => onOpen(s.id, s.status)}
+                  >
+                    <td className="p-2">
+                      <TypeLabel type={s.session_type} />
+                    </td>
+                    <td className="p-2">
+                      <StatusBadge status={s.status} />
+                    </td>
+                    <td className="p-2 tabular-nums">
+                      {s.lines_counted}/{s.lines_expected}
+                    </td>
+                    <td className="p-2 text-xs text-slate-500">
+                      {s.started_at ? formatDateTime(s.started_at) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
     </div>
