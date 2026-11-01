@@ -12,6 +12,7 @@ import {
   markNotificationRead,
   type NotificationRow,
 } from '@/lib/api';
+import { formatDateTime } from '@/lib/format';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
@@ -165,7 +166,7 @@ export default function NotificationsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-900">{renderBody(row)}</p>
                   <p className="text-xs text-slate-400">
-                    {new Date(row.created_at).toLocaleString()}
+                    {formatDateTime(row.created_at)}
                     {row.channel === 'email' && !row.sent_at && (
                       <span className="ms-2">{t('notifications.pending_email')}</span>
                     )}

@@ -17,7 +17,9 @@ const buttonVariants = cva(
         ghost: 'text-slate-700 hover:bg-primary-50 hover:text-primary-700',
       },
       size: {
-        sm: 'h-8 px-3',
+        // h-9 minimum: pharmacy-floor tap targets (POS cart rows, table
+        // actions) — wave UX-1 raised the dense size from h-8 (32px).
+        sm: 'h-9 px-3',
         md: 'h-10 px-4',
         lg: 'h-12 px-6 text-base',
       },

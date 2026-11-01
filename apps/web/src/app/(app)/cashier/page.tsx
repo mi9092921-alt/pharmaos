@@ -26,6 +26,7 @@ import {
   openCashSession,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
+import { formatMoney, currencySymbol } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
@@ -144,7 +145,9 @@ export default function CashierPage() {
                 </span>
                 <span>
                   {t('cashier.float')}:{' '}
-                  <span className="tabular-nums">{session.opening_float}</span> {currency}
+                  <span className="tabular-nums">
+                    {formatMoney(session.opening_float, currency)}
+                  </span>
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -214,7 +217,7 @@ export default function CashierPage() {
               <p className="w-full text-sm text-slate-500">{t('cashier.no_session')}</p>
               <div className="flex flex-col gap-1.5">
                 <Label>
-                  {t('cashier.opening_float')} ({currency})
+                  {t('cashier.opening_float')} ({currencySymbol(currency)})
                 </Label>
                 <Input
                   inputMode="decimal"

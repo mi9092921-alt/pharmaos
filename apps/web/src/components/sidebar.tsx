@@ -28,7 +28,10 @@ export function Sidebar() {
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
         <span className="text-xl font-extrabold text-primary-600">{t('app.name')}</span>
       </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      {/* min-h-0 lets the nav scroll internally when items exceed the
+          viewport (aside height = shell h-screen stretch), same contract as
+          <main> in the (app) layout. */}
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
         {visible.map((item) => {
           const active = pathname === item.href;
           const label = t(item.labelKey);
@@ -49,6 +52,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              aria-current={active ? 'page' : undefined}
               className={cn(
                 'block rounded-[var(--radius-md)] px-3 py-2 text-sm font-medium transition-colors',
                 active ? 'bg-primary-50 text-primary-700' : 'text-slate-700 hover:bg-primary-50',
