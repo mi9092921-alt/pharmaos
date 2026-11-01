@@ -197,7 +197,8 @@ async def adjust_batch(
 ) -> dict[str, object]:
     """Manual adjustment (count correction / damage) — reason is mandatory, audited."""
     enforce_csrf(request)
-    batch = await svc.get_batch(session, batch_id)
+    # F2: lock the row — absolute-quantity write must not race a concurrent sale.
+    batch = await svc.get_batch(session, batch_id, for_update=True)
     batch = await svc.adjust_batch(
         session, actor=actor, batch=batch, quantity_delta=body.quantity_delta, reason=body.reason
     )
@@ -215,7 +216,8 @@ async def set_batch_status(
 ) -> dict[str, object]:
     """Change batch status. Quarantine/recall removes the batch from sellable stock."""
     enforce_csrf(request)
-    batch = await svc.get_batch(session, batch_id)
+    # F2: lock the row — status + cache must not race a concurrent sale.
+    batch = await svc.get_batch(session, batch_id, for_update=True)
     batch = await svc.set_batch_status(
         session, actor=actor, batch=batch, status=body.status, reason=body.reason
     )
@@ -326,7 +328,12 @@ async def import_shelf_locations(
         wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
         ws = wb.active
         iterator = ws.iter_rows(values_only=True)
-        header = [str(h).strip().lower() if h is not None else "" for h in next(iterator)]
+        header_row = next(iterator, None)
+        if header_row is None:
+            # an EMPTY sheet used to surface as the generic "Unreadable
+            # workbook." — name the actual problem instead (F5).
+            raise ValueError("sheet is empty: expected a header row")
+        header = [str(h).strip().lower() if h is not None else "" for h in header_row]
         missing = [c for c in svc.SHELF_IMPORT_COLUMNS if c not in header]
         if missing:
             raise ValueError(f"missing columns: {missing}")
