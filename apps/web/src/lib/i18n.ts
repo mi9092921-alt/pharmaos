@@ -925,6 +925,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 
     // Reports (P3-M1 sales + P3-M2 inventory)
     'reports.title': 'التقارير',
+    'reports.range_invalid': '«من تاريخ» بعد «إلى تاريخ» — صحّح المدى ثم أعد البحث',
     'reports.branch': 'الفرع',
     'reports.tab_sales': 'المبيعات',
     'reports.tab_inventory': 'المخزون',
@@ -2041,6 +2042,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 
     // Reports (P3-M1 sales + P3-M2 inventory)
     'reports.title': 'Reports',
+    'reports.range_invalid': '"From" is after "To" — fix the range and search again',
     'reports.branch': 'Branch',
     'reports.tab_sales': 'Sales',
     'reports.tab_inventory': 'Inventory',

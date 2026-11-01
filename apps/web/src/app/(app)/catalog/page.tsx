@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button, Card, CardContent, Input, Label, Select, Spinner } from '@pharmaos/ui';
+import { Badge, Button, Card, CardContent, Input, Label, QueryState, Select } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -8,7 +8,7 @@ import { CatalogImportModal } from '@/components/catalog-import-modal';
 import { MedicationEditor } from '@/components/medication-editor';
 import { ApiRequestError, apiFetch, catalogExportUrl, listInventoryBranches } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
 interface Med {
@@ -167,13 +167,15 @@ export default function CatalogPage() {
 
       <Card>
         <CardContent className="pt-6">
-          {medsQuery.isLoading ? (
-            <div className="flex justify-center py-8">
-              <Spinner />
-            </div>
-          ) : (medsQuery.data ?? []).length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">{t('catalog.empty')}</p>
-          ) : (
+          <QueryState
+            isLoading={medsQuery.isLoading}
+            isError={medsQuery.isError}
+            onRetry={() => void medsQuery.refetch()}
+            errorText={medsQuery.error ? formatApiErrorMessage(medsQuery.error) : ''}
+            retryLabel={t('common.retry')}
+            isEmpty={(medsQuery.data ?? []).length === 0}
+            emptyText={t('catalog.empty')}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-slate-500">
@@ -211,7 +213,7 @@ export default function CatalogPage() {
                 ))}
               </tbody>
             </table>
-          )}
+          </QueryState>
         </CardContent>
       </Card>
 
