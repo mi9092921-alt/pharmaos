@@ -33,6 +33,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'stocktake.no_permission': 'لا تملك صلاحية العد',
     'stocktake.history': 'سجل الجلسات',
     'stocktake.new_session': 'جلسة جديدة',
+    'stocktake.history_empty': 'لا جلسات جرد بعد — ابدأ أول جلسة من الزر أعلاه',
     'stocktake.session_type': 'نوع الجلسة',
     'stocktake.type_daily_quick': 'جرد يومي سريع',
     'stocktake.type_weekly_cycle': 'جرد أسبوعي بالمناطق',
@@ -1053,6 +1054,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.rule_backup_overdue': 'نسخ احتياطي متأخر',
     'alerts.rule_inventory_drift': 'انحراف مخزون',
     'alerts.rule_missing_location': 'أدوية بلا مكان',
+    'alerts.rule_stocktake_overdue': 'الجرد متأخر',
     'alerts.msg_low_stock':
       '{name}: المتوفر {quantity} عند أو دون حد إعادة الطلب ({reorder_point})',
     'alerts.msg.low_stock':
@@ -1081,8 +1083,10 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.msg.backup_overdue': 'آخر نسخة احتياطية أقدم من {hours} ساعة (أو لا توجد)',
     'alerts.msg_inventory_drift': 'انحراف مخزون: الكاش {cached} مقابل حقيقة الدفعات {truth}',
     'alerts.msg.inventory_drift': 'انحراف مخزون: الكاش {cached} مقابل حقيقة الدفعات {truth}',
-    'alerts.msg_missing_location': '{count} أصناف بمخزون بلا مكان مسجل',
-    'alerts.msg.missing_location': '{count} أصناف بمخزون بلا مكان مسجل',
+    'alerts.msg_missing_location': 'يوجد {count} من الأصناف بمخزون بلا مكان مسجل',
+    'alerts.msg.missing_location': 'يوجد {count} من الأصناف بمخزون بلا مكان مسجل',
+    'alerts.msg_stocktake_overdue': 'لم يُعتمد جرد منذ {days} يوماً (أو لا يوجد جرد معتمد)',
+    'alerts.msg.stocktake_overdue': 'لم يُعتمد جرد منذ {days} يوماً (أو لا يوجد جرد معتمد)',
 
     // P3-M7 — notifications (delivery; alerts = state)
     'notifications.title': 'الإشعارات',
@@ -1117,6 +1121,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'stocktake.no_permission': 'You do not have the counting permission',
     'stocktake.history': 'Session history',
     'stocktake.new_session': 'New session',
+    'stocktake.history_empty': 'No stocktake sessions yet — start the first one above',
     'stocktake.session_type': 'Session type',
     'stocktake.type_daily_quick': 'Daily quick count',
     'stocktake.type_weekly_cycle': 'Weekly zone cycle',
@@ -2143,6 +2148,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.rule_backup_overdue': 'Backup overdue',
     'alerts.rule_inventory_drift': 'Inventory drift',
     'alerts.rule_missing_location': 'Medications without location',
+    'alerts.rule_stocktake_overdue': 'Stocktake overdue',
     'alerts.msg_low_stock': '{name}: {quantity} on hand, at/below reorder point ({reorder_point})',
     'alerts.msg.low_stock': '{name}: {quantity} on hand, at/below reorder point ({reorder_point})',
     'alerts.msg_out_of_stock': '{name}: completely out of stock',
@@ -2171,6 +2177,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'alerts.msg.inventory_drift': 'Inventory drift: cache {cached} vs batch truth {truth}',
     'alerts.msg_missing_location': '{count} stocked SKU(s) with no recorded location',
     'alerts.msg.missing_location': '{count} stocked SKU(s) with no recorded location',
+    'alerts.msg_stocktake_overdue': 'No approved stocktake for {days} day(s) (or none yet)',
+    'alerts.msg.stocktake_overdue': 'No approved stocktake for {days} day(s) (or none yet)',
 
     // P3-M7 — notifications (delivery; alerts = state)
     'notifications.title': 'Notifications',
