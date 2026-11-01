@@ -4,6 +4,14 @@ import * as React from 'react';
 
 import { cn } from './cn';
 
+/**
+ * Overlay registry — modal nesting support (RC-A phase 3): Escape closes ONLY
+ * the topmost overlay, and the backdrop click belongs to it too. Without this,
+ * a ConfirmDialog stacked over an editor Modal closes BOTH on one Escape.
+ */
+const overlayStack: number[] = [];
+let overlaySeq = 0;
+
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -19,15 +27,23 @@ export interface ModalProps {
  */
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
   const ref = React.useRef<HTMLDivElement>(null);
+  const idRef = React.useRef<number>(0);
 
   React.useEffect(() => {
     if (!open) return;
+    const id = ++overlaySeq;
+    idRef.current = id;
+    overlayStack.push(id);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && overlayStack[overlayStack.length - 1] === id) onClose();
     };
     document.addEventListener('keydown', onKey);
     ref.current?.focus();
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      const at = overlayStack.indexOf(id);
+      if (at >= 0) overlayStack.splice(at, 1);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -35,7 +51,11 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onMouseDown={onClose}
+      onMouseDown={() => {
+        // Backdrop close belongs to THIS overlay only when it is the topmost
+        // (the dialog content stopPropagation already shields inner clicks).
+        if (overlayStack[overlayStack.length - 1] === idRef.current) onClose();
+      }}
     >
       <div
         ref={ref}

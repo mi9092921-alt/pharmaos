@@ -1119,6 +1119,7 @@ function ExpiryAlertsTab({ branchId, canAdjust }: { branchId: string; canAdjust:
     queryFn: () => getExpiryAlerts(branchId),
     enabled: !!branchId,
   });
+  const [confirmSweep, setConfirmSweep] = useState(false);
   const sweep = useMutation({
     mutationFn: runExpirySweep,
     onSuccess: (data) => {
@@ -1149,14 +1150,29 @@ function ExpiryAlertsTab({ branchId, canAdjust }: { branchId: string; canAdjust:
           {t('inventory.expiry_as_of')}: <span className="tabular-nums">{data.as_of}</span>
         </p>
         {canAdjust && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => sweep.mutate()}
-            disabled={sweep.isPending}
-          >
-            {t('inventory.run_sweep')}
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmSweep(true)}
+              disabled={sweep.isPending}
+            >
+              {t('inventory.run_sweep')}
+            </Button>
+            <ConfirmDialog
+              open={confirmSweep}
+              onClose={() => setConfirmSweep(false)}
+              onConfirm={() => {
+                sweep.mutate();
+                setConfirmSweep(false);
+              }}
+              pending={sweep.isPending}
+              title={t('inventory.run_sweep')}
+              message={t('confirm.expiry_sweep.body')}
+              confirmLabel={t('inventory.run_sweep')}
+              cancelLabel={t('users.cancel')}
+            />
+          </>
         )}
       </div>
 

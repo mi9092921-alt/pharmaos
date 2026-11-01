@@ -24,7 +24,17 @@ import {
 import { useAuth } from '@/lib/auth-store';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
-import { Badge, Button, Card, CardContent, Label, Modal, Select, Spinner } from '@pharmaos/ui';
+import {
+  ConfirmDialog,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Label,
+  Modal,
+  Select,
+  Spinner,
+} from '@pharmaos/ui';
 
 const STATUSES = ['open', 'ordered', 'received', 'unavailable', 'cancelled'] as const;
 
@@ -73,6 +83,10 @@ export default function ShortagesPage() {
     }
   }, [canEdit, branchId, syncMut]);
 
+  const [bulkConfirm, setBulkConfirm] = useState<{
+    action: 'mark_unavailable' | 'cancel';
+    count: number;
+  } | null>(null);
   const bulkMut = useMutation({
     mutationFn: (input: { ids: string[]; action: string; supplierId?: string }) =>
       bulkShortages(branchId, input.ids, input.action, input.supplierId),
@@ -172,7 +186,7 @@ export default function ShortagesPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => bulkMut.mutate({ ids: [...selected], action: 'mark_unavailable' })}
+              onClick={() => setBulkConfirm({ action: 'mark_unavailable', count: selected.size })}
             >
               {t('shortages.mark_unavailable')}
             </Button>
@@ -186,10 +200,34 @@ export default function ShortagesPage() {
             <Button
               size="sm"
               variant="danger"
-              onClick={() => bulkMut.mutate({ ids: [...selected], action: 'cancel' })}
+              onClick={() => setBulkConfirm({ action: 'cancel', count: selected.size })}
             >
               {t('shortages.cancel')}
             </Button>
+            <ConfirmDialog
+              open={bulkConfirm !== null}
+              onClose={() => setBulkConfirm(null)}
+              onConfirm={() => {
+                if (bulkConfirm) bulkMut.mutate({ ids: [...selected], action: bulkConfirm.action });
+                setBulkConfirm(null);
+              }}
+              pending={bulkMut.isPending}
+              title={
+                bulkConfirm?.action === 'cancel'
+                  ? t('shortages.cancel')
+                  : t('shortages.mark_unavailable')
+              }
+              message={t('confirm.shortage_bulk.body').replace(
+                '{count}',
+                String(bulkConfirm?.count ?? 0),
+              )}
+              confirmLabel={
+                bulkConfirm?.action === 'cancel'
+                  ? t('shortages.cancel')
+                  : t('shortages.mark_unavailable')
+              }
+              cancelLabel={t('users.cancel')}
+            />
           </CardContent>
         </Card>
       )}
@@ -247,21 +285,27 @@ export default function ShortagesPage() {
                     <td className="p-2 tabular-nums">
                       {row.ask_count}
                       {row.status === 'unavailable' && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="ms-1"
-                          onClick={async () => {
-                            try {
-                              await shortageAskAgain(branchId, row.id);
-                              queryClient.invalidateQueries({ queryKey: ['shortages', branchId] });
-                            } catch (e) {
-                              onErr(e);
-                            }
-                          }}
-                        >
-                          {t('shortages.asked_again')}
-                        </Button>
+                        <>
+                          {canEdit && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="ms-1"
+                              onClick={async () => {
+                                try {
+                                  await shortageAskAgain(branchId, row.id);
+                                  queryClient.invalidateQueries({
+                                    queryKey: ['shortages', branchId],
+                                  });
+                                } catch (e) {
+                                  onErr(e);
+                                }
+                              }}
+                            >
+                              {t('shortages.asked_again')}
+                            </Button>
+                          )}
+                        </>
                       )}
                     </td>
                   )}

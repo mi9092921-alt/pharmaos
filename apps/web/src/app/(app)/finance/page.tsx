@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   DateInput,
   Input,
   Label,
@@ -103,6 +104,7 @@ function ExpensesTab() {
   const [dateTo, setDateTo] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<ExpenseRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ExpenseRow | null>(null);
 
   const branchesQuery = useQuery({ queryKey: ['inv-branches'], queryFn: listInventoryBranches });
   const branches = branchesQuery.data ?? [];
@@ -269,7 +271,7 @@ function ExpensesTab() {
                               size="sm"
                               variant="danger"
                               disabled={deleteMut.isPending}
-                              onClick={() => deleteMut.mutate(r.id)}
+                              onClick={() => setDeleteTarget(r)}
                             >
                               {t('finance.delete')}
                             </Button>
@@ -304,6 +306,22 @@ function ExpensesTab() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMut.mutate(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+        pending={deleteMut.isPending}
+        title={t('finance.delete')}
+        message={t('confirm.delete_expense.body')
+          .replace('{amount}', deleteTarget?.amount ?? '')
+          .replace('{desc}', deleteTarget?.description ?? t('finance.expenses_empty'))}
+        confirmLabel={t('finance.delete')}
+        cancelLabel={t('users.cancel')}
+      />
       {editTarget && (
         <ExpenseFormModal
           target={editTarget}

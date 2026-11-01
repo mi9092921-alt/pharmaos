@@ -1,6 +1,16 @@
 'use client';
 
-import { Badge, Button, Card, CardContent, Input, Label, Modal, Spinner } from '@pharmaos/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  ConfirmDialog,
+  Input,
+  Label,
+  Modal,
+  Spinner,
+} from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -273,6 +283,7 @@ function CustomerDetailModal({
 
   const [delta, setDelta] = useState('');
   const [reason, setReason] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['customer', customerId] });
@@ -317,116 +328,132 @@ function CustomerDetailModal({
           <Spinner />
         </div>
       ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <Field label={t('customers.phone')} value={c.phone ?? '—'} />
-            <Field label={t('customers.points')} value={String(c.loyalty_points)} />
-            <Field label={t('customers.national_id')} value={c.national_id ?? '—'} />
-            <Field label={t('customers.insurance_number')} value={c.insurance_number ?? '—'} />
-            {c.notes && <Field label={t('customers.notes')} value={c.notes} />}
+        <>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <Field label={t('customers.phone')} value={c.phone ?? '—'} />
+              <Field label={t('customers.points')} value={String(c.loyalty_points)} />
+              <Field label={t('customers.national_id')} value={c.national_id ?? '—'} />
+              <Field label={t('customers.insurance_number')} value={c.insurance_number ?? '—'} />
+              {c.notes && <Field label={t('customers.notes')} value={c.notes} />}
+            </div>
+
+            {/* Loyalty */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-800">{t('customers.loyalty')}</h2>
+                <Badge tone="primary">
+                  {t('customers.balance')}: {loyalty?.balance ?? c.loyalty_points}
+                </Badge>
+              </div>
+              {canEdit && (
+                <form
+                  className="flex flex-wrap items-end gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (Number(delta) !== 0 && reason.trim()) adjustMut.mutate();
+                  }}
+                >
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t('customers.adjust_points')}</Label>
+                    <Input
+                      className="w-28"
+                      inputMode="numeric"
+                      value={delta}
+                      onChange={(e) => setDelta(e.target.value)}
+                      placeholder="+50 / -20"
+                    />
+                  </div>
+                  <div className="min-w-40 flex-1 space-y-1">
+                    <Label className="text-xs">{t('customers.reason')}</Label>
+                    <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+                  </div>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    disabled={Number(delta) === 0 || !reason.trim() || adjustMut.isPending}
+                  >
+                    {t('customers.adjust')}
+                  </Button>
+                </form>
+              )}
+              {loyaltyQuery.isLoading ? (
+                <Spinner />
+              ) : (loyalty?.transactions.length ?? 0) === 0 ? (
+                <p className="text-xs text-slate-500">{t('customers.no_transactions')}</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {loyalty?.transactions.map((tx) => (
+                      <tr key={tx.id} className="border-b border-border/60">
+                        <td className="p-2">
+                          <Badge tone={TXN_TONE[tx.txn_type] ?? 'neutral'}>
+                            {t(`customers.txn_${tx.txn_type}`)}
+                          </Badge>
+                        </td>
+                        <td className="p-2 tabular-nums font-medium">
+                          {tx.points_delta > 0 ? `+${tx.points_delta}` : tx.points_delta}
+                        </td>
+                        <td className="p-2 text-slate-500">{tx.reason ?? '—'}</td>
+                        <td className="p-2 text-xs text-slate-400">{tx.created_at.slice(0, 10)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+
+            {/* Purchase history */}
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-slate-800">{t('customers.history')}</h2>
+              {history.length === 0 ? (
+                <p className="text-xs text-slate-500">{t('customers.no_history')}</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {history.map((h) => (
+                      <tr key={h.invoice_id} className="border-b border-border/60">
+                        <td className="p-2 font-mono text-slate-700">{h.invoice_number}</td>
+                        <td className="p-2 text-xs text-slate-400">{h.created_at.slice(0, 10)}</td>
+                        <td className="p-2 tabular-nums text-slate-800">
+                          {h.total} {h.currency_code}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+
+            {canDelete && (
+              <div className="flex justify-end border-t border-border pt-4">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={deleteMut.isPending}
+                >
+                  {t('customers.delete')}
+                </Button>
+              </div>
+            )}
           </div>
 
-          {/* Loyalty */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-800">{t('customers.loyalty')}</h2>
-              <Badge tone="primary">
-                {t('customers.balance')}: {loyalty?.balance ?? c.loyalty_points}
-              </Badge>
-            </div>
-            {canEdit && (
-              <form
-                className="flex flex-wrap items-end gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (Number(delta) !== 0 && reason.trim()) adjustMut.mutate();
-                }}
-              >
-                <div className="space-y-1">
-                  <Label className="text-xs">{t('customers.adjust_points')}</Label>
-                  <Input
-                    className="w-28"
-                    inputMode="numeric"
-                    value={delta}
-                    onChange={(e) => setDelta(e.target.value)}
-                    placeholder="+50 / -20"
-                  />
-                </div>
-                <div className="min-w-40 flex-1 space-y-1">
-                  <Label className="text-xs">{t('customers.reason')}</Label>
-                  <Input value={reason} onChange={(e) => setReason(e.target.value)} />
-                </div>
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="outline"
-                  disabled={Number(delta) === 0 || !reason.trim() || adjustMut.isPending}
-                >
-                  {t('customers.adjust')}
-                </Button>
-              </form>
-            )}
-            {loyaltyQuery.isLoading ? (
-              <Spinner />
-            ) : (loyalty?.transactions.length ?? 0) === 0 ? (
-              <p className="text-xs text-slate-500">{t('customers.no_transactions')}</p>
-            ) : (
-              <table className="w-full text-sm">
-                <tbody>
-                  {loyalty?.transactions.map((tx) => (
-                    <tr key={tx.id} className="border-b border-border/60">
-                      <td className="p-2">
-                        <Badge tone={TXN_TONE[tx.txn_type] ?? 'neutral'}>
-                          {t(`customers.txn_${tx.txn_type}`)}
-                        </Badge>
-                      </td>
-                      <td className="p-2 tabular-nums font-medium">
-                        {tx.points_delta > 0 ? `+${tx.points_delta}` : tx.points_delta}
-                      </td>
-                      <td className="p-2 text-slate-500">{tx.reason ?? '—'}</td>
-                      <td className="p-2 text-xs text-slate-400">{tx.created_at.slice(0, 10)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          {/* Purchase history */}
-          <section className="space-y-2">
-            <h2 className="text-sm font-semibold text-slate-800">{t('customers.history')}</h2>
-            {history.length === 0 ? (
-              <p className="text-xs text-slate-500">{t('customers.no_history')}</p>
-            ) : (
-              <table className="w-full text-sm">
-                <tbody>
-                  {history.map((h) => (
-                    <tr key={h.invoice_id} className="border-b border-border/60">
-                      <td className="p-2 font-mono text-slate-700">{h.invoice_number}</td>
-                      <td className="p-2 text-xs text-slate-400">{h.created_at.slice(0, 10)}</td>
-                      <td className="p-2 tabular-nums text-slate-800">
-                        {h.total} {h.currency_code}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          {canDelete && (
-            <div className="flex justify-end border-t border-border pt-4">
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => deleteMut.mutate()}
-                disabled={deleteMut.isPending}
-              >
-                {t('customers.delete')}
-              </Button>
-            </div>
-          )}
-        </div>
+          <ConfirmDialog
+            open={confirmDelete}
+            onClose={() => setConfirmDelete(false)}
+            onConfirm={() => {
+              deleteMut.mutate();
+              setConfirmDelete(false);
+            }}
+            pending={deleteMut.isPending}
+            title={t('customers.delete')}
+            message={t('confirm.delete_customer.body').replace('{name}', c?.name ?? '')}
+            confirmLabel={t('customers.delete')}
+            cancelLabel={t('users.cancel')}
+          />
+        </>
       )}
     </Modal>
   );

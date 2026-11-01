@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ConfirmDialog,
   Badge,
   Button,
   Card,
@@ -136,6 +137,7 @@ function CreateReturnTab({ branchId }: { branchId: string }) {
     onError: onErr,
   });
 
+  const [confirmCreate, setConfirmCreate] = useState(false);
   const createMut = useMutation({
     mutationFn: () => {
       if (!invoice) throw new Error('no invoice selected');
@@ -162,6 +164,12 @@ function CreateReturnTab({ branchId }: { branchId: string }) {
   });
 
   const totalQty = Object.values(quantities).reduce((sum, v) => sum + (Number(v) || 0), 0);
+  // Estimated credit-note total for the confirmation dialog (server total is
+  // authoritative after creation — this is a display-only heads-up).
+  const estTotal = Object.entries(quantities).reduce((sum, [itemId, q]) => {
+    const line = invoice?.lines.find((l) => l.invoice_item_id === itemId);
+    return sum + (Number(q) || 0) * Number(line?.unit_price ?? 0);
+  }, 0);
 
   if (created) {
     return (
@@ -285,7 +293,7 @@ function CreateReturnTab({ branchId }: { branchId: string }) {
                       e.preventDefault();
                       // isPending guard lives IN the handler: keyboard submit
                       // (Enter) bypasses the button's disabled state.
-                      if (totalQty > 0 && !createMut.isPending) createMut.mutate();
+                      if (totalQty > 0 && !createMut.isPending) setConfirmCreate(true);
                     }}
                   >
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -319,6 +327,20 @@ function CreateReturnTab({ branchId }: { branchId: string }) {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={confirmCreate}
+        onClose={() => setConfirmCreate(false)}
+        onConfirm={() => {
+          createMut.mutate();
+          setConfirmCreate(false);
+        }}
+        pending={createMut.isPending}
+        title={t('returns.create')}
+        message={t('confirm.create_return.body').replace('{total}', estTotal.toFixed(2))}
+        confirmLabel={t('returns.create')}
+        cancelLabel={t('users.cancel')}
+      />
     </div>
   );
 }

@@ -120,6 +120,16 @@ export default function ReportsPage() {
     return <p className="py-10 text-center text-slate-500">{t('inventory.no_branch')}</p>;
   }
 
+  // No report tier at all → actionable unauthorized state (not a blank body).
+  if (availableTabs.length === 0) {
+    return (
+      <div className="mx-auto max-w-md space-y-3 py-16 text-center">
+        <p className="text-lg font-semibold text-slate-800">{t('errors.E-AUTH-002')}</p>
+        <p className="text-sm text-slate-500">{t('require_permission.hint')}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">

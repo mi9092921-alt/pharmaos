@@ -2,6 +2,7 @@
 
 import { SystemRole } from '@pharmaos/shared';
 import {
+  ConfirmDialog,
   Badge,
   Button,
   Card,
@@ -87,6 +88,9 @@ export default function UsersPage() {
     },
   });
 
+  const [roleConfirm, setRoleConfirm] = useState<{ id: string; role: string; name: string } | null>(
+    null,
+  );
   const roleMut = useMutation({
     mutationFn: (v: { id: string; role: string }) => changeUserRole(v.id, v.role),
     onSuccess: invalidate,
@@ -229,7 +233,9 @@ export default function UsersPage() {
                           value={u.role ?? ''}
                           disabled={isSelf}
                           title={isSelf ? t('users.cannot_modify_self') : undefined}
-                          onChange={(e) => roleMut.mutate({ id: u.id, role: e.target.value })}
+                          onChange={(e) =>
+                            setRoleConfirm({ id: u.id, role: e.target.value, name: u.full_name })
+                          }
                         >
                           {ROLE_CODES.map((code) => (
                             <option key={code} value={code}>
@@ -403,6 +409,23 @@ export default function UsersPage() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={roleConfirm !== null}
+        onClose={() => setRoleConfirm(null)}
+        onConfirm={() => {
+          if (roleConfirm) roleMut.mutate({ id: roleConfirm.id, role: roleConfirm.role });
+          setRoleConfirm(null);
+        }}
+        pending={roleMut.isPending}
+        title={t('confirm.change_role.title')}
+        message={t('confirm.change_role.body')
+          .replace('{name}', roleConfirm?.name ?? '')
+          .replace('{role}', roleConfirm ? t(`role.${roleConfirm.role}`) : '')}
+        confirmLabel={t('common.save')}
+        cancelLabel={t('users.cancel')}
+        danger={false}
+      />
     </div>
   );
 }
