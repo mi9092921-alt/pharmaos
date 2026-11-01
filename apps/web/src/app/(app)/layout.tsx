@@ -111,9 +111,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    // App-shell scroll contract: the root is pinned to the viewport (h-screen)
+    // and ONLY <main> scrolls (min-h-0 + overflow-y-auto). `min-h-screen` here
+    // instead let the document grow with long page content — the WINDOW then
+    // scrolled and the sidebar/topbar slid out of view, leaving the sidebar's
+    // stretched white background as an empty strip (it looked "disappeared").
+    // print: variants unpin the shell so full-length receipts still paginate.
+    <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Topbar />
         {setupQuery.data && !setupQuery.data.backup_key_exported && (
           <div
@@ -123,7 +129,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {t('shell.backup_key_warning')}
           </div>
         )}
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        {/* min-h-0 is the linchpin: a flex item defaults to min-height:auto,
+            so without it <main> grows to its content height instead of
+            scrolling, and overflow-y-auto never engages. */}
+        <main className="min-h-0 flex-1 overflow-y-auto p-6 print:overflow-visible">
+          {children}
+        </main>
       </div>
       <Toaster />
     </div>

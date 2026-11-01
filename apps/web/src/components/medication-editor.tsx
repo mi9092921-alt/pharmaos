@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button, Input, Label, Modal, Select, Spinner } from '@pharmaos/ui';
+import { ConfirmDialog, Badge, Button, Input, Label, Modal, Select, Spinner } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -66,6 +66,8 @@ export function MedicationEditor({
   const [form, setForm] = useState<MedForm | null>(null);
   const [levels, setLevels] = useState<PackagingLevelInput[]>([]);
   const [newBarcode, setNewBarcode] = useState('');
+  const [confirmDelMed, setConfirmDelMed] = useState(false);
+  const [confirmDelBc, setConfirmDelBc] = useState<string | null>(null);
   const [newBarcodeType, setNewBarcodeType] = useState<string>('EAN13');
 
   const detail = detailQuery.data;
@@ -379,8 +381,9 @@ export function MedicationEditor({
                   {b.is_primary && <Badge tone="primary">{t('catalog.primary')}</Badge>}
                   <button
                     type="button"
+                    aria-label={t('catalog.barcode_delete')}
                     className="text-danger hover:underline"
-                    onClick={() => delBc.mutate(b.id)}
+                    onClick={() => setConfirmDelBc(b.id)}
                   >
                     ✕
                   </button>
@@ -425,7 +428,7 @@ export function MedicationEditor({
 
           <div className="flex justify-between border-t border-border pt-4">
             {canDelete ? (
-              <Button variant="danger" size="sm" onClick={() => delMed.mutate()}>
+              <Button variant="danger" size="sm" onClick={() => setConfirmDelMed(true)}>
                 {t('catalog.delete')}
               </Button>
             ) : (
@@ -437,6 +440,37 @@ export function MedicationEditor({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelMed}
+        onClose={() => setConfirmDelMed(false)}
+        onConfirm={() => {
+          delMed.mutate();
+          setConfirmDelMed(false);
+        }}
+        pending={delMed.isPending}
+        title={t('catalog.delete')}
+        message={t('confirm.delete_medication.body').replace(
+          '{name}',
+          detail?.trade_name_ar ?? detail?.trade_name ?? '',
+        )}
+        confirmLabel={t('catalog.delete')}
+        cancelLabel={t('catalog.close')}
+      />
+
+      <ConfirmDialog
+        open={confirmDelBc !== null}
+        onClose={() => setConfirmDelBc(null)}
+        onConfirm={() => {
+          if (confirmDelBc) delBc.mutate(confirmDelBc);
+          setConfirmDelBc(null);
+        }}
+        pending={delBc.isPending}
+        title={t('catalog.barcode_delete')}
+        message={t('confirm.delete_barcode.body').replace('{barcode}', confirmDelBc ?? '')}
+        confirmLabel={t('catalog.barcode_delete')}
+        cancelLabel={t('catalog.close')}
+      />
     </Modal>
   );
 }

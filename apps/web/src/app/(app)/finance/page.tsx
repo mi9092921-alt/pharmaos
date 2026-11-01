@@ -1,10 +1,12 @@
 'use client';
 
 import {
+  QueryState,
   Badge,
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   DateInput,
   Input,
   Label,
@@ -30,7 +32,7 @@ import {
   updateExpenseCategory,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
 const errCode = (e: unknown) => (e instanceof ApiRequestError ? e.code : 'E-SYS-001');
@@ -103,6 +105,7 @@ function ExpensesTab() {
   const [dateTo, setDateTo] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<ExpenseRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ExpenseRow | null>(null);
 
   const branchesQuery = useQuery({ queryKey: ['inv-branches'], queryFn: listInventoryBranches });
   const branches = branchesQuery.data ?? [];
@@ -228,13 +231,15 @@ function ExpensesTab() {
 
       <Card>
         <CardContent className="pt-6">
-          {listQuery.isLoading ? (
-            <div className="flex justify-center py-8">
-              <Spinner />
-            </div>
-          ) : rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">{t('finance.expenses_empty')}</p>
-          ) : (
+          <QueryState
+            isLoading={listQuery.isLoading}
+            isError={listQuery.isError}
+            onRetry={() => void listQuery.refetch()}
+            errorText={listQuery.error ? formatApiErrorMessage(listQuery.error) : ''}
+            retryLabel={t('common.retry')}
+            isEmpty={rows.length === 0}
+            emptyText={t('finance.expenses_empty')}
+          >
             <>
               <table className="w-full text-sm">
                 <thead>
@@ -269,7 +274,7 @@ function ExpensesTab() {
                               size="sm"
                               variant="danger"
                               disabled={deleteMut.isPending}
-                              onClick={() => deleteMut.mutate(r.id)}
+                              onClick={() => setDeleteTarget(r)}
                             >
                               {t('finance.delete')}
                             </Button>
@@ -287,7 +292,7 @@ function ExpensesTab() {
                 </span>
               </div>
             </>
-          )}
+          </QueryState>
         </CardContent>
       </Card>
 
@@ -304,6 +309,22 @@ function ExpensesTab() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMut.mutate(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+        pending={deleteMut.isPending}
+        title={t('finance.delete')}
+        message={t('confirm.delete_expense.body')
+          .replace('{amount}', deleteTarget?.amount ?? '')
+          .replace('{desc}', deleteTarget?.description ?? t('finance.expenses_empty'))}
+        confirmLabel={t('finance.delete')}
+        cancelLabel={t('users.cancel')}
+      />
       {editTarget && (
         <ExpenseFormModal
           target={editTarget}

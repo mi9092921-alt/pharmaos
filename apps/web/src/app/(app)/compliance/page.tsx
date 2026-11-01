@@ -35,7 +35,8 @@ function statusBadge(status: string) {
 }
 
 export default function CompliancePage() {
-  const [tab, setTab] = useState<'ereceipts' | 'tt'>('ereceipts');
+  const canEreceipt = useAuth((s) => s.hasPermission('compliance.ereceipt'));
+  const [tab, setTab] = useState<'ereceipts' | 'tt'>(canEreceipt ? 'ereceipts' : 'tt');
   const [branchId, setBranchId] = useState('');
   const canTt = useAuth((s) => s.hasPermission('compliance.tt_report'));
 
@@ -78,9 +79,11 @@ export default function CompliancePage() {
       </p>
 
       <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'ereceipts'} onClick={() => setTab('ereceipts')}>
-          {t('compliance.tab_ereceipts')}
-        </TabButton>
+        {canEreceipt && (
+          <TabButton active={tab === 'ereceipts'} onClick={() => setTab('ereceipts')}>
+            {t('compliance.tab_ereceipts')}
+          </TabButton>
+        )}
         {canTt && (
           <TabButton active={tab === 'tt'} onClick={() => setTab('tt')}>
             {t('compliance.tab_tt')}
@@ -88,10 +91,12 @@ export default function CompliancePage() {
         )}
       </div>
 
-      {tab === 'ereceipts' ? (
+      {tab === 'ereceipts' && canEreceipt ? (
         <EreceiptsTab branchId={branchId} />
-      ) : (
+      ) : canTt ? (
         <TtEventsTab branchId={branchId} />
+      ) : (
+        <p className="py-10 text-center text-sm text-slate-500">{t('errors.E-AUTH-002')}</p>
       )}
     </div>
   );
@@ -121,6 +126,7 @@ function TabButton({
 }
 
 function EreceiptsTab({ branchId }: { branchId: string }) {
+  const canDrain = useAuth((s) => s.hasPermission('compliance.ereceipt'));
   const qc = useQueryClient();
   const listQuery = useQuery({
     queryKey: ['ereceipts', branchId],
@@ -150,9 +156,11 @@ function EreceiptsTab({ branchId }: { branchId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => drainMut.mutate()} disabled={drainMut.isPending}>
-          {drainMut.isPending ? t('compliance.draining') : t('compliance.drain')}
-        </Button>
+        {canDrain && (
+          <Button onClick={() => drainMut.mutate()} disabled={drainMut.isPending}>
+            {drainMut.isPending ? t('compliance.draining') : t('compliance.drain')}
+          </Button>
+        )}
       </div>
       <Card>
         <CardContent className="pt-6">

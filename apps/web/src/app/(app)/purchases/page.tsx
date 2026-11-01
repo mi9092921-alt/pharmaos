@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ConfirmDialog,
   Badge,
   Button,
   Card,
@@ -34,9 +35,19 @@ import {
   type SupplierDetail,
 } from '@/lib/api';
 import { t } from '@/lib/i18n';
+import { RequirePermission } from '@/components/require-permission';
+import { useAuth } from '@/lib/auth-store';
 import { toast } from '@/lib/toast-store';
 
 export default function PurchasesPage() {
+  return (
+    <RequirePermission permission="purchases.view">
+      <PurchasesShell />
+    </RequirePermission>
+  );
+}
+
+function PurchasesShell() {
   const [tab, setTab] = useState<'orders' | 'suppliers'>('orders');
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -92,6 +103,7 @@ function OrderStatusBadge({ status }: { status: string }) {
 }
 
 function OrdersTab() {
+  const canCreatePo = useAuth((s) => s.hasPermission('purchases.create'));
   const qc = useQueryClient();
   const [branchId, setBranchId] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -141,7 +153,7 @@ function OrdersTab() {
             ))}
           </Select>
         </div>
-        <Button onClick={() => setShowCreate(true)}>{t('po.new')}</Button>
+        {canCreatePo && <Button onClick={() => setShowCreate(true)}>{t('po.new')}</Button>}
       </div>
 
       <Card>
@@ -499,6 +511,10 @@ function OrderDetailModal({
     onChanged();
   };
 
+  const [confirmCancelPo, setConfirmCancelPo] = useState(false);
+  const canSubmitPo = useAuth((s) => s.hasPermission('purchases.create'));
+  const canApprovePo = useAuth((s) => s.hasPermission('purchases.approve'));
+  const canReceivePo = useAuth((s) => s.hasPermission('purchases.receive'));
   const actionMut = useMutation({
     mutationFn: (action: 'submit' | 'approve' | 'cancel') => purchaseOrderAction(poId, action),
     onSuccess: () => {
@@ -616,27 +632,44 @@ function OrderDetailModal({
           </table>
 
           <div className="flex flex-wrap justify-end gap-2">
-            {po.status === 'draft' && (
+            {po.status === 'draft' && canSubmitPo && (
               <Button size="sm" onClick={() => actionMut.mutate('submit')}>
                 {t('po.submit')}
               </Button>
             )}
-            {po.status === 'pending_approval' && (
+            {po.status === 'pending_approval' && canApprovePo && (
               <Button size="sm" onClick={() => actionMut.mutate('approve')}>
                 {t('po.approve')}
               </Button>
             )}
             {['draft', 'pending_approval', 'approved'].includes(po.status) && (
-              <Button size="sm" variant="outline" onClick={() => actionMut.mutate('cancel')}>
-                {t('po.cancel_order')}
-              </Button>
+              <>
+                <Button size="sm" variant="outline" onClick={() => setConfirmCancelPo(true)}>
+                  {t('po.cancel_order')}
+                </Button>
+                <ConfirmDialog
+                  open={confirmCancelPo}
+                  onClose={() => setConfirmCancelPo(false)}
+                  onConfirm={() => {
+                    actionMut.mutate('cancel');
+                    setConfirmCancelPo(false);
+                  }}
+                  pending={actionMut.isPending}
+                  title={t('po.cancel_order')}
+                  message={t('confirm.cancel_po.body').replace('{po}', po.po_number)}
+                  confirmLabel={t('po.cancel_order')}
+                  cancelLabel={t('po.cancel')}
+                />
+              </>
             )}
-            {['approved', 'partially_received'].includes(po.status) && !receiving && (
-              <Button size="sm" onClick={() => setReceiving(true)}>
-                {t('po.receive')}
-              </Button>
-            )}
-            {receiving && (
+            {['approved', 'partially_received'].includes(po.status) &&
+              !receiving &&
+              canReceivePo && (
+                <Button size="sm" onClick={() => setReceiving(true)}>
+                  {t('po.receive')}
+                </Button>
+              )}
+            {receiving && canReceivePo && (
               <Button size="sm" disabled={receiveMut.isPending} onClick={() => receiveMut.mutate()}>
                 {t('po.do_receive')}
               </Button>
@@ -702,6 +735,7 @@ function detailToForm(s: SupplierDetail): SupplierForm {
 }
 
 function SuppliersTab() {
+  const canManageSup = useAuth((s) => s.hasPermission('purchases.create'));
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [activeOnly, setActiveOnly] = useState(false);
@@ -783,9 +817,11 @@ function SuppliersTab() {
             {t('purchases.active_only')}
           </label>
         </div>
-        <Button onClick={() => setShowForm((v) => !v)}>
-          {showForm ? t('purchases.cancel') : t('purchases.add')}
-        </Button>
+        {canManageSup && (
+          <Button onClick={() => setShowForm((v) => !v)}>
+            {showForm ? t('purchases.cancel') : t('purchases.add')}
+          </Button>
+        )}
       </div>
 
       {showForm && (
@@ -872,6 +908,7 @@ function SuppliersTab() {
           ) : (
             <SupplierTable
               rows={suppliersQuery.data ?? []}
+              canManage={canManageSup}
               onEdit={openEdit}
               onToggle={(s) => activeMut.mutate({ id: s.id, active: !s.is_active })}
             />
@@ -962,10 +999,12 @@ function SuppliersTab() {
 
 function SupplierTable({
   rows,
+  canManage,
   onEdit,
   onToggle,
 }: {
   rows: SupplierDetail[];
+  canManage: boolean;
   onEdit: (s: SupplierDetail) => void;
   onToggle: (s: SupplierDetail) => void;
 }) {
@@ -999,16 +1038,20 @@ function SupplierTable({
               </Badge>
             </td>
             <td className="flex flex-wrap gap-2 p-2">
-              <Button size="sm" variant="ghost" onClick={() => onEdit(s)}>
-                {t('purchases.edit')}
-              </Button>
-              <Button
-                size="sm"
-                variant={s.is_active ? 'outline' : 'primary'}
-                onClick={() => onToggle(s)}
-              >
-                {s.is_active ? t('purchases.deactivate') : t('purchases.activate')}
-              </Button>
+              {canManage && (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => onEdit(s)}>
+                    {t('purchases.edit')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={s.is_active ? 'outline' : 'primary'}
+                    onClick={() => onToggle(s)}
+                  >
+                    {s.is_active ? t('purchases.deactivate') : t('purchases.activate')}
+                  </Button>
+                </>
+              )}
             </td>
           </tr>
         ))}

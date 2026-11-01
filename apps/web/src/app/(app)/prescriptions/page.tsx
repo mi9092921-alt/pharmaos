@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ConfirmDialog,
   Badge,
   Button,
   Card,
@@ -567,6 +568,7 @@ function PrescriptionDetailModal({
     onError: onErr,
   });
 
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const cancelMut = useMutation({
     mutationFn: () => updatePrescription(prescriptionId, { status: 'cancelled' }),
     onSuccess: () => {
@@ -693,7 +695,7 @@ function PrescriptionDetailModal({
                   variant="danger"
                   size="sm"
                   disabled={cancelMut.isPending}
-                  onClick={() => cancelMut.mutate()}
+                  onClick={() => setConfirmCancel(true)}
                 >
                   {t('prescriptions.cancel_prescription')}
                 </Button>
@@ -702,6 +704,20 @@ function PrescriptionDetailModal({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        onConfirm={() => {
+          cancelMut.mutate();
+          setConfirmCancel(false);
+        }}
+        pending={cancelMut.isPending}
+        title={t('prescriptions.cancel_prescription')}
+        message={t('confirm.cancel_prescription.body')}
+        confirmLabel={t('prescriptions.cancel_prescription')}
+        cancelLabel={t('users.cancel')}
+      />
     </Modal>
   );
 }

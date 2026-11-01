@@ -28,7 +28,17 @@ import { useAuth } from '@/lib/auth-store';
 import { formatDateTime } from '@/lib/format';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
-import { Badge, Button, Card, CardContent, Input, Label, Select, Spinner } from '@pharmaos/ui';
+import {
+  ConfirmDialog,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Input,
+  Label,
+  Select,
+  Spinner,
+} from '@pharmaos/ui';
 
 const REASON_CODES = ['miscount', 'breakage', 'theft', 'found', 'unknown'] as const;
 
@@ -495,6 +505,7 @@ function ReviewScreen({
     },
     onError: onErr,
   });
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const cancelMut = useMutation({
     mutationFn: () => cancelStocktakeSession(branchId, sessionId, t('stocktake.cancel_default')),
     onSuccess: () => {
@@ -607,11 +618,24 @@ function ReviewScreen({
             </Button>
             <Button
               variant="danger"
-              onClick={() => cancelMut.mutate()}
+              onClick={() => setConfirmCancel(true)}
               disabled={cancelMut.isPending}
             >
               {t('stocktake.cancel')}
             </Button>
+            <ConfirmDialog
+              open={confirmCancel}
+              onClose={() => setConfirmCancel(false)}
+              onConfirm={() => {
+                cancelMut.mutate();
+                setConfirmCancel(false);
+              }}
+              pending={cancelMut.isPending}
+              title={t('stocktake.cancel')}
+              message={t('confirm.cancel_stocktake.body')}
+              confirmLabel={t('stocktake.cancel')}
+              cancelLabel={t('users.cancel')}
+            />
           </CardContent>
         </Card>
       )}

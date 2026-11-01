@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button, Card, CardContent, Select, Spinner } from '@pharmaos/ui';
+import { QueryState, Badge, Button, Card, CardContent, Select, Spinner } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -146,13 +146,15 @@ export default function NotificationsPage() {
         </div>
       </div>
 
-      {listQuery.isLoading ? (
-        <div className="flex justify-center py-10">
-          <Spinner />
-        </div>
-      ) : rows.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-500">{t('notifications.empty')}</p>
-      ) : (
+      <QueryState
+        isLoading={listQuery.isLoading}
+        isError={listQuery.isError}
+        onRetry={() => void listQuery.refetch()}
+        errorText={listQuery.error ? formatApiErrorMessage(listQuery.error) : ''}
+        retryLabel={t('common.retry')}
+        isEmpty={rows.length === 0}
+        emptyText={t('notifications.empty')}
+      >
         <div className="space-y-3">
           {rows.map((row) => (
             <Card
@@ -192,7 +194,7 @@ export default function NotificationsPage() {
             </Card>
           ))}
         </div>
-      )}
+      </QueryState>
     </div>
   );
 }

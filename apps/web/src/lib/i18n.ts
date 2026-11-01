@@ -32,6 +32,23 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'stocktake.title': 'الجرد',
     'stocktake.no_permission': 'لا تملك صلاحية العد',
     'stocktake.history': 'سجل الجلسات',
+    // RC-A phase 3 — irreversible-action confirmations (shared copy)
+    'confirm.delete_customer.body':
+      'حذف العميل «{name}»؟ حذف منطقي مع قيد تدقيق — لن يستطيع تسجيل الدخول مجددًا.',
+    'confirm.delete_expense.body': 'حذف المصروف «{desc}» بمبلغ {amount}؟ لا رجعة فيه.',
+    'confirm.delete_medication.body': 'حذف الدواء «{name}»؟ حذف منطقي مع قيد تدقيق.',
+    'confirm.delete_barcode.body': 'حذف الباركود {barcode} من هذا الدواء؟',
+    'confirm.cancel_po.body': 'إلغاء أمر الشراء {po}؟ لا يمكن إرجاعه لحالته السابقة.',
+    'confirm.cancel_prescription.body': 'إلغاء الوصفة؟ لن يمكن صرف أي كميات منها بعدها.',
+    'confirm.change_role.title': 'تغيير دور المستخدم',
+    'confirm.change_role.body': 'تغيير دور «{name}» إلى «{role}»؟ الإجراء يُسجَّل في سجل التدقيق.',
+    'confirm.cancel_stocktake.body':
+      'إلغاء جلسة الجرد؟ ستُهمل الكميات المعدودة في هذه الجلسة ولا يمكن استرجاعها.',
+    'confirm.shortage_bulk.body': 'تطبيق الإجراء على {count} صنفاً؟ تغيير الحالة لا يُرجَع.',
+    'confirm.create_return.body':
+      'إنشاء إشعار دائن باسترداد تقديري {total}؟ الإشعار لا يُعدَّل بعد إنشائه.',
+    'confirm.expiry_sweep.body':
+      'حجر كل الدفعات المنتهية الآن؟ يُسجَّل حدث حجر لكل دفعة ويصبح بيعها ممنوعًا.',
     'stocktake.new_session': 'جلسة جديدة',
     'stocktake.history_empty': 'لا جلسات جرد بعد — ابدأ أول جلسة من الزر أعلاه',
     'stocktake.session_type': 'نوع الجلسة',
@@ -466,6 +483,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.primary': 'أساسي',
     'catalog.barcode_added': 'تمت إضافة الباركود',
     'catalog.barcode_deleted': 'تم حذف الباركود',
+    'catalog.barcode_delete': 'حذف الباركود',
     'catalog.save_levels': 'حفظ المستويات والأسعار',
     'catalog.select_unit': 'اختر الوحدة',
     'catalog.err_unit_required': 'يجب اختيار وحدة لكل مستوى تغليف',
@@ -907,6 +925,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 
     // Reports (P3-M1 sales + P3-M2 inventory)
     'reports.title': 'التقارير',
+    'reports.range_invalid': '«من تاريخ» بعد «إلى تاريخ» — صحّح المدى ثم أعد البحث',
     'reports.branch': 'الفرع',
     'reports.tab_sales': 'المبيعات',
     'reports.tab_inventory': 'المخزون',
@@ -1120,6 +1139,26 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'stocktake.title': 'Stocktake',
     'stocktake.no_permission': 'You do not have the counting permission',
     'stocktake.history': 'Session history',
+    // RC-A phase 3 — irreversible-action confirmations (shared copy)
+    'confirm.delete_customer.body':
+      'Delete customer "{name}"? Soft delete with an audit entry — they will not be able to sign in again.',
+    'confirm.delete_expense.body': 'Delete expense "{desc}" of {amount}? This cannot be undone.',
+    'confirm.delete_medication.body':
+      'Delete medication "{name}"? Soft delete with an audit entry.',
+    'confirm.delete_barcode.body': 'Remove barcode {barcode} from this medication?',
+    'confirm.cancel_po.body': 'Cancel purchase order {po}? It cannot go back to a previous state.',
+    'confirm.cancel_prescription.body':
+      'Cancel the prescription? No quantities can be dispensed after this.',
+    'confirm.change_role.title': 'Change user role',
+    'confirm.change_role.body': 'Change "{name}" role to "{role}"? The action is audit-logged.',
+    'confirm.cancel_stocktake.body':
+      'Cancel this stocktake session? The counted quantities in it will be discarded and cannot be recovered.',
+    'confirm.shortage_bulk.body':
+      'Apply the action to {count} item(s)? The status change cannot be reverted.',
+    'confirm.create_return.body':
+      'Create a credit note with an estimated refund of {total}? The note cannot be edited once created.',
+    'confirm.expiry_sweep.body':
+      'Quarantine every expired batch now? Each batch gets an audit-logged quarantine event and can no longer be sold.',
     'stocktake.new_session': 'New session',
     'stocktake.history_empty': 'No stocktake sessions yet — start the first one above',
     'stocktake.session_type': 'Session type',
@@ -1560,6 +1599,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.primary': 'Primary',
     'catalog.barcode_added': 'Barcode added',
     'catalog.barcode_deleted': 'Barcode removed',
+    'catalog.barcode_delete': 'Remove barcode',
     'catalog.save_levels': 'Save levels & prices',
     'catalog.select_unit': 'Select unit',
     'catalog.err_unit_required': 'Select a unit for every packaging level',
@@ -2002,6 +2042,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 
     // Reports (P3-M1 sales + P3-M2 inventory)
     'reports.title': 'Reports',
+    'reports.range_invalid': '"From" is after "To" — fix the range and search again',
     'reports.branch': 'Branch',
     'reports.tab_sales': 'Sales',
     'reports.tab_inventory': 'Inventory',
