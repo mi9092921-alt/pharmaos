@@ -444,6 +444,43 @@ async def test_stock_settings_numeric_null_is_noop_shelf_clears_only_explicit(
     assert r.status_code == 200, r.text
 
     # Untouched numeric fields sent as null → stored values survive (COALESCE).
+    # shelf rides along UNCHANGED: a patch with EVERY numeric null and no shelf
+    # is rejected server-side with E-VAL-001 "Nothing to update." (pinned here).
+    r = await client.patch(
+        url,
+        headers=h,
+        json={
+            **base,
+            "reorder_point": None,
+            "min_stock_level": None,
+            "max_stock_level": None,
+            "shelf_location": "b7",
+        },
+    )
+    assert r.status_code == 200, r.text
+    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
+    assert Decimal(row["reorder_point"]) == 10
+    assert Decimal(row["max_stock_level"]) == 100  # NUMERIC serializes "100.000"
+    assert row["shelf_location"] == "B7"  # normalized, unchanged → preserved
+
+    # ABSENT shelf key (exclude_unset) → also a no-op, never a clear.
+    r = await client.patch(url, headers=h, json={**base, "min_stock_level": "5"})
+    assert r.status_code == 200, r.text
+    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
+    assert row["shelf_location"] == "B7"
+    assert Decimal(row["max_stock_level"]) == 100  # untouched numeric again preserved
+
+    # Explicit shelf null is the ONLY clear path.
+    r = await client.patch(url, headers=h, json={**base, "shelf_location": None})
+    assert r.status_code == 200, r.text
+    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
+    assert row["shelf_location"] is None
+    assert Decimal(row["max_stock_level"]) == 100
+
+    # …and an all-null patch WITHOUT any meaningful field is rejected outright.
     r = await client.patch(
         url,
         headers=h,
@@ -454,28 +491,8 @@ async def test_stock_settings_numeric_null_is_noop_shelf_clears_only_explicit(
             "max_stock_level": None,
         },
     )
-    assert r.status_code == 200, r.text
-    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
-    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
-    assert row["reorder_point"] == "10"
-    assert row["max_stock_level"] == "100"
-    assert row["shelf_location"] == "B7"  # normalized, untouched → preserved
-
-    # ABSENT shelf key (exclude_unset) → also a no-op, never a clear.
-    r = await client.patch(url, headers=h, json={**base, "min_stock_level": "5"})
-    assert r.status_code == 200, r.text
-    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
-    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
-    assert row["shelf_location"] == "B7"
-    assert row["max_stock_level"] == "100"  # untouched numeric again preserved
-
-    # Explicit shelf null is the ONLY clear path.
-    r = await client.patch(url, headers=h, json={**base, "shelf_location": None})
-    assert r.status_code == 200, r.text
-    listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
-    row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
-    assert row["shelf_location"] is None
-    assert row["max_stock_level"] == "100"
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["message"] == "Nothing to update."
 
 
 async def test_list_inventory_exposes_max_stock_level(admin, branch, db_session: AsyncSession):
@@ -501,4 +518,4 @@ async def test_list_inventory_exposes_max_stock_level(admin, branch, db_session:
     listed = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
     assert listed.status_code == 200, listed.text
     row = next(x for x in listed.json()["data"] if x["medication_id"] == med_id)
-    assert row["max_stock_level"] == "100"
+    assert Decimal(row["max_stock_level"]) == 100  # NUMERIC serializes "100.000"
