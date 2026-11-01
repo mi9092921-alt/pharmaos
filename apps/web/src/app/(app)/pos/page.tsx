@@ -40,6 +40,7 @@ import {
   printInvoice,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
+import { formatMoney } from '@/lib/format';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
@@ -858,12 +859,12 @@ export default function PosPage() {
           <div className="text-end">
             {effectiveRedeem > 0 && (
               <div className="text-xs text-emerald-700">
-                {t('pos.redeem_discount')}: −{effectiveRedeem.toFixed(2)} {currency}
+                {t('pos.redeem_discount')}: −{formatMoney(effectiveRedeem, currency)}
               </div>
             )}
             <div className="text-xl font-bold text-slate-900">
-              {t('pos.total')}: <span className="tabular-nums">{netTotal.toFixed(2)}</span>{' '}
-              <span className="text-sm font-normal text-slate-500">{currency}</span>
+              {t('pos.total')}:{' '}
+              <span className="tabular-nums">{formatMoney(netTotal, currency)}</span>
             </div>
             <div className="text-xs text-slate-400">{t('pos.vat_inclusive')}</div>
           </div>
@@ -941,29 +942,25 @@ export default function PosPage() {
             </p>
             {done.pointsRedeemed > 0 && (
               <p className="mb-1 text-xs text-emerald-700">
-                {t('pos.redeem_discount')}: −{done.discountAmount} {done.currency} (
+                {t('pos.redeem_discount')}: −{formatMoney(done.discountAmount, done.currency)} (
                 {done.pointsRedeemed} {t('customers.points')})
               </p>
             )}
             <p className="mb-1 text-lg font-semibold text-slate-900">
               {t('pos.total')}:{' '}
-              <span className="tabular-nums">
-                {done.total} {done.currency}
-              </span>
+              <span className="tabular-nums">{formatMoney(done.total, done.currency)}</span>
             </p>
             {Number(done.taxAmount) > 0 && (
               <p className="mb-1 text-xs text-slate-500">
                 {t('pos.vat_included')}:{' '}
-                <span className="tabular-nums">
-                  {done.taxAmount} {done.currency}
-                </span>
+                <span className="tabular-nums">{formatMoney(done.taxAmount, done.currency)}</span>
               </p>
             )}
             {done.change !== null && (
               <p className="mb-3 text-lg text-primary-700">
                 {t('pos.change')}:{' '}
                 <span className="tabular-nums font-bold">
-                  {done.change} {done.currency}
+                  {formatMoney(done.change, done.currency)}
                 </span>
               </p>
             )}
@@ -1290,8 +1287,7 @@ function PaymentModal({
         }}
       >
         <p className="text-center text-2xl font-bold text-slate-900">
-          <span className="tabular-nums">{clientTotal.toFixed(2)}</span>{' '}
-          <span className="text-sm font-normal text-slate-500">{currency}</span>
+          <span className="tabular-nums">{formatMoney(clientTotal, currency)}</span>
         </p>
 
         <div className="space-y-1.5">
@@ -1327,7 +1323,7 @@ function PaymentModal({
             {change !== null && (
               <p className="text-sm text-primary-700">
                 {t('pos.change')}:{' '}
-                <span className="tabular-nums font-bold">{change.toFixed(2)}</span> {currency}
+                <span className="tabular-nums font-bold">{formatMoney(change, currency)}</span>
               </p>
             )}
             {cashShort && tendered !== '' && (

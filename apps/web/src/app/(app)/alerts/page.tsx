@@ -14,6 +14,7 @@ import {
   resolveAlert,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
+import { formatDateTime, formatQty } from '@/lib/format';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
@@ -27,12 +28,17 @@ const STATUS_TABS = ['active', 'acknowledged', 'resolved', 'all'] as const;
 type StatusFilter = (typeof STATUS_TABS)[number];
 
 /** Render alerts.msg.<rule_key> with {token} interpolation over the alert's
- * params — the API ships key + params, never localized strings. */
+ * params — the API ships key + params, never localized strings. Numeric
+ * params lose DECIMAL padding (240.000 → 240) and ISO dates reformat to
+ * dd/mm/yyyy so RTL bidi cannot visually flip the day/month order. */
 function renderMessage(alert: AlertRow): string {
   const template = t(`alerts.msg.${alert.rule_key}`);
   return template.replace(/\{(\w+)\}/g, (_, token: string) => {
     const value = alert.params[token];
-    return value === null || value === undefined ? '—' : String(value);
+    if (value === null || value === undefined) return '—';
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    return formatQty(value);
   });
 }
 
@@ -149,7 +155,7 @@ export default function AlertsPage() {
                   </p>
                   <p className="truncate text-xs text-slate-500">{renderMessage(alert)}</p>
                   <p className="text-xs text-slate-400">
-                    {t('alerts.last_seen')}: {new Date(alert.last_seen).toLocaleString()}
+                    {t('alerts.last_seen')}: {formatDateTime(alert.last_seen)}
                   </p>
                 </div>
                 {alert.status !== 'resolved' && canManage && (

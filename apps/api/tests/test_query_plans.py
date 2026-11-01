@@ -209,7 +209,47 @@ async def test_valuation_report_scan_is_index_backed(db_session: AsyncSession) -
     probe (idx_batches_branch_med's (branch_id, medication_id) column order
     lets the aggregation use an Incremental Sort off an already-partially-
     sorted index scan, a real structural advantage the other two candidate
-    indexes don't have, not just a cost-estimate tie-break)."""
+    indexes don't have, not just a cost-estimate tie-break).
+
+    FLAKE ROUND 2 (RC-A): no_bitmap alone was NOT enough. Once the
+    catalog-import tests bulk-inserted batches on other branches, the
+    per-branch row estimate collapsed to ~1 and ALL plain-scan candidates
+    costed the same (17.00) — the tie-break among sibling partial indexes
+    became arbitrary again. The durable fix is DATA, not planner settings:
+    seed the fixed branch with realistic volume (300 active batches) and
+    ANALYZE before EXPLAIN, so the (branch_id, medication_id) composite wins
+    STRUCTURALLY (grouping via the ordered index stream beats a full sort)
+    at any statistics state. Idempotent: tops up only below 300 rows."""
+    await db_session.execute(
+        text(
+            "INSERT INTO branches (id, name, country_code, currency_code) "
+            "VALUES ('00000000-0000-0000-0000-000000000001', 'plan-volume', 'EG', 'EGP') "
+            "ON CONFLICT (id) DO NOTHING"
+        )
+    )
+    thin = (
+        await db_session.execute(
+            text(
+                "SELECT COUNT(*) FROM medication_batches "
+                "WHERE branch_id = '00000000-0000-0000-0000-000000000001'"
+            )
+        )
+    ).scalar_one()
+    if thin < 300:
+        await db_session.execute(
+            text(
+                "INSERT INTO medication_batches "
+                "  (branch_id, medication_id, batch_number, expiry_date, quantity, "
+                "   purchase_price, status) "
+                "SELECT '00000000-0000-0000-0000-000000000001', m.id, "
+                "       'PLAN-VOL-' || g, CURRENT_DATE + 400, 50, 10, 'active' "
+                "FROM medications m "
+                "CROSS JOIN generate_series(1, 60) g "
+                "WHERE NOT m.is_deleted LIMIT 300"
+            )
+        )
+    await db_session.execute(text("ANALYZE medication_batches"))
+    await db_session.commit()
     plan = await _plan(
         db_session,
         "EXPLAIN SELECT b.medication_id, m.trade_name, m.trade_name_ar, "
