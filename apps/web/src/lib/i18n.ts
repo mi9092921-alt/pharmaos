@@ -526,6 +526,10 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.min_stock': 'الحد الأدنى للمخزون',
     'inventory.max_stock': 'الحد الأقصى للمخزون',
     'inventory.settings_saved_ok': 'تم حفظ إعدادات المخزون',
+    'inventory.scan_replace_title': 'استبدال الدواء المختار؟',
+    'inventory.scan_replace_body':
+      'المسح يطابق «{new}» بينما المختار «{current}» — استبدال البيانات بالمسح؟',
+    'inventory.scan_replace_confirm': 'استبدال',
     'inventory.add_supplier': 'إضافة مورّد',
     'inventory.supplier_name': 'اسم المورّد',
     'inventory.supplier_added': 'تمت إضافة المورّد',
@@ -1612,6 +1616,10 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.min_stock': 'Minimum stock',
     'inventory.max_stock': 'Maximum stock',
     'inventory.settings_saved_ok': 'Stock settings saved',
+    'inventory.scan_replace_title': 'Replace the selected medication?',
+    'inventory.scan_replace_body':
+      'The scan matches "{new}" while "{current}" is selected — apply the scan?',
+    'inventory.scan_replace_confirm': 'Replace',
     'inventory.add_supplier': 'Add supplier',
     'inventory.supplier_name': 'Supplier name',
     'inventory.supplier_added': 'Supplier added',

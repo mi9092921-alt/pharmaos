@@ -283,7 +283,9 @@ function CreateReturnTab({ branchId }: { branchId: string }) {
                     className="space-y-4 border-t border-border pt-4"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      if (totalQty > 0) createMut.mutate();
+                      // isPending guard lives IN the handler: keyboard submit
+                      // (Enter) bypasses the button's disabled state.
+                      if (totalQty > 0 && !createMut.isPending) createMut.mutate();
                     }}
                   >
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

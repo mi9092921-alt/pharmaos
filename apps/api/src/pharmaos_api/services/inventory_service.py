@@ -951,7 +951,8 @@ async def list_inventory(
             text(
                 f"""
                 SELECT bi.medication_id, m.trade_name, m.trade_name_ar, bi.cached_quantity,
-                       bi.min_stock_level, bi.reorder_point, bi.shelf_location,
+                       bi.min_stock_level, bi.max_stock_level, bi.reorder_point,
+                       bi.shelf_location,
                        ({_LOW_THRESHOLD} > 0
                         AND bi.cached_quantity <= {_LOW_THRESHOLD}) AS low_stock
                 FROM branch_inventory bi JOIN medications m ON m.id = bi.medication_id
@@ -970,9 +971,10 @@ async def list_inventory(
                 "trade_name_ar": r[2],
                 "cached_quantity": str(r[3]),
                 "min_stock_level": str(r[4]) if r[4] is not None else None,
-                "reorder_point": str(r[5]) if r[5] is not None else None,
-                "shelf_location": r[6],
-                "low_stock": bool(r[7]),
+                "max_stock_level": str(r[5]) if r[5] is not None else None,
+                "reorder_point": str(r[6]) if r[6] is not None else None,
+                "shelf_location": r[7],
+                "low_stock": bool(r[8]),
             }
             for r in rows
         ],

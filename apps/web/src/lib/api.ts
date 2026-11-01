@@ -429,6 +429,7 @@ export interface InventoryRow {
   trade_name_ar: string | null;
   cached_quantity: string;
   min_stock_level: string | null;
+  max_stock_level: string | null;
   reorder_point: string | null;
   shelf_location: string | null;
   low_stock: boolean;

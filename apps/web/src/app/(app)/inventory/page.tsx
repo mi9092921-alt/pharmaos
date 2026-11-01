@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   DateInput,
   Input,
   Label,
@@ -25,6 +26,7 @@ import {
   getBatchReport,
   getExpiryAlerts,
   getMedication,
+  type Gs1Parse,
   type InventoryRow,
   listBatches,
   listInventory,
@@ -620,7 +622,7 @@ function StockSettingsModal({
   const qc = useQueryClient();
   const [reorder, setReorder] = useState(row.reorder_point ?? '');
   const [min, setMin] = useState(row.min_stock_level ?? '');
-  const [max, setMax] = useState('');
+  const [max, setMax] = useState(row.max_stock_level ?? '');
   const [shelf, setShelf] = useState(row.shelf_location ?? '');
 
   const mut = useMutation({
@@ -631,7 +633,12 @@ function StockSettingsModal({
         reorder_point: reorder.trim() === '' ? null : reorder.trim(),
         min_stock_level: min.trim() === '' ? null : min.trim(),
         max_stock_level: max.trim() === '' ? null : max.trim(),
-        shelf_location: shelf.trim() === '' ? null : shelf.trim(),
+        // shelf_location is the ONLY field with explicit-clear semantics
+        // server-side (the _UNSET sentinel) — send it only when actually
+        // touched, so a routine save can never wipe an untouched slot.
+        ...(shelf.trim() !== (row.shelf_location ?? '')
+          ? { shelf_location: shelf.trim() === '' ? null : shelf.trim() }
+          : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory', branchId] });
@@ -754,25 +761,37 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
     setUnitId(nextLevels.length ? (nextLevels[nextLevels.length - 1]?.id ?? '') : '');
   }, [med?.id, levelsQuery.data]);
 
+  // A scan resolving to a DIFFERENT medication than the manually picked one
+  // asks before replacing (data safety: a wrong-med receive is far worse than
+  // a lost scan). Same-med / no-pick cases apply fields directly.
+  const [pendingReplace, setPendingReplace] = useState<Gs1Parse | null>(null);
+
+  const applyParsed = (data: Gs1Parse) => {
+    if (data.expiry_date) setExpiry(data.expiry_date);
+    if (data.batch_number) setBatchNumber(data.batch_number);
+    if (data.gtin) setGtin(data.gtin);
+    // Each scanned 2D pack adds its serial (deduped) for track & trace.
+    if (data.serial_number) {
+      const s = data.serial_number;
+      setSerials((prev) => (prev.includes(s) ? prev : [...prev, s]));
+    }
+    if (data.medication) {
+      setMed({
+        id: data.medication.id,
+        trade_name: data.medication.trade_name,
+        trade_name_ar: data.medication.trade_name_ar,
+      });
+    }
+  };
+
   const parseMut = useMutation({
     mutationFn: () => parseGs1(scan.trim()),
     onSuccess: (data) => {
-      if (data.expiry_date) setExpiry(data.expiry_date);
-      if (data.batch_number) setBatchNumber(data.batch_number);
-      if (data.gtin) setGtin(data.gtin);
-      // Each scanned 2D pack adds its serial (deduped) for track & trace.
-      if (data.serial_number) {
-        const s = data.serial_number;
-        setSerials((prev) => (prev.includes(s) ? prev : [...prev, s]));
-      }
-      if (data.medication) {
-        setMed({
-          id: data.medication.id,
-          trade_name: data.medication.trade_name,
-          trade_name_ar: data.medication.trade_name_ar,
-        });
+      if (data.medication && med && data.medication.id !== med.id) {
+        setPendingReplace(data); // ask before clobbering a manual pick
       } else {
-        toast.info(t('inventory.scan_unknown'));
+        applyParsed(data);
+        if (!data.medication) toast.info(t('inventory.scan_unknown'));
       }
       setScan(''); // ready for the next pack scan
     },
@@ -1059,6 +1078,26 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
           </Button>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={pendingReplace !== null}
+        onClose={() => setPendingReplace(null)}
+        onConfirm={() => {
+          if (pendingReplace) applyParsed(pendingReplace);
+          setPendingReplace(null);
+        }}
+        title={t('inventory.scan_replace_title')}
+        message={t('inventory.scan_replace_body')
+          .replace(
+            '{new}',
+            pendingReplace?.medication?.trade_name_ar ??
+              pendingReplace?.medication?.trade_name ??
+              '',
+          )
+          .replace('{current}', med?.trade_name_ar ?? med?.trade_name ?? '')}
+        confirmLabel={t('inventory.scan_replace_confirm')}
+        cancelLabel={t('users.cancel')}
+      />
     </Modal>
   );
 }
