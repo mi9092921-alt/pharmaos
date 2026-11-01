@@ -38,6 +38,9 @@ coverage/
 # Local encrypted backups
 /backups/
 
+# VM setup credentials (never commit)
+evidence/**/step1-setup-credentials.txt
+
 # Release-prep harness output (keep historical files local, never commit them).
 tools/release-prep/results/crash_results_*.json
 
