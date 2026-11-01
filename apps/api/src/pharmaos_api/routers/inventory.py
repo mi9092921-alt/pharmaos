@@ -60,6 +60,9 @@ class ReceiveIn(BaseModel):
     quantity: Decimal = Field(gt=0, le=Decimal("1000000"))
     purchase_price: Decimal = Field(ge=0)
     supplier_id: uuid.UUID | None = None
+    # Optional packaging level: when set, quantity/purchase_price are at that
+    # level (e.g. boxes) and are converted to the smallest unit for the batch.
+    packaging_id: uuid.UUID | None = None
     # P2-M3: 2D-scanned pack serials + their GTIN (both optional).
     gtin: str | None = Field(default=None, max_length=14)
     serials: list[str] = Field(default_factory=list, max_length=1000)
@@ -175,6 +178,7 @@ async def receive_stock(
         quantity=body.quantity,
         purchase_price=body.purchase_price,
         supplier_id=body.supplier_id,
+        packaging_id=body.packaging_id,
         gtin=body.gtin,
         serials=body.serials,
         shelf_location=body.shelf_location,
@@ -193,7 +197,8 @@ async def adjust_batch(
 ) -> dict[str, object]:
     """Manual adjustment (count correction / damage) — reason is mandatory, audited."""
     enforce_csrf(request)
-    batch = await svc.get_batch(session, batch_id)
+    # F2: lock the row — absolute-quantity write must not race a concurrent sale.
+    batch = await svc.get_batch(session, batch_id, for_update=True)
     batch = await svc.adjust_batch(
         session, actor=actor, batch=batch, quantity_delta=body.quantity_delta, reason=body.reason
     )
@@ -211,7 +216,8 @@ async def set_batch_status(
 ) -> dict[str, object]:
     """Change batch status. Quarantine/recall removes the batch from sellable stock."""
     enforce_csrf(request)
-    batch = await svc.get_batch(session, batch_id)
+    # F2: lock the row — status + cache must not race a concurrent sale.
+    batch = await svc.get_batch(session, batch_id, for_update=True)
     batch = await svc.set_batch_status(
         session, actor=actor, batch=batch, status=body.status, reason=body.reason
     )
@@ -322,7 +328,12 @@ async def import_shelf_locations(
         wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
         ws = wb.active
         iterator = ws.iter_rows(values_only=True)
-        header = [str(h).strip().lower() if h is not None else "" for h in next(iterator)]
+        header_row = next(iterator, None)
+        if header_row is None:
+            # an EMPTY sheet used to surface as the generic "Unreadable
+            # workbook." — name the actual problem instead (F5).
+            raise ValueError("sheet is empty: expected a header row")
+        header = [str(h).strip().lower() if h is not None else "" for h in header_row]
         missing = [c for c in svc.SHELF_IMPORT_COLUMNS if c not in header]
         if missing:
             raise ValueError(f"missing columns: {missing}")

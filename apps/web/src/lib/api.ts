@@ -468,6 +468,9 @@ export interface ReceiveInput {
   quantity: string;
   purchase_price: string;
   supplier_id?: string | null;
+  // Optional packaging level: quantity/purchase_price are at that level
+  // (e.g. boxes) and the server converts them to the smallest unit.
+  packaging_id?: string | null;
   // P2-M3 (review C2): 2D pack-serial capture on receive (EDA track & trace).
   gtin?: string | null;
   serials?: string[];
@@ -1029,6 +1032,8 @@ export interface PurchaseItem {
   id: string;
   medication_id: string;
   packaging_id: string;
+  packaging_name_ar: string | null;
+  packaging_level: number | null;
   qty_ordered: string;
   qty_received: string;
   unit_cost: string;

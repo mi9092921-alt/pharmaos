@@ -24,6 +24,7 @@ import {
   createSupplier,
   getBatchReport,
   getExpiryAlerts,
+  getMedication,
   type InventoryRow,
   listBatches,
   listInventory,
@@ -688,6 +689,10 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
   const [expiry, setExpiry] = useState('');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
+  // Packaging level the quantity/price are expressed in; defaults to the
+  // DEEPEST level (= the historical smallest-unit entry). The server converts
+  // to the smallest unit for the batch ledger.
+  const [unitId, setUnitId] = useState('');
   const [supplierId, setSupplierId] = useState('');
   // Shelf slot for first receipt: set only when the slot is NULL (never clears).
   const [recvShelf, setRecvShelf] = useState('');
@@ -703,6 +708,29 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
     queryFn: () => searchMedications(term),
     enabled: term.trim().length >= 2,
   });
+  const levelsQuery = useQuery({
+    queryKey: ['medication', med?.id],
+    queryFn: () => getMedication(med!.id),
+    enabled: !!med,
+  });
+  const levels = levelsQuery.data?.packaging ?? [];
+  const selectedLevel = levels.find((p) => p.id === unitId);
+  // Smallest-unit equivalent of one unit of the selected level (product of the
+  // DEEPER levels' qty_in_parent) — mirrors catalog_service.smallest_unit_factor.
+  const factor = selectedLevel
+    ? levels
+        .filter((p) => p.level > selectedLevel.level)
+        .reduce((acc, p) => acc * Number(p.qty_in_parent ?? 1), 1)
+    : 1;
+  const deepestName = levels.length
+    ? ([...levels].sort((a, b) => b.level - a.level)[0]?.name_ar ?? '')
+    : '';
+
+  // Re-pick the unit whenever the medication changes (deepest by default).
+  useEffect(() => {
+    const nextLevels = levelsQuery.data?.packaging ?? [];
+    setUnitId(nextLevels.length ? (nextLevels[nextLevels.length - 1]?.id ?? '') : '');
+  }, [med?.id, levelsQuery.data]);
 
   const parseMut = useMutation({
     mutationFn: () => parseGs1(scan.trim()),
@@ -750,6 +778,7 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
         expiry_date: expiry,
         quantity,
         purchase_price: price,
+        packaging_id: unitId || null,
         supplier_id: supplierId || null,
         shelf_location: recvShelf.trim() === '' ? null : recvShelf.trim().toUpperCase(),
         ...(gtin ? { gtin } : {}),
@@ -902,6 +931,26 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
               onChange={(e) => setQuantity(e.target.value)}
               required
             />
+            {levels.length > 0 && (
+              <>
+                <Select
+                  value={unitId}
+                  aria-label={t('inventory.receive_unit')}
+                  onChange={(e) => setUnitId(e.target.value)}
+                >
+                  {levels.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name_ar}
+                    </option>
+                  ))}
+                </Select>
+                {Number(quantity) > 0 && factor > 1 && (
+                  <p className="numeric text-xs text-slate-500">
+                    = {String(Number((Number(quantity) * factor).toFixed(3)))} {deepestName}
+                  </p>
+                )}
+              </>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>{t('inventory.purchase_price')}</Label>

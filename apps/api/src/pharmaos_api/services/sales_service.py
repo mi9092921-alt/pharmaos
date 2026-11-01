@@ -231,35 +231,6 @@ async def _resolve_sale_packaging(
     return packaging
 
 
-async def _smallest_unit_factor(
-    session: AsyncSession, medication_id: uuid.UUID, level: int
-) -> Decimal:
-    """How many smallest units one unit of `level` contains.
-
-    factor(level) = product of qty_in_parent over all DEEPER levels
-    (box=1: strips/box x tablets/strip; tablet=deepest: 1).
-    """
-    stmt = (
-        select(MedicationPackaging.level, MedicationPackaging.qty_in_parent)
-        .where(
-            MedicationPackaging.medication_id == medication_id,
-            MedicationPackaging.is_deleted.is_(False),
-            MedicationPackaging.level > level,
-        )
-        .order_by(MedicationPackaging.level)
-    )
-    factor = Decimal(1)
-    for deeper_level, qty_in_parent in (await session.execute(stmt)).all():
-        if qty_in_parent is None:
-            raise ApiError(
-                ErrorCode.VALIDATION_FAILED,
-                422,
-                message=f"qty_in_parent missing for packaging level {deeper_level}.",
-            )
-        factor *= Decimal(qty_in_parent)
-    return factor
-
-
 async def _next_invoice_number(session: AsyncSession, branch_id: uuid.UUID) -> str:
     """Skeleton numbering: INV-YYYYMMDD-NNNN per branch per day.
 
@@ -324,7 +295,7 @@ async def create_sale(
         if line.quantity <= 0:
             raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="Quantity must be positive.")
         scan = await _resolve_line(session, line)
-        factor = await _smallest_unit_factor(session, scan.medication_id, scan.level)
+        factor = await catalog_service.smallest_unit_factor(session, scan.medication_id, scan.level)
         needed = (line.quantity * factor).quantize(Decimal("0.001"))
 
         # P2-M8 — a prescription-required medication must link a prescription

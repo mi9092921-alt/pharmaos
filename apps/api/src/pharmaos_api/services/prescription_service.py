@@ -26,6 +26,7 @@ from pharmaos_api.models import (
     User,
 )
 from pharmaos_api.security.crypto import DecryptionError, decrypt_field, encrypt_field
+from pharmaos_api.services import catalog_service
 
 logger = logging.getLogger(__name__)
 
@@ -125,23 +126,8 @@ class NewPrescriptionItem:
 async def _smallest_unit_factor(
     session: AsyncSession, medication_id: uuid.UUID, level: int
 ) -> Decimal:
-    """Mirrors sales_service._smallest_unit_factor (kept local — no cross-layer
-    service dependency for a small, stable conversion helper)."""
-    stmt = (
-        select(MedicationPackaging.level, MedicationPackaging.qty_in_parent)
-        .where(
-            MedicationPackaging.medication_id == medication_id,
-            MedicationPackaging.is_deleted.is_(False),
-            MedicationPackaging.level > level,
-        )
-        .order_by(MedicationPackaging.level)
-    )
-    factor = Decimal(1)
-    for _deeper_level, qty_in_parent in (await session.execute(stmt)).all():
-        if qty_in_parent is None:
-            raise ApiError(ErrorCode.VALIDATION_FAILED, 422, message="qty_in_parent missing.")
-        factor *= Decimal(qty_in_parent)
-    return factor
+    """Delegates to catalog_service.smallest_unit_factor (the shared helper)."""
+    return await catalog_service.smallest_unit_factor(session, medication_id, level)
 
 
 async def create_prescription(

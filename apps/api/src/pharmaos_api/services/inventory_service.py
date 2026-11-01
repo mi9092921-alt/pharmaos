@@ -25,8 +25,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pharmaos_api.audit import AuditAction
 from pharmaos_api.errors import ApiError, ErrorCode
-from pharmaos_api.models import Branch, Medication, MedicationBatch, StockMovement, User
-from pharmaos_api.services import audit_service, pack_serial_service
+from pharmaos_api.models import (
+    Branch,
+    Medication,
+    MedicationBatch,
+    MedicationPackaging,
+    StockMovement,
+    User,
+)
+from pharmaos_api.services import audit_service, catalog_service, pack_serial_service
 from pharmaos_api.services.csv_safe import csv_safe
 
 _BATCH_STATUSES = {"active", "quarantined", "expired", "recalled", "depleted"}
@@ -70,7 +77,11 @@ def normalize_shelf_location(raw: str | None) -> str | None:
 
 
 # Low-stock threshold: reorder point if set, else the minimum level (0 = untracked).
-_LOW_THRESHOLD = "COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0), 0)"
+# THE single definition of "low stock" — the alerts engine (alerts_service) imports
+# this exact fragment so the stock list, the reports and the alerts can never
+# disagree about which items are low (F3).
+LOW_STOCK_THRESHOLD_SQL = "COALESCE(NULLIF(bi.reorder_point, 0), NULLIF(bi.min_stock_level, 0), 0)"
+_LOW_THRESHOLD = LOW_STOCK_THRESHOLD_SQL  # internal shorthand (list/report queries)
 # Expiry-alert horizons (CLAUDE.md ALERT_RULES): a batch expiring within 30 days
 # is CRITICAL, within 90 days is a WARNING. 60 is the middle reporting window the
 # dashboard shows between the two (30 / 60 / 90).
@@ -227,8 +238,30 @@ async def receive_stock(
     gtin: str | None = None,
     serials: list[str] | None = None,
     shelf_location: str | None = None,
+    packaging_id: uuid.UUID | None = None,
 ) -> MedicationBatch:
-    """Receive one batch as a standalone atomic operation (commits)."""
+    """Receive one batch as a standalone atomic operation (commits).
+
+    Without packaging_id, quantity/purchase_price are taken as the SMALLEST
+    unit (back-compat + the GS1 per-pack path). With packaging_id, they are at
+    that packaging level (e.g. boxes at 120/box) and are converted to the
+    smallest unit for the batch ledger — same rule as PO receiving."""
+    if packaging_id is not None:
+        pkg = (
+            await session.execute(
+                select(MedicationPackaging).where(
+                    MedicationPackaging.id == packaging_id,
+                    MedicationPackaging.is_deleted.is_(False),
+                )
+            )
+        ).scalar_one_or_none()
+        if pkg is None or pkg.medication_id != medication_id:
+            raise ApiError(
+                ErrorCode.VALIDATION_FAILED, 422, message="Packaging does not match medication."
+            )
+        factor = await catalog_service.smallest_unit_factor(session, medication_id, pkg.level)
+        quantity = (quantity * factor).quantize(Decimal("0.001"))
+        purchase_price = (purchase_price / factor).quantize(Decimal("0.01"))
     batch = await receive_batch(
         session,
         actor=actor,
@@ -267,12 +300,19 @@ async def adjust_batch(
         raise ApiError(ErrorCode.STOCK_INSUFFICIENT, 409)
 
     # Only ACTIVE batches contribute to the derived cache. Adjusting a
-    # quarantined/expired/recalled/depleted batch still moves the batch truth
-    # (a stock_movement) but must NOT touch the cache, or the invariant drifts.
+    # quarantined/expired/recalled batch still moves the batch truth (a
+    # stock_movement) but must NOT touch the cache, or the invariant drifts.
+    # A DEPLETED batch that regains positive quantity (count correction) comes
+    # back to active when its expiry is still valid — otherwise the stock is
+    # stranded (invisible to FEFO and the cache).
+    old_quantity = batch.quantity
     was_active = batch.status == "active"
-    batch.quantity = batch.quantity + quantity_delta
-    if batch.quantity == 0 and batch.status == "active":
+    new_quantity = old_quantity + quantity_delta
+    if batch.status == "active" and new_quantity == 0:
         batch.status = "depleted"
+    elif batch.status == "depleted" and new_quantity > 0 and batch.expiry_date >= dt.date.today():
+        batch.status = "active"
+    batch.quantity = new_quantity
     batch.updated_by = actor.id
     session.add(
         StockMovement(
@@ -285,8 +325,11 @@ async def adjust_batch(
             created_by=actor.id,
         )
     )
-    if was_active:
-        await apply_cache_delta(session, batch.branch_id, batch.medication_id, quantity_delta)
+    cache_delta = (new_quantity if batch.status == "active" else Decimal(0)) - (
+        old_quantity if was_active else Decimal(0)
+    )
+    if cache_delta != 0:
+        await apply_cache_delta(session, batch.branch_id, batch.medication_id, cache_delta)
     await audit_service.record(
         session,
         AuditAction.STOCK_ADJUSTED,
@@ -740,14 +783,28 @@ async def rebuild_cache(session: AsyncSession, branch_id: uuid.UUID) -> int:
     return int(count)
 
 
-async def get_batch(session: AsyncSession, batch_id: uuid.UUID) -> MedicationBatch:
-    batch = (
-        await session.execute(
-            select(MedicationBatch).where(
-                MedicationBatch.id == batch_id, MedicationBatch.is_deleted.is_(False)
-            )
-        )
-    ).scalar_one_or_none()
+async def get_batch(
+    session: AsyncSession,
+    batch_id: uuid.UUID,
+    *,
+    for_update: bool = False,
+    branch_id: uuid.UUID | None = None,
+) -> MedicationBatch:
+    """Fetch a live batch, optionally under a row lock and/or branch-scoped.
+
+    Mutating callers MUST pass for_update=True: the adjust/status paths are
+    read-modify-write on an ABSOLUTE quantity, so an unlocked read races any
+    concurrent sale (lost update). With the lock, the ordering matches the
+    sale path exactly — batch row first, then branch_inventory (the
+    apply_cache_delta upsert) — so adjust-vs-sale cannot deadlock."""
+    stmt = select(MedicationBatch).where(
+        MedicationBatch.id == batch_id, MedicationBatch.is_deleted.is_(False)
+    )
+    if branch_id is not None:
+        stmt = stmt.where(MedicationBatch.branch_id == branch_id)
+    if for_update:
+        stmt = stmt.with_for_update()
+    batch = (await session.execute(stmt)).scalar_one_or_none()
     if batch is None:
         raise ApiError(ErrorCode.VALIDATION_FAILED, 404, message="Batch not found.")
     return batch

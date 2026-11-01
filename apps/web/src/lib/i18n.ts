@@ -190,6 +190,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'po.empty': 'لا أوامر شراء بعد',
     'po.no_branch': 'لا يوجد فرع — أنشئ فرعاً أولاً',
     'po.no_lines': 'أضف صنفاً واحداً على الأقل',
+    'po.qty_unit_note':
+      'الكمية والتكلفة بمستوى التعبئة المختار — الاستلام يُحوِّل تلقائياً للوحدة الأصغر (قرص/وحدة)',
     'po.created_ok': 'تم إنشاء أمر الشراء',
     'po.action_ok': 'تم تحديث حالة الأمر',
     'po.received_ok': 'تم تسجيل الاستلام',
@@ -320,6 +322,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.low_stock_only': 'الأقل من حد الطلب فقط',
     'inventory.medication': 'الدواء',
     'inventory.quantity': 'الكمية',
+    'inventory.receive_unit': 'وحدة الكمية',
     'inventory.on_hand': 'المتوفر',
     'inventory.reorder_point': 'حد إعادة الطلب',
     'inventory.shelf': 'الرف',
@@ -1111,6 +1114,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'po.empty': 'No purchase orders yet',
     'po.no_branch': 'No branch — create one first',
     'po.no_lines': 'Add at least one item',
+    'po.qty_unit_note':
+      'Quantity & cost are per the selected packaging level — receiving converts to the smallest unit automatically',
     'po.created_ok': 'Purchase order created',
     'po.action_ok': 'Order status updated',
     'po.received_ok': 'Receipt recorded',
@@ -1243,6 +1248,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'inventory.low_stock_only': 'Below reorder point only',
     'inventory.medication': 'Medication',
     'inventory.quantity': 'Quantity',
+    'inventory.receive_unit': 'Quantity unit',
     'inventory.on_hand': 'On hand',
     'inventory.reorder_point': 'Reorder point',
     'inventory.shelf': 'Shelf',

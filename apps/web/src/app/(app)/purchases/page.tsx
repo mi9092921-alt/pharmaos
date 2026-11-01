@@ -240,6 +240,25 @@ interface LineDraft {
   cost: string;
 }
 
+/**
+ * Smallest-unit equivalent of one unit of the selected packaging level
+ * (product of the DEEPER levels' qty_in_parent) — mirrors the server-side
+ * catalog_service.smallest_unit_factor used at receiving time.
+ */
+function baseFactor(packaging: PackagingLevel[], packagingId: string): number {
+  const selected = packaging.find((p) => p.id === packagingId);
+  if (!selected) return 1;
+  return packaging
+    .filter((p) => p.level > selected.level)
+    .reduce((acc, p) => acc * Number(p.qty_in_parent ?? 1), 1);
+}
+
+function deepestUnitName(packaging: PackagingLevel[]): string {
+  return [...packaging].sort((a, b) => b.level - a.level)[0]?.name_ar ?? '';
+}
+
+const fmtQty = (n: number) => String(Number(n.toFixed(3)));
+
 function CreateOrderModal({
   branchId,
   suppliers,
@@ -405,6 +424,12 @@ function CreateOrderModal({
                       value={l.qty}
                       onChange={(e) => updateLine(l.uid, { qty: e.target.value })}
                     />
+                    {Number(l.qty) > 0 && baseFactor(l.packaging, l.packaging_id) > 1 && (
+                      <p className="numeric mt-1 text-[11px] text-slate-500">
+                        = {fmtQty(Number(l.qty) * baseFactor(l.packaging, l.packaging_id))}{' '}
+                        {deepestUnitName(l.packaging)}
+                      </p>
+                    )}
                   </td>
                   <td className="p-2">
                     <Input
@@ -423,6 +448,8 @@ function CreateOrderModal({
             </tbody>
           </table>
         )}
+
+        {lines.length > 0 && <p className="text-xs text-slate-500">{t('po.qty_unit_note')}</p>}
 
         {error && <p className="text-sm text-danger">{t(`errors.${error}`)}</p>}
         <div className="flex justify-end gap-2">
@@ -543,9 +570,18 @@ function OrderDetailModal({
             <tbody>
               {(po.items ?? []).map((it) => (
                 <tr key={it.id} className="border-b border-border/60">
-                  <td className="numeric p-2">{it.qty_ordered}</td>
-                  <td className="numeric p-2">{it.qty_received}</td>
-                  <td className="numeric p-2">{it.unit_cost}</td>
+                  <td className="numeric p-2">
+                    {it.qty_ordered}{' '}
+                    <span className="text-xs text-slate-500">{it.packaging_name_ar}</span>
+                  </td>
+                  <td className="numeric p-2">
+                    {it.qty_received}{' '}
+                    <span className="text-xs text-slate-500">{it.packaging_name_ar}</span>
+                  </td>
+                  <td className="numeric p-2">
+                    {it.unit_cost}{' '}
+                    <span className="text-xs text-slate-500">/ {it.packaging_name_ar}</span>
+                  </td>
                   <td className="numeric p-2">{it.line_total}</td>
                   {receiving && (
                     <>
@@ -567,6 +603,7 @@ function OrderDetailModal({
                       <td className="p-2">
                         <Input
                           className="numeric h-8 w-20"
+                          placeholder={it.packaging_name_ar ?? ''}
                           value={rows[it.id]?.qty ?? ''}
                           onChange={(e) => setRow(it.id, { qty: e.target.value })}
                         />

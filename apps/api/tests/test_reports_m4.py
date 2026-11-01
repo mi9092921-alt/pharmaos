@@ -71,7 +71,7 @@ async def _make_strip_med(
     batch at the given per-TABLET purchase price — the manual-example shape.
 
     The FULL packaging chain matters: qty_smallest = product of the DEEPER
-    levels' qty_in_parent (sales_service._smallest_unit_factor), so the level-3
+    levels' qty_in_parent (catalog_service.smallest_unit_factor), so the level-3
     tablet row (qty_in_parent=10) is what makes 1 strip deduct 10 tablets from
     the batch — i.e. COGS prices each TABLET at the batch's purchase_price."""
     unit_ids: dict[str, uuid.UUID] = {}

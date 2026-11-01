@@ -92,6 +92,42 @@ async def _make_med(db_session: AsyncSession) -> tuple[str, str]:
     return str(med.id), str(pkg.id)
 
 
+async def _make_med_chain(db_session: AsyncSession) -> tuple[str, str]:
+    """علبة(1) → شريط(2، 3/علبة) → قرص(3، 10/شريط) — factor(علبة) = 30 قرصاً;
+    returns (medication_id, box_packaging_id)."""
+    unit_id = await _unit_id(db_session)
+    med = Medication(trade_name=f"CHAIN {uuid.uuid4().hex[:6]}", trade_name_ar="دواء متسلسل")
+    db_session.add(med)
+    await db_session.flush()
+    box = MedicationPackaging(
+        medication_id=med.id,
+        level=1,
+        unit_id=unit_id,
+        name_ar="علبة",
+        selling_price=Decimal("130.00"),
+        is_default_sale=True,
+    )
+    strip = MedicationPackaging(
+        medication_id=med.id,
+        level=2,
+        unit_id=unit_id,
+        name_ar="شريط",
+        qty_in_parent=Decimal("3"),
+        selling_price=Decimal("45.00"),
+    )
+    tablet = MedicationPackaging(
+        medication_id=med.id,
+        level=3,
+        unit_id=unit_id,
+        name_ar="قرص",
+        qty_in_parent=Decimal("10"),
+        selling_price=Decimal("5.00"),
+    )
+    db_session.add_all([box, strip, tablet])
+    await db_session.commit()
+    return str(med.id), str(box.id)
+
+
 async def _make_supplier(client: httpx.AsyncClient, csrf: str) -> str:
     r = await client.post(
         "/api/v1/purchases/suppliers",
@@ -255,6 +291,129 @@ async def test_full_lifecycle_receive_updates_inventory(admin, branch, db_sessio
     assert len(rows) == 2 and all(b["supplier_id"] == supplier_id for b in rows)
     drift = await client.get("/api/v1/inventory/drift", params={"branch_id": str(branch.id)})
     assert drift.json()["data"]["ok"] is True
+
+
+async def test_receive_converts_packaging_level_to_smallest_units(
+    admin, branch, db_session: AsyncSession
+):  # type: ignore[no-untyped-def]
+    """PO lines are at the ORDERED packaging level; the batch ledger is in the
+    smallest unit: 1 علبة (3 شرائط x 10 أقراص = 30 قرصاً) received at 120/علبة
+    books a 30-tablet batch at 4.00/tablet."""
+    client, csrf = admin
+    supplier_id = await _make_supplier(client, csrf)
+    med, pkg = await _make_med_chain(db_session)
+    po = (
+        await _create_po(
+            client,
+            csrf,
+            branch_id=str(branch.id),
+            supplier_id=supplier_id,
+            lines=[
+                {"medication_id": med, "packaging_id": pkg, "qty_ordered": "2", "unit_cost": "120"}
+            ],
+        )
+    ).json()["data"]
+    po_id, item_id = po["id"], po["items"][0]["id"]
+    assert po["subtotal"] == "240.00" and po["items"][0]["packaging_name_ar"] == "علبة"
+    await _post(client, csrf, f"/api/v1/purchases/orders/{po_id}/submit")
+    await _post(client, csrf, f"/api/v1/purchases/orders/{po_id}/approve")
+
+    # receive ONE box -> a 30-tablet batch priced per tablet
+    r = await client.post(
+        f"/api/v1/purchases/orders/{po_id}/receive",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "receipts": [
+                {
+                    "purchase_item_id": item_id,
+                    "batch_number": "B-1",
+                    "expiry_date": FUTURE,
+                    "quantity": "1",
+                }
+            ]
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["status"] == "partially_received"
+    # qty_received stays at the ordered level (boxes), NOT tablets
+    assert r.json()["data"]["items"][0]["qty_received"] == "1.000"
+
+    batches = await client.get(
+        "/api/v1/inventory/batches", params={"branch_id": str(branch.id), "medication_id": med}
+    )
+    rows = batches.json()["data"]
+    assert len(rows) == 1
+    assert Decimal(rows[0]["quantity"]) == Decimal("30")
+    assert Decimal(rows[0]["purchase_price"]) == Decimal("4.00")
+
+    inv = await client.get("/api/v1/inventory", params={"branch_id": str(branch.id)})
+    mine = next(x for x in inv.json()["data"] if x["medication_id"] == med)
+    assert Decimal(mine["cached_quantity"]) == Decimal("30")
+
+    # receive the remaining box -> received, second batch of 30
+    r2 = await client.post(
+        f"/api/v1/purchases/orders/{po_id}/receive",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "receipts": [
+                {
+                    "purchase_item_id": item_id,
+                    "batch_number": "B-2",
+                    "expiry_date": FUTURE,
+                    "quantity": "1",
+                }
+            ]
+        },
+    )
+    assert r2.json()["data"]["status"] == "received"
+    assert r2.json()["data"]["items"][0]["qty_received"] == "2.000"
+    drift = await client.get("/api/v1/inventory/drift", params={"branch_id": str(branch.id)})
+    assert drift.json()["data"]["ok"] is True
+
+
+async def test_create_rejects_incomplete_level_chain(admin, branch, db_session: AsyncSession):  # type: ignore[no-untyped-def]
+    """A deeper level with a missing qty_in_parent cannot be converted — the PO
+    must be rejected at creation, not at receiving time."""
+    client, csrf = admin
+    supplier_id = await _make_supplier(client, csrf)
+    unit_id = await _unit_id(db_session)
+    med = Medication(trade_name=f"BROKEN {uuid.uuid4().hex[:6]}", trade_name_ar="سلسلة ناقصة")
+    db_session.add(med)
+    await db_session.flush()
+    box = MedicationPackaging(
+        medication_id=med.id,
+        level=1,
+        unit_id=unit_id,
+        name_ar="علبة",
+        selling_price=Decimal("10.00"),
+        is_default_sale=True,
+    )
+    strip = MedicationPackaging(
+        medication_id=med.id,
+        level=2,
+        unit_id=unit_id,
+        name_ar="شريط",
+        qty_in_parent=None,
+        selling_price=Decimal("4.00"),
+    )
+    db_session.add_all([box, strip])
+    await db_session.commit()
+    r = await _create_po(
+        client,
+        csrf,
+        branch_id=str(branch.id),
+        supplier_id=supplier_id,
+        lines=[
+            {
+                "medication_id": str(med.id),
+                "packaging_id": str(box.id),
+                "qty_ordered": "5",
+                "unit_cost": "10",
+            }
+        ],
+    )
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "E-VAL-001"
 
 
 async def test_partially_received_po_can_be_cancelled(admin, branch, db_session: AsyncSession):  # type: ignore[no-untyped-def]

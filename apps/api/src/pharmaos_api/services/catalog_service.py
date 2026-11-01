@@ -187,6 +187,37 @@ async def get_barcodes(session: AsyncSession, medication_id: uuid.UUID) -> list[
     )
 
 
+async def smallest_unit_factor(
+    session: AsyncSession, medication_id: uuid.UUID, level: int
+) -> Decimal:
+    """How many smallest units one unit of `level` contains.
+
+    factor(level) = product of qty_in_parent over all DEEPER levels
+    (box=1: strips/box x tablets/strip; tablet=deepest: 1). Shared by every
+    flow that touches the batch ledger (sales & purchase receiving) — batches
+    are always stored in the smallest unit (CLAUDE.md inventory rules).
+    """
+    stmt = (
+        select(MedicationPackaging.level, MedicationPackaging.qty_in_parent)
+        .where(
+            MedicationPackaging.medication_id == medication_id,
+            MedicationPackaging.is_deleted.is_(False),
+            MedicationPackaging.level > level,
+        )
+        .order_by(MedicationPackaging.level)
+    )
+    factor = Decimal(1)
+    for deeper_level, qty_in_parent in (await session.execute(stmt)).all():
+        if qty_in_parent is None:
+            raise ApiError(
+                ErrorCode.VALIDATION_FAILED,
+                422,
+                message=f"qty_in_parent missing for packaging level {deeper_level}.",
+            )
+        factor *= Decimal(qty_in_parent)
+    return factor
+
+
 def _apply_fields(med: Medication, values: dict[str, Any]) -> list[str]:
     changed = []
     for field in _MED_FIELDS:
