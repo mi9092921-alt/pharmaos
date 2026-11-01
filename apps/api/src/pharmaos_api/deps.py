@@ -39,6 +39,27 @@ async def get_current_user(request: Request, session: AsyncSession = Depends(get
     return user
 
 
+async def user_has_permission(session: AsyncSession, user: User, permission_code: str) -> bool:
+    """Programmatic twin of require_permission — for CONDITIONAL behavior the
+    guard pattern can't express (e.g. the shortage list redacts customer PII
+    for roles below inventory.edit). Same DB source of truth: the role's
+    grants seeded from packages/shared/permissions.ts."""
+    if user.role_id is None:
+        return False
+    stmt = (
+        select(RolePermission.id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            RolePermission.role_id == user.role_id,
+            RolePermission.is_deleted.is_(False),
+            Permission.code == permission_code,
+            Permission.is_deleted.is_(False),
+        )
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none() is not None
+
+
 def require_permission(permission_code: str) -> Callable[..., Awaitable[None]]:
     """Endpoint guard: the current user's role must hold the permission (from the DB,
     which is seeded from packages/shared/permissions.ts — code is the source)."""
@@ -47,20 +68,7 @@ def require_permission(permission_code: str) -> Callable[..., Awaitable[None]]:
         current_user: User = Depends(get_current_user),
         session: AsyncSession = Depends(get_session),
     ) -> None:
-        if current_user.role_id is None:
-            raise ApiError(ErrorCode.PERMISSION_DENIED, 403)
-        stmt = (
-            select(RolePermission.id)
-            .join(Permission, Permission.id == RolePermission.permission_id)
-            .where(
-                RolePermission.role_id == current_user.role_id,
-                RolePermission.is_deleted.is_(False),
-                Permission.code == permission_code,
-                Permission.is_deleted.is_(False),
-            )
-            .limit(1)
-        )
-        if (await session.execute(stmt)).scalar_one_or_none() is None:
+        if not await user_has_permission(session, current_user, permission_code):
             raise ApiError(ErrorCode.PERMISSION_DENIED, 403)
 
     return _check

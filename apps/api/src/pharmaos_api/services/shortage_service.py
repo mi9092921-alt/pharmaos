@@ -41,7 +41,11 @@ _CLOSED = ("received", "unavailable", "cancelled")
 # ------------------------------ helpers ------------------------------
 
 
-def _shortage_dict(s: ShortageItem) -> dict[str, object]:
+def _shortage_dict(s: ShortageItem, *, redact_pii: bool = False) -> dict[str, object]:
+    """redact_pii (review of #5): customer name/phone are PII — the list and
+    CSV export blank them for roles below inventory.edit (a cashier records a
+    customer request from the POS but must never browse or export the
+    collected phone numbers; staff read them freely)."""
     return {
         "id": str(s.id),
         "branch_id": str(s.branch_id),
@@ -53,8 +57,8 @@ def _shortage_dict(s: ShortageItem) -> dict[str, object]:
         "status": s.status,
         "supplier_id": str(s.supplier_id) if s.supplier_id else None,
         "purchase_order_id": str(s.purchase_order_id) if s.purchase_order_id else None,
-        "customer_name": s.customer_name,
-        "customer_phone": s.customer_phone,
+        "customer_name": None if redact_pii else s.customer_name,
+        "customer_phone": None if redact_pii else s.customer_phone,
         "ask_count": s.ask_count,
         "last_asked_at": s.last_asked_at.isoformat() if s.last_asked_at else None,
         "ordered_at": s.ordered_at.isoformat() if s.ordered_at else None,
@@ -94,6 +98,7 @@ async def list_shortages(
     search: str | None = None,
     skip: int = 0,
     limit: int = 50,
+    redact_pii: bool = False,
 ) -> tuple[list[dict[str, object]], int]:
     where = ["si.branch_id = :b", "NOT si.is_deleted"]
     params: dict[str, object] = {"b": branch_id}
@@ -137,7 +142,7 @@ async def list_shortages(
     for sid in rows:
         item = await session.get(ShortageItem, sid)
         if item is not None:
-            out.append(_shortage_dict(item))
+            out.append(_shortage_dict(item, redact_pii=redact_pii))
     return out, total
 
 
@@ -646,8 +651,14 @@ async def substitutes(
 
 
 async def export_csv(
-    session: AsyncSession, *, branch_id: uuid.UUID, kind: str | None = None
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    kind: str | None = None,
+    redact_pii: bool = False,
 ) -> tuple[str, str]:
+    """CSV export of the shortage list — customer_name/customer_phone are
+    blanked when redact_pii (roles below inventory.edit; see _shortage_dict)."""
     where = ["branch_id = :b", "NOT is_deleted"]
     params: dict[str, object] = {"b": branch_id}
     if kind:
@@ -677,8 +688,16 @@ async def export_csv(
         ]
     )
     for r in rows:
+        cells = list(r)
+        if redact_pii:
+            # positional: customer_name (5), customer_phone (6) — see the SELECT
+            cells[5] = None
+            cells[6] = None
         writer.writerow(
-            [csv_safe(str(c)) if isinstance(c, str) else ("" if c is None else str(c)) for c in r]
+            [
+                csv_safe(str(c)) if isinstance(c, str) else ("" if c is None else str(c))
+                for c in cells
+            ]
         )
     filename = f"shortages-{kind or 'all'}.csv"
     return filename, buf.getvalue()

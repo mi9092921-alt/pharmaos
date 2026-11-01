@@ -14,7 +14,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pharmaos_api.db import get_session
-from pharmaos_api.deps import get_current_user, require_any_permission, require_permission
+from pharmaos_api.deps import (
+    get_current_user,
+    require_any_permission,
+    require_permission,
+    user_has_permission,
+)
 from pharmaos_api.errors import success_envelope
 from pharmaos_api.models import User
 from pharmaos_api.security.csrf import enforce_csrf
@@ -75,8 +80,13 @@ async def list_shortages(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
+    actor: User = Depends(get_current_user),
     _: None = _view,
 ) -> dict[str, object]:
+    # PII redaction (review #5): customer name/phone are for inventory.edit
+    # staff — a cashier records requests from the POS but never browses the
+    # collected phone numbers.
+    redact = not await user_has_permission(session, actor, "inventory.edit")
     rows, total = await svc.list_shortages(
         session,
         branch_id=branch_id,
@@ -85,6 +95,7 @@ async def list_shortages(
         search=search,
         skip=skip,
         limit=limit,
+        redact_pii=redact,
     )
     return success_envelope({"items": rows, "total": total})
 
@@ -232,9 +243,13 @@ async def export_csv(
     branch_id: uuid.UUID = Query(),
     kind: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
+    actor: User = Depends(get_current_user),
     _: None = _view,
 ) -> Response:
-    filename, content = await svc.export_csv(session, branch_id=branch_id, kind=kind)
+    redact = not await user_has_permission(session, actor, "inventory.edit")
+    filename, content = await svc.export_csv(
+        session, branch_id=branch_id, kind=kind, redact_pii=redact
+    )
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",

@@ -458,3 +458,52 @@ async def test_bulk_and_csv_export_injection_safe(admin, branch, db_session: Asy
 
     no_csrf = await client.post(f"{SH}/bulk", json={"ids": [id1], "action": "cancel"})
     assert no_csrf.status_code == 403 and no_csrf.json()["error"]["code"] == "E-AUTH-004"
+
+
+# ------------------------------ PII redaction (#5) ------------------------------
+
+
+async def test_customer_pii_redacted_for_non_edit_roles(admin, branch, db_session: AsyncSession):
+    """Review #5: a cashier records customer requests from the POS but must
+    NEVER browse or export the collected names/phones — list and CSV blank
+    customer fields for roles below inventory.edit; staff read them freely."""
+    client, csrf = admin
+    market = {
+        "branch_id": str(branch.id),
+        "kind": "market",
+        "source": "customer_request",
+        "name_text": f"شكلوفة {uuid.uuid4().hex[:6]}",
+        "customer_name": "أم أحمد",
+        "customer_phone": "01012345678",
+    }
+    r = await client.post(SH, headers={"X-CSRF-Token": csrf}, json=market)
+    assert r.status_code == 200, r.text
+
+    # staff (super_admin) sees the PII in the list
+    staff = await client.get(SH, params={"branch_id": str(branch.id)})
+    assert staff.status_code == 200
+    item = next(i for i in staff.json()["data"]["items"] if i["customer_name"])
+    assert item["customer_name"] == "أم أحمد" and item["customer_phone"] == "01012345678"
+
+    # the cashier's own list is redacted
+    async with await _new_client() as cashier_client:
+        await _login(cashier_client, await _seed_user(db_session, "cashier"))
+        lst = await cashier_client.get(SH, params={"branch_id": str(branch.id)})
+        assert lst.status_code == 200
+        redacted = next(i for i in lst.json()["data"]["items"] if i["id"] == item["id"])
+        assert redacted["customer_name"] is None and redacted["customer_phone"] is None
+
+        # and the CSV export carries empty customer columns for them
+        csv_resp = await cashier_client.get(
+            f"{SH}/export.csv", params={"branch_id": str(branch.id)}
+        )
+        assert csv_resp.status_code == 200
+        assert "أم أحمد" not in csv_resp.text and "01012345678" not in csv_resp.text
+        assert "customer_phone" in csv_resp.text  # column header survives
+
+    # pharmacist tier (inventory.edit) still sees them
+    async with await _new_client() as pharmacist_client:
+        await _login(pharmacist_client, await _seed_user(db_session, "pharmacist"))
+        lst2 = await pharmacist_client.get(SH, params={"branch_id": str(branch.id)})
+        item2 = next(i for i in lst2.json()["data"]["items"] if i["id"] == item["id"])
+        assert item2["customer_phone"] == "01012345678"

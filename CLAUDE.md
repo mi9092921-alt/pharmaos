@@ -537,6 +537,7 @@ POST /api/v1/catalog/import                     → multipart (branch_id + dry_r
   batch_number, expiry_date (YYYY-MM-DD), quantity, purchase_price
                         صف بكمية > 0 ⇒ دفعة جديدة + حركة purchase_in على الفرع المختار
 الرفض دائمًا لكل صف بسبب مسمّى (لا صمت ولا مطابقة ضبابية)؛ dry_run يعرض قبل الكتابة.
+التنفيذ all-or-nothing في transaction واحدة — تمسك أقفال صفوف المخزون طوال المدة (دقائق للملفات الكبيرة): نفّذه والصيدلية هادئة أو مقفولة.
 ```
 
 ### تطبيق الصلاحيات — قواعد إلزامية

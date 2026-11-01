@@ -99,6 +99,11 @@ export function CatalogImportModal({ open, onClose }: { open: boolean; onClose: 
   return (
     <Modal open={open} onClose={close} title={t('catalog.import_title')} className="max-w-2xl">
       <div className="space-y-4">
+        {/* always visible (operational note from review): a large import holds
+            inventory row locks for minutes — schedule it for quiet hours */}
+        <p className="rounded-[var(--radius-sm)] bg-amber-50 p-2.5 text-xs leading-5 text-amber-800">
+          ⚠ {t('catalog.import_timing_warning')}
+        </p>
         <button
           type="button"
           className="text-sm font-medium text-primary-600 hover:underline"

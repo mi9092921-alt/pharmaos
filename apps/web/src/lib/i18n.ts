@@ -431,6 +431,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.import_result_ok': 'تم تنفيذ الاستيراد',
     'catalog.import_aborted':
       'أُلغي الاستيراد بالكامل (لم يُكتب شيء) — صحّح الصفوف المرفوضة وأعد المحاولة',
+    'catalog.import_timing_warning':
+      'الاستيراد الكبير يثبّت أقفال صفوف المخزون دقائق — نفّذه والصيدلية هادئة أو مقفولة حتى لا ينتظر الكاشير',
     'catalog.export_branch': 'اختر الفرع…',
     'catalog.export_all': 'كاتلوج فقط (بدون كميات)',
     'catalog.export_no_branch': 'أنشئ فرعًا أولًا لتفعيل التصدير بالكميات',
@@ -1511,6 +1513,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.import_result_ok': 'Import applied',
     'catalog.import_aborted':
       'Import fully rolled back (nothing written) — fix the rejected rows and retry',
+    'catalog.import_timing_warning':
+      'A large import holds inventory row locks for minutes — run it while the pharmacy is quiet or closed so cashiers never wait',
     'catalog.export_branch': 'Choose branch…',
     'catalog.export_all': 'Catalog only (no quantities)',
     'catalog.export_no_branch': 'Create a branch to enable quantity export',
