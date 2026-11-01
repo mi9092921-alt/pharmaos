@@ -1,0 +1,66 @@
+- complementary:
+  - generic: PharmaOS
+  - navigation:
+    - link "الرئيسية":
+      - /url: /
+    - link "نقطة البيع":
+      - /url: /pos
+    - link "كتالوج الأدوية":
+      - /url: /catalog
+    - link "المخزون":
+      - /url: /inventory
+    - link "المشتريات":
+      - /url: /purchases
+    - link "العملاء":
+      - /url: /customers
+    - link "المرتجعات":
+      - /url: /returns
+    - link "الوصفات الطبية":
+      - /url: /prescriptions
+    - link "المصروفات":
+      - /url: /finance
+    - link "الامتثال":
+      - /url: /compliance
+    - link "جلسات الكاشير":
+      - /url: /cashier
+    - link "التنبيهات":
+      - /url: /alerts
+    - link "مركز الإشعارات":
+      - /url: /notifications
+    - link "التقارير":
+      - /url: /reports
+    - link "المستخدمون":
+      - /url: /users
+    - link "الإعدادات":
+      - /url: /settings
+    - link "حول PharmaOS":
+      - /url: /about
+- banner:
+  - generic: متصل
+  - button "الإشعارات":
+    - generic: "2"
+  - generic: PharmaOS
+  - generic: مالك النظام
+  - button "تسجيل الخروج"
+- main:
+  - heading "التنبيهات" [level=1]
+  - button "إعادة التقييم"
+  - combobox:
+    - option "PharmaOS" [selected]
+  - button "نشط"
+  - button "مُقرّ به"
+  - button "محلول"
+  - button "الكل"
+  - generic: حرِج
+  - paragraph: نسخ احتياطي متأخر
+  - paragraph: آخر نسخة احتياطية أقدم من 36 ساعة (أو لا توجد)
+  - paragraph: "آخر رصد: 10/31/2026, 12:50:54 AM"
+  - button "إقرار"
+  - button "حل"
+  - generic: تحذير
+  - paragraph: أدوية بلا مكان
+  - paragraph: 1 أصناف بمخزون بلا مكان مسجل
+  - paragraph: "آخر رصد: 10/31/2026, 12:50:54 AM"
+  - button "إقرار"
+  - button "حل"
+- alert

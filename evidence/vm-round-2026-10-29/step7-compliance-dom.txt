@@ -1,0 +1,77 @@
+- complementary:
+  - generic: PharmaOS
+  - navigation:
+    - link "الرئيسية":
+      - /url: /
+    - link "نقطة البيع":
+      - /url: /pos
+    - link "كتالوج الأدوية":
+      - /url: /catalog
+    - link "المخزون":
+      - /url: /inventory
+    - link "المشتريات":
+      - /url: /purchases
+    - link "العملاء":
+      - /url: /customers
+    - link "المرتجعات":
+      - /url: /returns
+    - link "الوصفات الطبية":
+      - /url: /prescriptions
+    - link "المصروفات":
+      - /url: /finance
+    - link "الامتثال":
+      - /url: /compliance
+    - link "جلسات الكاشير":
+      - /url: /cashier
+    - link "التنبيهات":
+      - /url: /alerts
+    - link "مركز الإشعارات":
+      - /url: /notifications
+    - link "التقارير":
+      - /url: /reports
+    - link "المستخدمون":
+      - /url: /users
+    - link "الإعدادات":
+      - /url: /settings
+    - link "حول PharmaOS":
+      - /url: /about
+- banner:
+  - generic: متصل
+  - button "الإشعارات":
+    - generic: "2"
+  - generic: PharmaOS
+  - generic: مالك النظام
+  - button "تسجيل الخروج"
+- main:
+  - heading "الامتثال المصري" [level=1]
+  - generic: الفرع
+  - combobox:
+    - option "PharmaOS" [selected]
+  - paragraph: بيئة محاكاة محلية — لا يُدَّعى قبول رسمي قبل توفّر الاعتمادات الحقيقية.
+  - button "الإيصال الإلكتروني (ETA)"
+  - button "تتبّع الدواء (EDA)"
+  - button "إرسال المعلّق الآن"
+  - table:
+    - rowgroup:
+      - row "الفاتورة الحالة معرّف ETA المحاولات أُنشئ":
+        - columnheader "الفاتورة"
+        - columnheader "الحالة"
+        - columnheader "معرّف ETA"
+        - columnheader "المحاولات"
+        - columnheader "أُنشئ"
+    - rowgroup:
+      - row "INV-20261031-0002 معلّق — 0 2026-10-30 22:58":
+        - cell "INV-20261031-0002"
+        - cell "معلّق":
+          - generic: معلّق
+        - cell "—"
+        - cell "0"
+        - cell "2026-10-30 22:58"
+      - row "INV-20261031-0001 معلّق — 0 2026-10-30 22:44":
+        - cell "INV-20261031-0001"
+        - cell "معلّق":
+          - generic: معلّق
+        - cell "—"
+        - cell "0"
+        - cell "2026-10-30 22:44"
+- alert

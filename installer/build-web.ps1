@@ -32,6 +32,14 @@ $Out = Join-Path $PSScriptRoot "dist\web"
 if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
+# The standalone tree in a pnpm workspace still contains a root
+# node_modules/.pnpm store and a symlink to the workspace TypeScript install.
+# Neither is needed by server.js at runtime; copying them would make the
+# installer unpack hundreds of megabytes and tens of thousands of files.
+$WebPackage = Get-Content (Join-Path $Web "package.json") -Raw | ConvertFrom-Json
+$RuntimePackageNames = @($WebPackage.dependencies.PSObject.Properties.Name)
+$DevOnlyPackagePrefixes = @('typescript', 'tailwindcss', '@tailwindcss', '@types')
+
 # 1. the standalone server tree (server.js + node_modules + .next/server ...)
 # robocopy, not Copy-Item: pnpm's node_modules entries are junctions, and
 # Copy-Item breaks them (styled-jsx MODULE_NOT_FOUND). robocopy FOLLOWS the
@@ -47,6 +55,15 @@ if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
 # content (the package + everything it requires) into apps/web/node_modules.
 $appNodeModules = Join-Path $Out "apps\web\node_modules"
 Get-ChildItem (Join-Path $Web "node_modules") -Directory | ForEach-Object {
+    $packageName = $_.Name
+    if ($DevOnlyPackagePrefixes | Where-Object {
+            $packageName -eq $_ -or $packageName.StartsWith("$_/")
+        }) { return }
+    if ($packageName -notin $RuntimePackageNames -and $packageName -notin @('next', 'react', 'react-dom')) {
+        # Next's standalone trace already carries transitive runtime packages;
+        # do not materialize unrelated workspace/dev packages here.
+        return
+    }
     if ($_.LinkType -ne "Junction" -and $_.LinkType -ne "SymbolicLink") { return }
     $real = $_.Target
     if ($real -is [array]) { $real = $real[0] }
@@ -57,6 +74,26 @@ Get-ChildItem (Join-Path $Web "node_modules") -Directory | ForEach-Object {
         if ($LASTEXITCODE -ge 8) { throw "robocopy dep merge failed ($($name)): $LASTEXITCODE" }
     }
 }
+
+# The first robocopy is intentionally broad so it preserves the standalone
+# server layout, but it also materializes the workspace root node_modules.
+# Runtime resolution happens from apps/web/node_modules, so drop that store
+# before electron-builder packages the resources.
+$RootNodeModules = Join-Path $Out "node_modules"
+if (Test-Path $RootNodeModules) {
+    Remove-Item -Recurse -Force $RootNodeModules
+}
+
+# A few dev-only directories can also arrive from the standalone trace itself;
+# remove them explicitly so they cannot re-inflate the shipped web runtime.
+Get-ChildItem $appNodeModules -Directory -ErrorAction SilentlyContinue |
+    Where-Object {
+        $name = $_.Name
+        $DevOnlyPackagePrefixes | Where-Object {
+            $name -eq $_ -or $name.StartsWith("$_/")
+        }
+    } |
+    Remove-Item -Recurse -Force
 
 # 2. .next/static: the standalone output does NOT include the client chunks -
 #    without them every /_next/static/* URL 404s, React never hydrates, and

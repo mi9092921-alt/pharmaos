@@ -1,0 +1,82 @@
+== Pre-round inventory of existing PharmaOS state — captured 2026-10-30T00:07:17+02:00 ==
+
+-- processes matching pharmaos --
+
+-- C:/ProgramData/PharmaOS recursive listing (paths+sizes only) --
+
+FullName                                                          Length
+--------                                                          ------
+C:\ProgramData\PharmaOS\logs\api.log                               29071
+C:\ProgramData\PharmaOS\logs\pg.log                                17694
+C:\ProgramData\PharmaOS\logs\pharmaos.log                           9926
+C:\ProgramData\PharmaOS\logs\web.log                                1331
+C:\ProgramData\PharmaOS\pgdata\pg_hba.conf                          5639
+C:\ProgramData\PharmaOS\pgdata\pg_ident.conf                        2712
+C:\ProgramData\PharmaOS\pgdata\PG_VERSION                              3
+C:\ProgramData\PharmaOS\pgdata\postgresql.auto.conf                   90
+C:\ProgramData\PharmaOS\pgdata\postgresql.conf                     32031
+C:\ProgramData\PharmaOS\pgdata\postmaster.opts                        94
+C:\ProgramData\PharmaOS\pgdata\base\1\112                           8192
+C:\ProgramData\PharmaOS\pgdata\base\1\113                           8192
+C:\ProgramData\PharmaOS\pgdata\base\1\1247                        122880
+C:\ProgramData\PharmaOS\pgdata\base\1\1247_fsm                     24576
+C:\ProgramData\PharmaOS\pgdata\base\1\1247_vm                       8192
+C:\ProgramData\PharmaOS\pgdata\base\1\1249                        450560
+C:\ProgramData\PharmaOS\pgdata\base\1\1249_fsm                     24576
+C:\ProgramData\PharmaOS\pgdata\base\1\1249_vm                       8192
+C:\ProgramData\PharmaOS\pgdata\base\1\1255                        811008
+C:\ProgramData\PharmaOS\pgdata\base\1\1255_fsm                     24576
+C:\ProgramData\PharmaOS\pgdata\base\1\1255_vm                       8192
+C:\ProgramData\PharmaOS\pgdata\base\1\1259                        114688
+C:\ProgramData\PharmaOS\pgdata\base\1\1259_fsm                     24576
+C:\ProgramData\PharmaOS\pgdata\base\1\1259_vm                       8192
+C:\ProgramData\PharmaOS\pgdata\base\1\1417                             0
+C:\ProgramData\PharmaOS\pgdata\base\1\1418                             0
+C:\ProgramData\PharmaOS\pgdata\base\1\14833                        65536
+C:\ProgramData\PharmaOS\pgdata\base\1\14833_fsm                    24576
+C:\ProgramData\PharmaOS\pgdata\base\1\14833_vm                      8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14836                            0
+C:\ProgramData\PharmaOS\pgdata\base\1\14837                         8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14838                         8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14838_fsm                    24576
+C:\ProgramData\PharmaOS\pgdata\base\1\14838_vm                      8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14841                            0
+C:\ProgramData\PharmaOS\pgdata\base\1\14842                         8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14843                         8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14843_fsm                    24576
+C:\ProgramData\PharmaOS\pgdata\base\1\14843_vm                      8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14846                            0
+C:\ProgramData\PharmaOS\pgdata\base\1\14847                         8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14848                         8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14848_fsm                    24576
+C:\ProgramData\PharmaOS\pgdata\base\1\14848_vm                      8192
+C:\ProgramData\PharmaOS\pgdata\base\1\14851                            0
+C:\ProgramData\PharmaOS\pgdata\base\1\14852                         8192
+C:\ProgramData\PharmaOS\pgdata\base\1\174                           8192
+C:\ProgramData\PharmaOS\pgdata\base\1\175                           8192
+C:\ProgramData\PharmaOS\pgdata\base\1\2187                          8192
+C:\ProgramData\PharmaOS\pgdata\base\1\2224                             0
+C:\ProgramData\PharmaOS\pgdata\base\1\2228                         16384
+C:\ProgramData\PharmaOS\pgdata\base\1\2328                             0
+C:\ProgramData\PharmaOS\pgdata\base\1\2336                             0
+C:\ProgramData\PharmaOS\pgdata\base\1\2337                          8192
+C:\ProgramData\PharmaOS\pgdata\base\1\2579                         16384
+C:\ProgramData\PharmaOS\pgdata\base\1\2600                         16384
+C:\ProgramData\PharmaOS\pgdata\base\1\2600_fsm                     24576
+
+-- C:/Program Files/PharmaOS --
+
+-- registry uninstall entries --
+
+
+DisplayName          : PharmaOS 1.1.0
+DisplayVersion       : 1.1.0
+UninstallString      : "D:\Program Files\PharmaOS\Uninstall PharmaOS.exe" /allusers
+QuietUninstallString : "D:\Program Files\PharmaOS\Uninstall PharmaOS.exe" /allusers /S
+
+
+
+
+-- scheduled tasks --
+
+-- services --

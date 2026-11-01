@@ -1,0 +1,62 @@
+{
+  "args": {
+    "port": 5434,
+    "meds": 10000,
+    "invoices": 50000,
+    "skip_seed": false,
+    "measure_only": false
+  },
+  "results": {
+    "scan_ms": {
+      "p50": 3.5,
+      "p95": 5.4,
+      "max": 7.1,
+      "n": 100
+    },
+    "search_exact_ms": {
+      "p50": 351.4,
+      "p95": 614.1,
+      "max": 1330.3,
+      "n": 50
+    },
+    "search_fuzzy_ms": {
+      "p50": 276.4,
+      "p95": 562.1,
+      "max": 749.3,
+      "n": 20
+    },
+    "sale_ms": {
+      "p50": 47.5,
+      "p95": 55.1,
+      "max": 225.9,
+      "n": 30
+    },
+    "report_daily_ms": {
+      "p50": 32.1,
+      "p95": 51.1,
+      "max": 75.6,
+      "n": 10
+    },
+    "report_60d_ms": {
+      "p50": 829.0,
+      "p95": 876.3,
+      "max": 1164.4,
+      "n": 5
+    },
+    "report_stock_ms": {
+      "p50": 38.0,
+      "p95": 51.0,
+      "max": 58.8,
+      "n": 10
+    }
+  },
+  "verdicts": {
+    "scan_ms": true,
+    "search_exact_ms": false,
+    "search_fuzzy_ms": false,
+    "sale_ms": true,
+    "report_daily_ms": true,
+    "report_60d_ms": true,
+    "report_stock_ms": true
+  }
+}

@@ -102,21 +102,43 @@ async def list_medications(
     rows = list((await session.execute(fts)).scalars().all())
 
     if len(rows) < _TRIGRAM_MIN_RESULTS:
-        trigram = (
+        # Index-served fallbacks merged in Python: one OR over DIFFERENT
+        # expressions (normalized % vs levenshtein vs raw ILIKE) cannot
+        # combine their indexes and forces a per-row-regex seq scan at
+        # catalog scale (release-prep phase 3: 264ms -> ms). The levenshtein
+        # sweep stays as the last resort for the nothing-else-matched case.
+        merged = list(rows)
+
+        async def _collect(stmt: Select[tuple[Medication]]) -> None:
+            for med in (await session.execute(stmt)).scalars():
+                if all(existing.id != med.id for existing in merged):
+                    merged.append(med)
+
+        await _collect(
             _base_query()
             .where(
-                text(
-                    "(normalize_arabic(trade_name_ar) % normalize_arabic(:q) "
-                    "OR trade_name ILIKE '%' || :q || '%')"
-                ).bindparams(q=search)
+                text("normalize_arabic(trade_name_ar) % normalize_arabic(:q)").bindparams(q=search)
             )
-            .order_by(Medication.trade_name)
             .limit(capped)
         )
-        for med in (await session.execute(trigram)).scalars():
-            if all(existing.id != med.id for existing in rows):
-                rows.append(med)
-        rows = rows[:capped]
+        await _collect(
+            _base_query()
+            .where(text("trade_name ILIKE '%' || :q || '%'").bindparams(q=search))
+            .limit(capped)
+        )
+        if len(merged) < _TRIGRAM_MIN_RESULTS:
+            await _collect(
+                _base_query()
+                .where(
+                    text(
+                        "levenshtein_less_equal("
+                        "normalize_arabic(trade_name_ar), normalize_arabic(:q), 1) <= 1"
+                    ).bindparams(q=search)
+                )
+                .limit(capped)
+            )
+        merged.sort(key=lambda m: m.trade_name)
+        rows = merged[:capped]
     return rows, len(rows)
 
 

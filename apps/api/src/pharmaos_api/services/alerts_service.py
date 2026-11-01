@@ -27,9 +27,8 @@ to fire from a source that does not exist):
                      schema (device→cloud sync is beyond Phase 3). The rule is
                      registered so its key/i18n surface is stable; the
                      evaluator wires in when the queue lands.
-  backup_overdue   — evaluated from the filesystem: BACKUP_PATH (the CLI
-                     backup command's directory, default ./backups). Unset
-                     BACKUP_PATH = rule inert (nothing to measure).
+  backup_overdue   — evaluated from the filesystem: BACKUP_PATH in dev/test,
+                     or the fixed production device backup directory.
 """
 
 import dataclasses
@@ -69,7 +68,7 @@ _ALERT_RULES: dict[str, dict[str, str]] = {
 }
 
 _BACKLOG_HOURS = 24
-_BACKUP_MAX_AGE_HOURS = 24
+_BACKUP_MAX_AGE_HOURS = 36
 _TT_FAILED_RETRIES = 3
 
 
@@ -325,17 +324,33 @@ async def _eval_sync_failed(session: AsyncSession, branch_id: uuid.UUID) -> list
     return []
 
 
+def _configured_backup_dir() -> Path | None:
+    """Resolve the same primary directory used by the backup CLI.
+
+    Development/test stays inert unless BACKUP_PATH is explicit. Production
+    must never depend on a scheduler environment variable: it uses the fixed
+    %ProgramData%\\PharmaOS\\backups path.
+    """
+    raw = os.environ.get("BACKUP_PATH")
+    if raw:
+        return Path(raw)
+    from pharmaos_api.config import is_production_process
+
+    if is_production_process():
+        return backup_service.default_backup_dir()
+    return None
+
+
 def _newest_backup_file() -> tuple[float, str] | None:
     """Sync filesystem scan (tiny local IO, safe inside the async evaluator):
     the newest encrypted backup file in the configured dir, or None."""
-    raw = os.environ.get("BACKUP_PATH")
-    if not raw:
+    backup_dir = _configured_backup_dir()
+    if backup_dir is None:
         return None
-    backup_dir = Path(raw)
     newest: tuple[float, str] | None = None
     try:
         for candidate in backup_dir.glob("*" + backup_service.BACKUP_SUFFIX):
-            if candidate.is_file():
+            if candidate.is_file() and backup_service.verify_checksum(candidate):
                 mtime = candidate.stat().st_mtime
                 if newest is None or mtime > newest[0]:
                     newest = (mtime, candidate.name)
@@ -345,10 +360,8 @@ def _newest_backup_file() -> tuple[float, str] | None:
 
 
 async def _eval_backup_overdue(session: AsyncSession, branch_id: uuid.UUID) -> list[Finding]:
-    """Last encrypted backup older than 24h, measured on the FILESYSTEM — the
-    same source the CLI backup command writes to (BACKUP_PATH, default
-    ./backups). BACKUP_PATH unset -> the rule is inert (nothing to measure)."""
-    if os.environ.get("BACKUP_PATH") is None:
+    """Last successful encrypted backup older than 36h is a critical alert."""
+    if _configured_backup_dir() is None:
         return []
     newest = _newest_backup_file()
     if newest is not None:

@@ -1,0 +1,11 @@
+== Gate 0: port 5433 already occupied by DEV postgres (clean VM must have it free) — captured 2026-10-29T23:58:56+02:00 ==
+  TCP    127.0.0.1:5433         0.0.0.0:0              LISTENING       6852
+
+
+ProcessName : postgres
+Path        : D:\projects\pharmaos\installer\vendor\pg\bin\postgres.exe
+StartTime   : 10/27/2026 3:01:42 AM
+
+
+
+-- dev postgres binary lives inside the repo vendored tools: installer/vendor/pg/bin/postgres.exe --

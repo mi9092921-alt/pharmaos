@@ -1,0 +1,71 @@
+{
+  "database": "pharmaos_release_perf",
+  "fictional_medications": 10000,
+  "fictional_invoices": 50000,
+  "search_queries": {
+    "arabic_exact": "\u0643\u0648\u0646\u062c\u064a\u0633\u062a\u0627\u0644",
+    "arabic_typo": "\u0643\u0648\u0646\u062c\u0633\u062a\u0627\u0644"
+  },
+  "explain_analyze": {
+    "arabic_exact": [
+      "Seq Scan on medications  (cost=0.00..396.00 rows=50 width=16) (actual time=4.272..4.274 rows=1 loops=1)",
+      "  Filter: ((NOT is_deleted) AND (search_vector @@ '''\u0643\u0648\u0646\u062c\u064a\u0633\u062a\u0627\u0644'''::tsquery))",
+      "  Rows Removed by Filter: 9999",
+      "  Buffers: shared hit=271",
+      "Planning:",
+      "  Buffers: shared hit=1",
+      "Planning Time: 0.265 ms",
+      "Execution Time: 4.304 ms"
+    ],
+    "arabic_typo_trigram": [
+      "Seq Scan on medications  (cost=0.00..471.00 rows=1 width=16) (actual time=117.789..117.799 rows=1 loops=1)",
+      "  Filter: ((NOT is_deleted) AND (translate(regexp_replace(regexp_replace(COALESCE((trade_name_ar)::text, ''::text), '[\u064b-\u0652\u0670]'::text, ''::text, 'g'::text), '\u0640'::text, ''::text, 'g'::text), '\u0623\u0625\u0622\u0671\u0649\u0629'::text, '\u0627\u0627\u0627\u0627\u064a\u0647'::text) % '\u0643\u0648\u0646\u062c\u0633\u062a\u0627\u0644'::text))",
+      "  Rows Removed by Filter: 9999",
+      "  Buffers: shared hit=271",
+      "Planning:",
+      "  Buffers: shared hit=1",
+      "Planning Time: 1.890 ms",
+      "Execution Time: 117.834 ms"
+    ],
+    "arabic_typo_levenshtein_fallback": [
+      "Seq Scan on medications  (cost=0.00..496.00 rows=3333 width=16) (actual time=21.012..21.015 rows=1 loops=1)",
+      "  Filter: ((NOT is_deleted) AND (levenshtein_less_equal(translate(regexp_replace(regexp_replace(COALESCE((trade_name_ar)::text, ''::text), '[\u064b-\u0652\u0670]'::text, ''::text, 'g'::text), '\u0640'::text, ''::text, 'g'::text), '\u0623\u0625\u0622\u0671\u0649\u0629'::text, '\u0627\u0627\u0627\u0627\u064a\u0647'::text), '\u0643\u0648\u0646\u062c\u0633\u062a\u0627\u0644'::text, 1) <= 1))",
+      "  Rows Removed by Filter: 9999",
+      "  Buffers: shared hit=271",
+      "Planning Time: 0.218 ms",
+      "Execution Time: 21.027 ms"
+    ]
+  },
+  "measurements_ms": {
+    "search_medication_ms": {
+      "samples": [133.24, 137.59, 133.53, 123.89, 141.69],
+      "median": 133.53,
+      "max": 141.69
+    },
+    "arabic_exact_search_ms": {
+      "samples": [159.55, 148.32, 154.29, 142.82, 154.0],
+      "median": 154.0,
+      "max": 159.55
+    },
+    "arabic_typo_search_ms": {
+      "samples": [149.63, 148.05, 175.05, 154.34, 169.88],
+      "median": 154.34,
+      "max": 175.05
+    },
+    "daily_sales_report_ms": {
+      "samples": [252.92, 300.81, 280.49, 283.69, 408.69],
+      "median": 283.69,
+      "max": 408.69
+    },
+    "inventory_report_ms": {
+      "samples": [53.67, 55.3, 47.55, 52.04, 51.59],
+      "median": 52.04,
+      "max": 55.3
+    },
+    "complete_sale_ms": {
+      "samples": [141.38, 28.18, 31.01, 31.51, 27.01],
+      "median": 31.01,
+      "max": 141.38
+    }
+  }
+}

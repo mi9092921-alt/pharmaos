@@ -1,0 +1,54 @@
+== Step 4: physical hardware presence check — 2026-10-31T00:48:09+02:00 ==
+-- barcode scanners (POS/HID) --
+-- printers (thermal/ESC-POS) --
+
+Name                          PrinterStatus  Type
+----                          -------------  ----
+Microsoft XPS Document Writer        Normal Local
+Microsoft Print to PDF               Normal Local
+Fax                                  Normal Local
+
+
+
+FriendlyName                                                  Class  Status
+------------                                                  -----  ------
+ACPI Thermal Zone                                             System OK    
+Composite Bus Enumerator                                      System OK    
+Mobile Intel(R) Processor Family I/O Thermal subsystem - 9D31 System OK    
+USB Composite Device                                          USB    OK    
+
+
+-- cash drawers (USB/serial) --
+
+FriendlyName                                                Class             Status
+------------                                                -----             ------
+Microsoft ACPI-Compliant Embedded Controller                System            OK    
+Microsoft Surface ACPI-Compliant Control Method Battery     Battery           OK    
+Composite Bus Enumerator                                    System            OK    
+Intel(R) Active Management Technology - SOL (COM3)          Ports             OK    
+HID-compliant mouse                                         Mouse             OK    
+PCI Express Root Complex                                    System            OK    
+Microsoft ACPI-Compliant System                             System            OK    
+Intel(R) Serial IO I2C Host Controller - 9D61               System            OK    
+Intel(R) Optane(TM) Memory and Storage Management Component SoftwareComponent OK    
+USB Composite Device                                        USB               OK    
+Generic software component                                  SoftwareComponent OK    
+HID-compliant consumer control device                       HIDClass          OK    
+HID-compliant wireless radio controls                       HIDClass          OK    
+HID-compliant mouse                                         Mouse             OK    
+Generic software component                                  SoftwareComponent OK    
+HID-compliant system controller                             HIDClass          OK    
+Intel(R) Serial IO I2C Host Controller - 9D60               System            OK    
+HID-compliant vendor-defined device                         HIDClass          OK    
+
+
+-- USB devices overview --
+
+FriendlyName                                                  Status
+------------                                                  ------
+Intel(R) USB 3.0 eXtensible Host Controller - 1.0 (Microsoft) OK    
+USB Composite Device                                          OK    
+USB Root Hub (USB 3.0)                                        OK    
+
+
+VERDICT: no barcode/thermal/drawer hardware connected to this machine -> item requires on-site manual execution at the pharmacy

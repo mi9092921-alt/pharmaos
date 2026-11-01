@@ -1,0 +1,26 @@
+== Step 3 prep: skeleton demo data (demo medication + stock) — 2026-10-31T00:37:20+02:00 ==
+demo medication ready � barcode: 6224000000017 (300 tablets in stock)
+
+-- inventory state after seed --
+{"success":false,"error":{"code":"E-VAL-001","message":"Validation failed.","details":[{"loc":["query","branch_id"],"type":"missing"}]}}
+-- invoices count before rounds --
+{"success":false,"error":{"code":"E-GEN-001","message":"The requested resource was not found."}}-- inventory with branch_id --
+{"success":true,"data":[],"meta":{"page":1,"total":0,"per_page":5}}
+-- sales/invoices via pos router? try /api/v1/pos/sales --
+{"success":false,"error":{"code":"E-GEN-001","message":"The requested resource was not found."}}
+-- cash sessions (POS invoices live here?) --
+{"success":true,"data":[]}-- branches --
+{"success":false,"error":{"code":"E-VAL-001","message":"Validation failed.","details":[{"loc":["path","user_id"],"type":"uuid_parsing"}]}}
+-- try rebuild-cache then drift-check --
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "rows": 1
+ }
+}
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "drift_rows": []
+ }
+}
+-- inventory again --
+{"success":true,"data":[{"medication_id":"52170389-87ae-4b09-9bad-96f41c43f47d","trade_name":"Panadol Demo 500mg","trade_name_ar":"بنادول تجريبي ٥٠٠","cached_quantity":"300.000","min_stock_level":"0.000","reorder_point":null,"shelf_location":null,"low_stock":false}],"meta":{"page":1,"total":1,"per_page":5}}

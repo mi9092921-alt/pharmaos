@@ -325,3 +325,85 @@ def test_escpos_receipt_bytes() -> None:
     assert b"INV-20260711-0001" in payload
     assert "بنادول ٥٠٠".encode() in payload  # UTF-8 Arabic content present
     assert payload.index(CUT) < payload.index(DRAWER_PULSE)
+
+
+async def test_fractional_strip_sale_deducts_exact_smallest_units(
+    db_session: AsyncSession, branch: Branch, cashier: User
+) -> None:
+    """Release-prep phase 4: fractional quantities at the SOLD level (half a
+    strip) must convert to an exact smallest-unit deduction — 0.5 strip of a
+    10-tablets/strip med = 5 tablets off the batch, ledger consistent."""
+    barcode, uid = await _make_medication(db_session, branch, batches=[("B1", 100, 300)])
+    invoice = await sales_service.create_sale(
+        db_session,
+        branch_id=branch.id,
+        lines=[SaleLine(barcode=barcode, quantity=Decimal("0.5"))],
+        cashier=cashier,
+    )
+    # display quantity stays at the sold level (0.5 strip), price prorated
+    item = (
+        (await db_session.execute(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)))
+        .scalars()
+        .one()
+    )
+    assert item.quantity == Decimal("0.5")
+    assert item.qty_smallest == Decimal("5.000")
+    assert invoice.total == Decimal("15.00")  # half of the 30.00 strip price
+
+    batch = (
+        await db_session.execute(
+            select(MedicationBatch).where(MedicationBatch.batch_number == f"{uid}-B1")
+        )
+    ).scalar_one()
+    assert batch.quantity == Decimal(95)  # 100 - 5 tablets
+
+    movement = (
+        (
+            await db_session.execute(
+                select(StockMovement).where(StockMovement.reference_id == invoice.id)
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert movement.quantity_delta == Decimal("-5.000")
+
+
+async def test_fractional_box_sale_fractional_tablets(
+    db_session: AsyncSession, branch: Branch, cashier: User
+) -> None:
+    """1.25 boxes of a 3x10 med = 37.5 tablets — a FRACTIONAL smallest-unit
+    deduction (DECIMAL(12,3)) must persist exactly."""
+    barcode, uid = await _make_medication(db_session, branch, batches=[("B1", 1000, 300)])
+    # Unit switching: the scanned barcode is the STRIP level; pass the BOX
+    # packaging_id to sell 1.25 BOXES (factor 3 strips x 10 tablets = 30x).
+    box_id = (
+        await db_session.execute(
+            select(MedicationPackaging.id)
+            .join(
+                MedicationBarcode,
+                MedicationBarcode.medication_id == MedicationPackaging.medication_id,
+            )
+            .where(MedicationBarcode.barcode == barcode, MedicationPackaging.level == 1)
+        )
+    ).scalar_one()
+    invoice = await sales_service.create_sale(
+        db_session,
+        branch_id=branch.id,
+        lines=[SaleLine(barcode=barcode, packaging_id=box_id, quantity=Decimal("1.25"))],
+        cashier=cashier,
+    )
+    item = (
+        (await db_session.execute(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)))
+        .scalars()
+        .one()
+    )
+    assert item.qty_smallest == Decimal("37.500")
+    assert invoice.total == Decimal("112.50")  # 1.25 x 90.00 box price
+
+    batch = (
+        await db_session.execute(
+            select(MedicationBatch).where(MedicationBatch.batch_number == f"{uid}-B1")
+        )
+    ).scalar_one()
+    assert batch.quantity == Decimal("962.500")

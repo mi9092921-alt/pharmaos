@@ -58,6 +58,66 @@ async function waitHttp(url: string, timeoutMs: number, what: string): Promise<v
   throw new Error(`${what} did not become healthy at ${url} within ${timeoutMs / 1000}s`);
 }
 
+/**
+ * PostgreSQL's initdb deliberately hardens the data files and can remove the
+ * daily user's inherited ACL.  The launcher runs as that same daily user, so
+ * restore Modify explicitly for only the current account before pg_ctl starts.
+ * The wildcard avoids changing the protected pgdata directory ACL itself.
+ */
+async function ensurePgDataAccess(dataDir: string, pgData: string): Promise<void> {
+  const identity = await runCapture('whoami.exe', [], dataDir, 10000);
+  const account = identity.stdout.trim().split(/\r?\n/, 1)[0] ?? '';
+  if (identity.code !== 0 || !/^[^\\\r\n]+\\[^\\\r\n]+$/.test(account)) {
+    throw new Error(
+      `could not resolve the Windows account for PostgreSQL ACLs: ${identity.stderr || identity.stdout}`,
+    );
+  }
+
+  const acl = await runCapture(
+    'icacls.exe',
+    [path.join(pgData, '*'), '/grant:r', `${account}:(M)`, '/T', '/C'],
+    dataDir,
+    120000,
+  );
+  const output = `${acl.stdout}\n${acl.stderr}`;
+  if (acl.code !== 0 || /Failed processing\s+[1-9]\d*/i.test(output)) {
+    throw new Error(`could not grant PostgreSQL data access to ${account}: ${output.trim()}`);
+  }
+  log(`boot: PostgreSQL data ACL ready for ${account}`);
+}
+
+/**
+ * The licensing reconciler keeps one MAC-authenticated record at
+ * <dataDir>\license-store.json. The installer pre-creates that file with
+ * Modify for the Users group (install-steps.ps1), but an upgrade/repair run
+ * or a wiped data root can leave it missing while the data root itself stays
+ * read-only (Users:RX) — every licensing write then fails with
+ * EACCES/EPERM, the state machine degrades to "error" and the middleware
+ * 503s all business routes (observed live in the 2026-10-30 VM round).
+ * Probe writability at boot and log a loud, actionable warning so this
+ * failure mode is visible instead of surfacing as a silent 503 storm.
+ * The launcher deliberately cannot self-heal here: the data root is
+ * admin-owned by design, so only the installer (elevated) can fix the ACL.
+ */
+async function ensureLicenseStoreAccess(dataDir: string): Promise<void> {
+  const licenseStore = path.join(dataDir, 'license-store.json');
+  let handle;
+  try {
+    // 'a' creates the file when missing and never truncates existing content.
+    handle = await fs.promises.open(licenseStore, 'a');
+  } catch (e) {
+    log(
+      `boot: WARNING license store is not writable (${licenseStore}): ` +
+        `${e instanceof Error ? e.message : String(e)} — activation and licensing ` +
+        `writes will fail and business routes will return 503. Re-run the installer ` +
+        `as administrator, or grant the daily user Modify on the file.`,
+    );
+    return;
+  }
+  await handle.close();
+  log('boot: license store writable');
+}
+
 export class Orchestrator {
   private procs: ManagedProcess[] = [];
   private stopping = false;
@@ -115,7 +175,7 @@ export class Orchestrator {
       if (!fs.existsSync(path.join(this.p.pgData, 'PG_VERSION'))) {
         log('boot: device-init (first run - initdb + keystore)');
         onProgress?.('postgres', 'جاري تهيئة قاعدة البيانات لأول مرة...');
-        const init = await runCapture(this.p.apiExe, ['device-init'], this.p.dataDir, 300000);
+        const init = await runCapture(this.p.apiExe, ['device-init'], this.p.dataDir, 300000, env);
         if (init.code !== 0) {
           return {
             ok: false,
@@ -124,6 +184,8 @@ export class Orchestrator {
           };
         }
       }
+      await ensurePgDataAccess(this.p.dataDir, this.p.pgData);
+      await ensureLicenseStoreAccess(this.p.dataDir);
       const pgStart = await runCapture(
         path.join(this.p.pgBin, 'pg_ctl.exe'),
         ['-D', this.p.pgData, 'start', '-l', path.join(this.p.logsDir, 'pg.log')],
@@ -200,7 +262,13 @@ export class Orchestrator {
         }
       } catch (e) {
         log(`boot: setup-status HTTP query failed, falling back to CLI: ${e}`);
-        const status = await runCapture(this.p.apiExe, ['setup-status'], this.p.dataDir);
+        const status = await runCapture(
+          this.p.apiExe,
+          ['setup-status'],
+          this.p.dataDir,
+          120000,
+          env,
+        );
         try {
           setup = JSON.parse(status.stdout) as NonNullable<BootResult['setup']>;
         } catch {

@@ -1,0 +1,6 @@
+== License recovery after ACL workaround + app restart — 2026-10-31T00:18:44+02:00 ==
+workaround: icacls C:\ProgramData\PharmaOS /grant BUILTIN:Users:(OI)(CI)(M) (elevated, operator-approved UAC)
+restart: graceful taskkill (WM_CLOSE) -> orchestrator shutdown (web->api->postgres) -> relaunch via explorer.exe (normal user token)
+result: license/status = active (days_left 354), license-store.json created (404 bytes), /auth/me 401 (normal, no session) instead of 503
+boot log: 2026-10-30T22:18Z clean boot as normal user from D:\Program Files\PharmaOS\PharmaOS.exe
+{"success":true,"data":{"status":"active","hwid":"PHAR-RTTJ-AR6R-ZTPL-35ID","valid_until":"2027-10-20T19:08:53.470440Z","days_left":354,"needs_activation":false}}

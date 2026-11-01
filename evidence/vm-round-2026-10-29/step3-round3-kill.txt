@@ -1,0 +1,19 @@
+== Step 3 ROUND 3: kill with open cart (qty 2 in progress, not submitted) — 2026-10-31T00:46:05+02:00 ==
+(browser cart prepared via POS scan; killing now)
+all dead
+API up after ~8s
+-- pg recovery --
+2026-10-31 00:46:31.284 EET [13436] LOG:  database system was interrupted; last known up at 2026-10-31 00:44:35 EET
+2026-10-31 00:46:32.196 EET [13436] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-10-31 00:46:32.269 EET [13436] LOG:  redo done at 0/1CF57B8 system usage: CPU: user: 0.01 s, system: 0.00 s, elapsed: 0.05 s
+-- inventory (must stay 290 — cart was not submitted) --
+cached_quantity":"290.000"
+-- drift-check --
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "drift_rows": []
+ }
+}
+drift rc=0
+-- sales report (date_from/date_to) — expect exactly 1 invoice from round 2 --
+{"success":true,"data":{"date_from":"2026-10-31","date_to":"2026-10-31","granularity":"day","summary":{"gross_sales":"30.00","subtotal":"30.00","discount_total":"0.00","tax_total":"0.00","refunds_total":"0.00","net_sales":"30.00","invoice_count":1,"refund_count":0,"avg_invoice":"30.00"},"by_payment_method":[{"method":"cash","count":1,"total":"30.00"}],"by_refund_method":[],"trend":[{"bucket":"2026-10-31","count":1,"total":"30.00"}],"top_items":[{"medication_id":"52170389-87ae-4b09-9bad-96f41c43f47d","name":"Panadol Demo 500mg","name_ar":"بنادول تجريبي ٥٠٠","qty_smallest":"10.000","revenue":"30.00"}]}}

@@ -1,0 +1,12 @@
+== Gate 0: dev tools presence (must be absent on clean VM) — captured 2026-10-29T23:58:55+02:00 ==
+-- node --
+D:\Program Files\nodejs\node.exe
+C:\Users\Mosta\scoop\apps\nodejs22\current\node.exe
+v24.14.0
+-- python --
+C:\Python314\python.exe
+C:\Users\Mosta\AppData\Local\Microsoft\WindowsApps\python.exe
+Python 3.14.3
+-- git --
+D:\Program Files\Git\mingw64\bin\git.exe
+D:\Program Files\Git\cmd\git.exe

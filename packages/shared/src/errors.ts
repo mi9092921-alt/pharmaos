@@ -31,6 +31,7 @@ export const ERROR_CODES = {
   PRESCRIPTION_EXCEEDED: 'E-RX-002', // الكمية تتجاوز المتبقي من الوصفة
   PRESCRIPTION_INVALID: 'E-RX-003', // بند الوصفة غير مطابق لهذا الصنف
   NOT_FOUND: 'E-GEN-001', // مسار/مورد غير موجود (404/405) — مغلف موحد حتى هنا
+  BACKUP_KEY_EXPORT_REQUIRED: 'E-SET-001', // يجب حفظ مفتاح النسخ خارج الجهاز قبل إنهاء الإعداد
   UNEXPECTED: 'E-SYS-001',
   // P4-M1 (licensing) — mirrors errors.py; statuses/HTTP mapping in the gate (M2)
   // per docs/phase4-execution-plan-licensing.md §7.

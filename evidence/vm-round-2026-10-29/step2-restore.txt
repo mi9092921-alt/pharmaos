@@ -1,0 +1,75 @@
+== Step 2: DR restore on simulated clean device â€” 2026-10-31T00:33:49+02:00 ==
+
+-- 1) backup import-key --stdin --
+backup key imported (marked owner-provided) — keep the paper copy safe.
+
+-- 2) backup restore --file (staging -> verify -> promote) --
+waiting for server to start.... done
+server started
+waiting for server to start.... done
+server started
+restore promoted and verified:
+{
+  "verification": {
+    "users": 1,
+    "permissions": 44,
+    "encrypted_field_verified": true,
+    "encrypted_sample": "299\u2026"
+  },
+  "migrations": {
+    "applied": [],
+    "skipped": [
+      "20260711000100_extensions",
+      "20260711000200_core_schema",
+      "20260711000300_catalog_schema",
+      "20260711000400_users_role",
+      "20260711000500_skeleton_operational",
+      "20260711000600_audit_log",
+      "20260711000700_settings",
+      "20260711000800_catalog_pricing",
+      "20260711000900_inventory",
+      "20260711001000_cash_sessions",
+      "20260711001100_suppliers_full",
+      "20260711001200_purchase_orders",
+      "20260711001300_pack_serials",
+      "20260711001400_batch_status_index",
+      "20260711001500_customers_loyalty",
+      "20260711001600_vat_tax",
+      "20260711001700_returns_payments",
+      "20260711001800_prescriptions_controlled",
+      "20260711001900_expenses",
+      "20260711002000_return_stock_policy",
+      "20260711002100_expense_cash_session",
+      "20260711002200_payments_xor",
+      "20260711002300_ereceipt_queue",
+      "20260711002400_tt_events",
+      "20260711002500_report_indexes",
+      "20260711002600_inventory_report_indexes",
+      "20260711002700_alerts",
+      "20260711002800_notifications",
+      "20260711002900_license_state",
+      "20260711003000_installation_state",
+      "20260711003100_shelf_location_norm",
+      "20261020000100_fuzzystrmatch_arabic_search"
+    ],
+    "seeds": [
+      "rbac_seed.sql"
+    ]
+  }
+}
+
+-- 3) setup-status after restore --
+{
+  "users": 1,
+  "branches": 1,
+  "setup_complete": true,
+  "last_completed_step": "complete",
+  "backup_key_exported": true
+}
+-- 4) launcher log tail --
+2026-10-30T22:33:14.962Z boot: PostgreSQL data ACL ready for desktop-8laol7m\mosta
+2026-10-30T22:33:16.098Z boot: spawning api & web in parallel
+2026-10-30T22:33:26.609Z boot: watchdog
+2026-10-30T22:33:26.632Z boot: setup-status
+2026-10-30T22:33:26.717Z boot: setup-status HTTP query failed, falling back to CLI: Error: HTTP 403
+2026-10-30T22:33:29.380Z first run incomplete (step none) - opening the wizard

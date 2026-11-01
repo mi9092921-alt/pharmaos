@@ -1,0 +1,41 @@
+== Step 3 ROUND 1: force-kill during in-progress sale (cart open, NOT submitted) — 2026-10-31T00:42:10+02:00 ==
+surrogate note: TerminateProcess on app+api+postgres = process-crash (WAL recovery), NOT power loss; Id=41/6008 events do NOT apply
+-- processes before kill --
+  TCP    127.0.0.1:5433         0.0.0.0:0              LISTENING       6388
+-- force kill --
+SUCCESS: The process "PharmaOS.exe" with PID 7940 has been terminated.
+SUCCESS: The process "PharmaOS.exe" with PID 9480 has been terminated.
+SUCCESS: The process "PharmaOS.exe" with PID 8288 has been terminated.
+SUCCESS: The process "PharmaOS.exe" with PID 2000 has been terminated.
+SUCCESS: The process "pharmaos-api.exe" with PID 6568 has been terminated.
+killing postgres pid 6388
+SUCCESS: The process with PID 6388 has been terminated.
+-- ports after kill --
+all dead
+-- pg.log last lines (crash evidence) --
+2026-10-31 00:34:12.316 EET [3248] LOG:  shutting down
+2026-10-31 00:34:12.321 EET [3248] LOG:  checkpoint starting: shutdown immediate
+2026-10-31 00:34:14.105 EET [3248] LOG:  checkpoint complete: wrote 1182 buffers (7.2%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.215 s, sync=1.540 s, total=1.790 s; sync files=511, longest=0.014 s, average=0.004 s; distance=6763 kB, estimate=6763 kB; lsn=0/1C05FA8, redo lsn=0/1C05FA8
+2026-10-31 00:34:14.912 EET [3920] LOG:  database system is shut down
+-- PostgreSQL recovery evidence (pg.log after crash start) --
+2026-10-31 00:42:45.583 EET [14036] LOG:  database system was interrupted; last known up at 2026-10-31 00:39:38 EET
+2026-10-31 00:42:46.926 EET [14036] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-10-31 00:42:46.941 EET [14036] LOG:  redo starts at 0/1C9E9D8
+2026-10-31 00:42:46.942 EET [14036] LOG:  redo done at 0/1C9EAE0 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-10-31 00:42:46.964 EET [11284] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-10-31 00:42:47.013 EET [11284] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.010 s, sync=0.012 s, total=0.062 s; sync files=2, longest=0.007 s, average=0.006 s; distance=0 kB, estimate=0 kB; lsn=0/1C9EB18, redo lsn=0/1C9EB18
+
+-- license/status --
+{"success":true,"data":{"status":"active","hwid":"PHAR-RTTJ-AR6R-ZTPL-35ID","valid_until":"2027-10-20T19:08:53.470440Z","days_left":354,"needs_activation":false}}
+-- login + state checks --
+-- inventory (must still be 300) --
+{"success":true,"data":[{"medication_id":"52170389-87ae-4b09-9bad-96f41c43f47d","trade_name":"Panadol Demo 500mg","trade_name_ar":"بنادول تجريبي ٥٠٠","cached_quantity":"300.000","min_stock_level":"0.000","reorder_point":null,"shelf_location":null,"low_stock":false}],"meta":{"page":1,"total":1,"per_page":5}}
+-- drift-check (expect rc=0) --
+{
+ "b6d7d664-c2a0-4c67-a522-8eae3cd9bea5": {
+  "drift_rows": []
+ }
+}
+drift rc=0
+-- invoices via reports daily (no partial invoice expected) --
+{"success":false,"error":{"code":"E-GEN-001","message":"The requested resource was not found."}}
