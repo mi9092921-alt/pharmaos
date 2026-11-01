@@ -46,7 +46,14 @@ async function tryRefreshToken(): Promise<boolean> {
 export async function apiFetch<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const method = init?.method ?? 'GET';
   const headers = new Headers(init?.headers);
-  if (!headers.has('Content-Type') && init?.body) headers.set('Content-Type', 'application/json');
+  // FormData sets its own multipart boundary — never override it (catalog import).
+  if (
+    !headers.has('Content-Type') &&
+    init?.body &&
+    !(typeof FormData !== 'undefined' && init.body instanceof FormData)
+  ) {
+    headers.set('Content-Type', 'application/json');
+  }
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const csrf = readCsrfCookie();
     if (csrf) headers.set('X-CSRF-Token', csrf);
@@ -2088,4 +2095,352 @@ export function markAllNotificationsRead(opts: { branchId: string }) {
     `/api/v1/notifications/read-all?${params.toString()}`,
     { method: 'POST' },
   );
+}
+
+// ==================== Stocktake (الجرد) ====================
+
+export interface StocktakeSession {
+  id: string;
+  branch_id: string;
+  session_type: 'daily_quick' | 'weekly_cycle' | 'custom';
+  scope: Record<string, unknown>;
+  status: 'draft' | 'counting' | 'review' | 'approved' | 'cancelled';
+  blind: boolean;
+  started_by: string | null;
+  started_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  lines_expected: number;
+  lines_counted: number;
+  notes: string | null;
+  lines_needing_recount?: number;
+  applied?: number;
+  needs_recount?: number;
+  zero_diff_skipped?: number;
+  controlled_rows?: number;
+}
+
+export interface StocktakeLine {
+  id: string;
+  session_id: string;
+  batch_id: string;
+  medication_id: string;
+  trade_name: string | null;
+  trade_name_ar: string | null;
+  batch_number: string | null;
+  expiry_date: string | null;
+  shelf_location: string | null;
+  controlled_substance: boolean;
+  system_qty_at_count: string | null;
+  system_qty_current: string | null;
+  counted_qty: string | null;
+  diff: string | null;
+  reason_code: string | null;
+  note: string | null;
+  counted_by: string | null;
+  counted_at: string | null;
+  flag: string | null;
+}
+
+export function createStocktakeSession(input: {
+  branchId: string;
+  sessionType: 'daily_quick' | 'weekly_cycle' | 'custom';
+  blind?: boolean;
+  zones?: string[];
+  moversLimit?: number;
+  valueLimit?: number;
+  notes?: string;
+}) {
+  return apiFetch<StocktakeSession>('/api/v1/stocktake/sessions', {
+    method: 'POST',
+    body: JSON.stringify({
+      branch_id: input.branchId,
+      session_type: input.sessionType,
+      ...(input.blind !== undefined ? { blind: input.blind } : {}),
+      ...(input.zones?.length ? { zones: input.zones } : {}),
+      ...(input.moversLimit ? { movers_limit: input.moversLimit } : {}),
+      ...(input.valueLimit ? { value_limit: input.valueLimit } : {}),
+      ...(input.notes ? { notes: input.notes } : {}),
+    }),
+  });
+}
+
+export function listStocktakeSessions(branchId: string, opts: { status?: string } = {}) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (opts.status) params.set('status', opts.status);
+  return apiFetch<{ items: StocktakeSession[]; total: number }>(
+    `/api/v1/stocktake/sessions?${params.toString()}`,
+  );
+}
+
+export function getStocktakeSession(branchId: string, sessionId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(`/api/v1/stocktake/sessions/${sessionId}?${params.toString()}`);
+}
+
+export function listStocktakeLines(
+  branchId: string,
+  sessionId: string,
+  opts: { skip?: number; limit?: number } = {},
+) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<{ items: StocktakeLine[]; total: number }>(
+    `/api/v1/stocktake/sessions/${sessionId}/lines?${params.toString()}`,
+  );
+}
+
+export function recordStocktakeCount(
+  lineId: string,
+  countedQty: string,
+  opts: { reasonCode?: string; note?: string } = {},
+) {
+  return apiFetch<StocktakeLine>(`/api/v1/stocktake/lines/${lineId}/count`, {
+    method: 'POST',
+    body: JSON.stringify({
+      counted_qty: countedQty,
+      ...(opts.reasonCode ? { reason_code: opts.reasonCode } : {}),
+      ...(opts.note ? { note: opts.note } : {}),
+    }),
+  });
+}
+
+export function submitStocktakeSession(branchId: string, sessionId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(
+    `/api/v1/stocktake/sessions/${sessionId}/submit?${params.toString()}`,
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export function approveStocktakeSession(branchId: string, sessionId: string, reason: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(
+    `/api/v1/stocktake/sessions/${sessionId}/approve?${params.toString()}`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
+export function cancelStocktakeSession(branchId: string, sessionId: string, reason: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<StocktakeSession>(
+    `/api/v1/stocktake/sessions/${sessionId}/cancel?${params.toString()}`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
+export function stocktakeExportCsvUrl(branchId: string, sessionId: string): string {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return `/api/v1/stocktake/sessions/${sessionId}/export.csv?${params.toString()}`;
+}
+
+// ==================== Shortages (النواقص) ====================
+
+export interface ShortageItem {
+  id: string;
+  branch_id: string;
+  kind: 'pharmacy' | 'market';
+  source: 'auto_out_of_stock' | 'auto_low_stock' | 'manual' | 'customer_request';
+  medication_id: string | null;
+  name_text: string;
+  qty_needed: string;
+  status: 'open' | 'ordered' | 'received' | 'unavailable' | 'cancelled';
+  supplier_id: string | null;
+  purchase_order_id: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  ask_count: number;
+  last_asked_at: string | null;
+  ordered_at: string | null;
+  received_at: string | null;
+  last_checked_at: string | null;
+  suppress_auto_resync: boolean;
+  notes: string | null;
+}
+
+export function listShortages(
+  branchId: string,
+  opts: { kind?: string; status?: string; search?: string; skip?: number; limit?: number } = {},
+) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (opts.kind) params.set('kind', opts.kind);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.search) params.set('search', opts.search);
+  if (opts.skip) params.set('skip', String(opts.skip));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return apiFetch<{ items: ShortageItem[]; total: number }>(
+    `/api/v1/shortages?${params.toString()}`,
+  );
+}
+
+export function createShortage(input: {
+  branchId: string;
+  kind: 'pharmacy' | 'market';
+  source: 'manual' | 'customer_request';
+  medicationId?: string;
+  nameText?: string;
+  qtyNeeded?: string;
+  customerName?: string;
+  customerPhone?: string;
+  notes?: string;
+}) {
+  return apiFetch<ShortageItem>('/api/v1/shortages', {
+    method: 'POST',
+    body: JSON.stringify({
+      branch_id: input.branchId,
+      kind: input.kind,
+      source: input.source,
+      ...(input.medicationId ? { medication_id: input.medicationId } : {}),
+      ...(input.nameText ? { name_text: input.nameText } : {}),
+      ...(input.qtyNeeded ? { qty_needed: input.qtyNeeded } : {}),
+      ...(input.customerName ? { customer_name: input.customerName } : {}),
+      ...(input.customerPhone ? { customer_phone: input.customerPhone } : {}),
+      ...(input.notes ? { notes: input.notes } : {}),
+    }),
+  });
+}
+
+export function patchShortage(
+  branchId: string,
+  shortageId: string,
+  patch: {
+    status?: ShortageItem['status'];
+    supplierId?: string;
+    qtyNeeded?: string;
+    notes?: string;
+  },
+) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<ShortageItem>(`/api/v1/shortages/${shortageId}?${params.toString()}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.supplierId ? { supplier_id: patch.supplierId } : {}),
+      ...(patch.qtyNeeded ? { qty_needed: patch.qtyNeeded } : {}),
+      ...(patch.notes ? { notes: patch.notes } : {}),
+    }),
+  });
+}
+
+export function shortageAskAgain(branchId: string, shortageId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<ShortageItem>(`/api/v1/shortages/${shortageId}/ask-again?${params.toString()}`, {
+    method: 'POST',
+  });
+}
+
+export function bulkShortages(
+  branchId: string,
+  ids: string[],
+  action: string,
+  supplierId?: string,
+) {
+  return apiFetch<{ updated: number }>('/api/v1/shortages/bulk', {
+    method: 'POST',
+    body: JSON.stringify({
+      ids,
+      action,
+      ...(supplierId ? { supplier_id: supplierId } : {}),
+    }),
+  });
+}
+
+export function createShortagePo(
+  branchId: string,
+  ids: string[],
+  supplierId: string,
+  notes?: string,
+) {
+  return apiFetch<{ po_id: string; po_number: string; items: number }>(
+    '/api/v1/shortages/create-po',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        branch_id: branchId,
+        ids,
+        supplier_id: supplierId,
+        ...(notes ? { notes } : {}),
+      }),
+    },
+  );
+}
+
+export function syncShortages(branchId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<{ rows_affected: number }>(`/api/v1/shortages/sync?${params.toString()}`, {
+    method: 'POST',
+  });
+}
+
+export interface SubstituteItem {
+  medication_id: string;
+  name: string;
+  scientific_name: string | null;
+  on_hand: string;
+}
+
+export function getShortageSubstitutes(branchId: string, shortageId: string) {
+  const params = new URLSearchParams({ branch_id: branchId });
+  return apiFetch<{ warning_key: string; items: SubstituteItem[] }>(
+    `/api/v1/shortages/${shortageId}/substitutes?${params.toString()}`,
+  );
+}
+
+export function shortagesExportCsvUrl(branchId: string, kind?: string): string {
+  const params = new URLSearchParams({ branch_id: branchId });
+  if (kind) params.set('kind', kind);
+  return `/api/v1/shortages/export.csv?${params.toString()}`;
+}
+
+// ---- Catalog import/export (super_admin only — CLAUDE.md file-format matrix) ----
+
+export interface CatalogRejectedRow {
+  row: number;
+  trade_name: string | null;
+  reason: string;
+  code?: string;
+}
+
+export interface CatalogImportReport {
+  branch_id: string;
+  dry_run: boolean;
+  /** execute: everything rolled back because some rows failed */
+  aborted?: boolean;
+  total: number;
+  /** dry_run preview counts */
+  to_create?: number;
+  to_update?: number;
+  /** execute counts */
+  created?: number;
+  updated?: number;
+  batches: number;
+  quantity_total: string;
+  valid?: { row: number; action: string; trade_name: string; quantity: string | null }[];
+  rows?: { row: number; trade_name: string }[];
+  rejected: CatalogRejectedRow[];
+}
+
+/** Without a branch: the pure catalog template; with one: batch quantity rows. */
+export function catalogExportUrl(branchId?: string): string {
+  return branchId
+    ? `/api/v1/catalog/export?${new URLSearchParams({ branch_id: branchId }).toString()}`
+    : '/api/v1/catalog/export';
+}
+
+export function catalogImportTemplateUrl(): string {
+  return '/api/v1/catalog/import-template';
+}
+
+export function importCatalog(file: File, branchId: string, dryRun: boolean) {
+  const form = new FormData();
+  form.set('branch_id', branchId);
+  form.set('dry_run', String(dryRun));
+  form.set('file', file);
+  return apiFetch<CatalogImportReport>('/api/v1/catalog/import', {
+    method: 'POST',
+    body: form,
+  });
 }

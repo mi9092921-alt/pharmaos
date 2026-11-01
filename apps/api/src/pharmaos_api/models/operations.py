@@ -4,7 +4,7 @@ import datetime as dt
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -330,3 +330,133 @@ class Notification(MandatoryColumnsMixin, Base):
     related_alert_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("alerts.id"), nullable=True
     )
+
+
+class StocktakeSession(MandatoryColumnsMixin, Base):
+    """One stocktake run (الجرد) — daily quick / weekly cycle / custom.
+
+    Count is per BATCH: stocktake_lines snapshot the batch quantity under a
+    row lock when a count is recorded, so concurrent sales never corrupt the
+    diff. Approval re-locks and applies the diffs in ONE transaction via the
+    shared adjustment primitive (movement_type='adjustment',
+    reference_type='stocktake'); controlled diffs additionally hit
+    controlled_substance_log(source='stocktake')."""
+
+    __tablename__ = "stocktake_sessions"
+
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
+    )
+    session_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'custom'")
+    )
+    scope: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(String(15), nullable=False, server_default=text("'draft'"))
+    blind: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
+    started_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lines_expected: Mapped[int] = mapped_column(nullable=False, server_default=text("0"))
+    lines_counted: Mapped[int] = mapped_column(nullable=False, server_default=text("0"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class StocktakeLine(MandatoryColumnsMixin, Base):
+    """One counted batch. system_qty_at_count is snapshotted UNDER LOCK at
+    count-record time; diff = counted_qty - system_qty_at_count. flag
+    'needs_recount' marks lines whose live quantity moved against the diff at
+    approval — they are skipped (no movement) instead of failing the session."""
+
+    __tablename__ = "stocktake_lines"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stocktake_sessions.id"), nullable=False
+    )
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
+    )
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("medication_batches.id"), nullable=False
+    )
+    medication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("medications.id"), nullable=False
+    )
+    system_qty_at_count: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    counted_qty: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    diff: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    counted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    counted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    adjustment_movement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stock_movements.id"), nullable=True
+    )
+    flag: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+
+class StocktakeSettings(MandatoryColumnsMixin, Base):
+    """One row per branch: stocktake cadence knobs (overdue alert window,
+    blind-by-default for new sessions)."""
+
+    __tablename__ = "stocktake_settings"
+
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), primary_key=True
+    )
+    daily_overdue_days: Mapped[int] = mapped_column(nullable=False, server_default=text("7"))
+    blind_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+
+
+class ShortageItem(MandatoryColumnsMixin, Base):
+    """النواقص — pharmacy (own stockouts, auto-fed from the alert engine) and
+    market (customer requests the branch cannot fill). Auto-sync never
+    resurrects a staff-closed item: closed rows carry suppress_auto_resync
+    until stock actually arrives (recovered → cleared)."""
+
+    __tablename__ = "shortage_items"
+
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    medication_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("medications.id"), nullable=True
+    )
+    name_text: Mapped[str] = mapped_column(String(255), nullable=False)
+    qty_needed: Mapped[Decimal] = mapped_column(
+        Numeric(12, 3), nullable=False, server_default=text("1")
+    )
+    status: Mapped[str] = mapped_column(String(15), nullable=False, server_default=text("'open'"))
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id"), nullable=True
+    )
+    purchase_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=True
+    )
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    ask_count: Mapped[int] = mapped_column(nullable=False, server_default=text("1"))
+    last_asked_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ordered_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    suppress_auto_resync: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -39,6 +39,8 @@ from pharmaos_api.routers import (
     purchases,
     reports,
     returns,
+    shortages,
+    stocktake,
     users,
 )
 from pharmaos_api.routers import (
@@ -266,6 +268,8 @@ def create_app(license_scheduler: bool = True) -> FastAPI:
     app.include_router(config.router)
     app.include_router(catalog.router)
     app.include_router(inventory.router)
+    app.include_router(stocktake.router)
+    app.include_router(shortages.router)
     app.include_router(alerts.router)
     app.include_router(notifications.router)
     app.include_router(cashier.router)

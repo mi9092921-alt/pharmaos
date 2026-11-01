@@ -44,7 +44,7 @@ async def test_backup_roundtrip_and_restore_drill(
 
     counts = backup_service.restore_drill(backup_file, drill_database_url=drill_db_url)
     assert counts["users"] >= 1  # the seeded user made it through the drill
-    assert counts["permissions"] == 44  # P3-M6 alerts.* + P3-M7 notifications.*
+    assert counts["permissions"] == 48  # alerts/notifications + stocktake + catalog.import/export
 
     # The drill is a recovery test, not only a decrypt test: every business
     # count used by the release runbook must match the source snapshot.

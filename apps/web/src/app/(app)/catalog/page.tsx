@@ -1,11 +1,12 @@
 'use client';
 
-import { Badge, Button, Card, CardContent, Input, Label, Spinner } from '@pharmaos/ui';
+import { Badge, Button, Card, CardContent, Input, Label, Select, Spinner } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { CatalogImportModal } from '@/components/catalog-import-modal';
 import { MedicationEditor } from '@/components/medication-editor';
-import { ApiRequestError, apiFetch } from '@/lib/api';
+import { ApiRequestError, apiFetch, catalogExportUrl, listInventoryBranches } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
@@ -26,11 +27,16 @@ export default function CatalogPage() {
   const qc = useQueryClient();
   const canAdd = useAuth((s) => s.hasPermission('inventory.add'));
   const canEdit = useAuth((s) => s.hasPermission('inventory.edit'));
+  // استيراد/تصدير الكاتلوج — مالك النظام فقط (catalog.import / catalog.export)
+  const canImport = useAuth((s) => s.hasPermission('catalog.import'));
+  const canExport = useAuth((s) => s.hasPermission('catalog.export'));
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [exportBranch, setExportBranch] = useState(''); // '' = pure catalog
 
   const medsQuery = useQuery({
     queryKey: ['medications', query],
@@ -39,6 +45,13 @@ export default function CatalogPage() {
         `/api/v1/medications?limit=50${query ? `&search=${encodeURIComponent(query)}` : ''}`,
       ),
   });
+
+  const exportBranchesQuery = useQuery({
+    queryKey: ['inv-branches'],
+    queryFn: listInventoryBranches,
+    enabled: canExport,
+  });
+  const exportBranches = exportBranchesQuery.data ?? [];
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -54,14 +67,51 @@ export default function CatalogPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">{t('catalog.title')}</h1>
-        {canAdd && (
-          <Button onClick={() => setShowForm((v) => !v)}>
-            {showForm ? t('users.cancel') : t('catalog.add')}
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* استيراد/تصدير — تظهران لمالك النظام فقط عبر catalog.import/export */}
+          {canExport && (
+            <>
+              <Select
+                className="h-9 w-52"
+                value={exportBranch}
+                onChange={(e) => setExportBranch(e.target.value)}
+                aria-label={t('catalog.export_branch')}
+              >
+                <option value="">{t('catalog.export_all')}</option>
+                {exportBranches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </Select>
+              <a
+                href={catalogExportUrl(exportBranch || undefined)}
+                className={
+                  'rounded-[var(--radius-md)] border border-border px-3 py-2 text-sm font-medium ' +
+                  'text-primary-600 hover:bg-primary-50'
+                }
+              >
+                {t('catalog.export')} ↓
+              </a>
+            </>
+          )}
+          {canImport && (
+            <Button variant="outline" onClick={() => setShowImport(true)}>
+              {t('catalog.import')}
+            </Button>
+          )}
+          {canAdd && (
+            <Button onClick={() => setShowForm((v) => !v)}>
+              {showForm ? t('users.cancel') : t('catalog.add')}
+            </Button>
+          )}
+        </div>
       </div>
+      {canExport && exportBranches.length === 0 && (
+        <p className="text-xs text-slate-500">{t('catalog.export_no_branch')}</p>
+      )}
 
       {/* Arabic search — Enter submits; same normalization applied server-side */}
       <form
@@ -166,6 +216,7 @@ export default function CatalogPage() {
       </Card>
 
       {editId && <MedicationEditor medId={editId} open onClose={() => setEditId(null)} />}
+      {canImport && <CatalogImportModal open={showImport} onClose={() => setShowImport(false)} />}
     </div>
   );
 }

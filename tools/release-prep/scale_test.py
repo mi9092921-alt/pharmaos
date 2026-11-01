@@ -484,6 +484,38 @@ async def _measure_async(args: argparse.Namespace) -> dict[str, object]:
             times.append(time.perf_counter() - t0)
         results["report_stock_ms"] = _pct(times)
 
+        # 7) stocktake lines (shelf-ordered page over the whole seeded catalog)
+        from pharmaos_api.services import stocktake_service
+
+        st = await stocktake_service.create_session(
+            session, actor=cashier, branch_id=branch_id, session_type="custom"
+        )
+        st_id = uuid.UUID(st["id"])
+        times = []
+        for _ in range(10):
+            t0 = time.perf_counter()
+            await stocktake_service.list_lines(
+                session, branch_id=branch_id, session_id=st_id, skip=0, limit=50
+            )
+            times.append(time.perf_counter() - t0)
+        results["stocktake_lines_ms"] = _pct(times)
+
+        # 8) shortages: one-shot auto-sync over the catalog + list page
+        from pharmaos_api.services import shortage_service
+
+        times = []
+        for _ in range(3):
+            t0 = time.perf_counter()
+            await shortage_service.sync_auto(session, branch_id=branch_id)
+            times.append(time.perf_counter() - t0)
+        results["shortage_sync_ms"] = _pct(times)
+        times = []
+        for _ in range(10):
+            t0 = time.perf_counter()
+            await shortage_service.list_shortages(session, branch_id=branch_id, limit=50)
+            times.append(time.perf_counter() - t0)
+        results["shortage_list_ms"] = _pct(times)
+
     return results
 
 
@@ -496,6 +528,9 @@ TARGETS = {  # seconds -> compared against p95 (the honest single-number)
     "report_daily_ms": 3000.0,  # product guard: < 3s daily report
     "report_60d_ms": 3000.0,
     "report_stock_ms": 3000.0,
+    "stocktake_lines_ms": 1000.0,  # shelf page of 50 < 1s (owner target)
+    "shortage_sync_ms": 5000.0,    # one-shot admin op over the whole catalog
+    "shortage_list_ms": 1000.0,
 }
 
 

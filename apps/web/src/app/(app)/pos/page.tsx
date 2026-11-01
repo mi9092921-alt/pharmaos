@@ -36,10 +36,11 @@ import {
   type PosLevel,
   type PosSaleResult,
   type PosScan,
+  createShortage,
   printInvoice,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
 const errCode = (e: unknown) => (e instanceof ApiRequestError ? e.code : 'E-SYS-001');
@@ -111,6 +112,7 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [sel, setSel] = useState(0);
   const [scanVal, setScanVal] = useState('');
+  const [askOpen, setAskOpen] = useState(false);
   const [results, setResults] = useState<PosSearchHit[] | null>(null);
   const [resultIdx, setResultIdx] = useState(0);
   const [searching, setSearching] = useState(false);
@@ -594,6 +596,11 @@ export default function PosPage() {
           }}
         />
         {searching && <p className="absolute mt-1 text-xs text-slate-500">{t('pos.searching')}</p>}
+        <div className="mt-2">
+          <Button size="sm" variant="outline" onClick={() => setAskOpen(true)}>
+            {t('shortages.pos_button')}
+          </Button>
+        </div>
         {results && (
           <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-[var(--radius-md)] border border-border bg-white shadow-lg">
             {results.length === 0 ? (
@@ -897,6 +904,7 @@ export default function PosPage() {
         />
       )}
 
+      {askOpen && <PosAskModal branchId={branchId} onClose={() => setAskOpen(false)} />}
       {rxPickerFor !== null && cart[rxPickerFor] && (
         <PrescriptionPickerModal
           branchId={branchId}
@@ -1473,6 +1481,68 @@ function PrescriptionPickerModal({
           )}
         </div>
       )}
+    </Modal>
+  );
+}
+
+// ---------------- POS: customer asked for an unavailable item ----------------
+
+function PosAskModal({ branchId, onClose }: { branchId: string; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [qty, setQty] = useState('1');
+  const [phone, setPhone] = useState('');
+
+  const mut = useMutation({
+    mutationFn: () =>
+      createShortage({
+        branchId,
+        kind: 'market',
+        source: 'customer_request',
+        nameText: name.trim(),
+        qtyNeeded: qty.trim() || '1',
+        customerPhone: phone.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success(t('shortages.added'));
+      onClose();
+    },
+    onError: (e) => toast.error(formatApiErrorMessage(e)),
+  });
+
+  return (
+    <Modal open onClose={onClose} title={t('shortages.pos_title')}>
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <Label>{t('shortages.pos_name')}</Label>
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('shortages.pos_name')}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>{t('shortages.pos_qty')}</Label>
+          <Input
+            className="w-28 tabular-nums"
+            inputMode="decimal"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>{t('shortages.pos_phone')}</Label>
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+          <Button disabled={!name.trim() || mut.isPending} onClick={() => mut.mutate()}>
+            {t('common.ok')}
+          </Button>
+        </div>
+      </div>
     </Modal>
   );
 }

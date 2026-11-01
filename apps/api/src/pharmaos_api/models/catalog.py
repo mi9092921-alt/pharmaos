@@ -29,6 +29,12 @@ class Medication(MandatoryColumnsMixin, Base):
     controlled_substance: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("FALSE")
     )
+    # Cold-chain flag (stocktake round): backfilled from storage_conditions
+    # keywords; drives the daily-quick stocktake scope. Reviewed via the
+    # catalog cold-chain-review CLI — keyword backfill can miss edge cases.
+    is_cold_chain: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
     eda_registration_no: Mapped[str | None] = mapped_column(String(50), nullable=True)
     gtin: Mapped[str | None] = mapped_column(String(14), nullable=True)
     # P2-M6 — VAT classification: medicines follow the tax_profile's

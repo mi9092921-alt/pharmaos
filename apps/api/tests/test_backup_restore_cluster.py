@@ -156,7 +156,7 @@ def test_full_cluster_restore_lifecycle(tmp_path: Path, monkeypatch: pytest.Monk
 
         verification = report["verification"]  # type: ignore[index]
         assert verification["users"] == 1  # type: ignore[index]
-        assert verification["permissions"] == 44  # type: ignore[index]
+        assert verification["permissions"] == 48  # type: ignore[index]
         assert verification["encrypted_field_verified"] is True  # type: ignore[index]
 
         # The promoted cluster serves on the live port with the restored data,

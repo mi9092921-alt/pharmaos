@@ -219,6 +219,12 @@ async def test_valuation_report_scan_is_index_backed(db_session: AsyncSession) -
         "AND NOT b.is_deleted AND b.status = 'active' AND b.quantity > 0 "
         "GROUP BY b.medication_id, m.trade_name, m.trade_name_ar "
         "ORDER BY value DESC, qty DESC OFFSET 0 LIMIT 50",
+        # no_bitmap makes (branch_id, medication_id) the deterministic pick —
+        # same three-way partial-index tie as the sales report guard above:
+        # once the catalog-import tests bulk-inserted batches on other
+        # branches, table-level statistics collapsed the per-branch row
+        # estimate and the planner bitmap-scanned a NON-ideal sibling index.
+        no_bitmap=True,
     )
     assert "idx_batches_branch_med" in plan, plan
     assert "Seq Scan" not in plan, plan

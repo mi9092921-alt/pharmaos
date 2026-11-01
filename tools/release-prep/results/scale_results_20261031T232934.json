@@ -1,0 +1,90 @@
+{
+  "args": {
+    "port": 5433,
+    "meds": 25000,
+    "invoices": 20000,
+    "skip_seed": false,
+    "measure_only": false
+  },
+  "results": {
+    "scan_ms": {
+      "p50": 2.4,
+      "p95": 4.0,
+      "max": 5.1,
+      "n": 100
+    },
+    "search_exact_ms": {
+      "p50": 7.1,
+      "p95": 9.8,
+      "max": 24.4,
+      "n": 50
+    },
+    "search_fuzzy_ms": {
+      "p50": 6.2,
+      "p95": 8.5,
+      "max": 8.8,
+      "n": 20
+    },
+    "search_miss_ms": {
+      "p50": 153.8,
+      "p95": 161.1,
+      "max": 166.8,
+      "n": 5
+    },
+    "sale_ms": {
+      "p50": 48.2,
+      "p95": 75.4,
+      "max": 175.9,
+      "n": 30
+    },
+    "report_daily_ms": {
+      "p50": 16.3,
+      "p95": 21.7,
+      "max": 37.4,
+      "n": 10
+    },
+    "report_60d_ms": {
+      "p50": 394.8,
+      "p95": 409.0,
+      "max": 616.6,
+      "n": 5
+    },
+    "report_stock_ms": {
+      "p50": 153.4,
+      "p95": 200.0,
+      "max": 230.2,
+      "n": 10
+    },
+    "stocktake_lines_ms": {
+      "p50": 549.2,
+      "p95": 624.8,
+      "max": 651.7,
+      "n": 10
+    },
+    "shortage_sync_ms": {
+      "p50": 21.0,
+      "p95": 21.0,
+      "max": 23.8,
+      "n": 3
+    },
+    "shortage_list_ms": {
+      "p50": 1.8,
+      "p95": 3.4,
+      "max": 3.7,
+      "n": 10
+    }
+  },
+  "verdicts": {
+    "scan_ms": true,
+    "search_exact_ms": true,
+    "search_fuzzy_ms": true,
+    "search_miss_ms": true,
+    "sale_ms": true,
+    "report_daily_ms": true,
+    "report_60d_ms": true,
+    "report_stock_ms": true,
+    "stocktake_lines_ms": true,
+    "shortage_sync_ms": true,
+    "shortage_list_ms": true
+  }
+}

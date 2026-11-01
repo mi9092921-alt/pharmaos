@@ -24,7 +24,11 @@ from pharmaos_api.models.operations import (
     Payment,
     Return,
     ReturnItem,
+    ShortageItem,
     StockMovement,
+    StocktakeLine,
+    StocktakeSession,
+    StocktakeSettings,
 )
 from pharmaos_api.models.prescription import ControlledSubstanceLog, Prescription, PrescriptionItem
 from pharmaos_api.models.purchasing import PurchaseItem, PurchaseOrder, Supplier
@@ -70,6 +74,10 @@ __all__ = [
     "RolePermission",
     "Settings",
     "StockMovement",
+    "ShortageItem",
+    "StocktakeLine",
+    "StocktakeSession",
+    "StocktakeSettings",
     "Supplier",
     "TaxProfile",
     "TtEvent",

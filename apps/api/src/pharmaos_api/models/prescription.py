@@ -76,16 +76,25 @@ class ControlledSubstanceLog(Base):
     batch_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("medication_batches.id"), nullable=False
     )
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False
+    # nullable since the stocktake round: a row is either a SALE row (invoice
+    # required, chk_controlled_source) or a STOCKTAKE row (session required).
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=True
     )
-    invoice_item_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("invoice_items.id"), nullable=False
+    invoice_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invoice_items.id"), nullable=True
     )
     prescription_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("prescriptions.id"), nullable=True
     )
     quantity_dispensed: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    # Stocktake extension: source='stocktake' rows carry the signed movement
+    # (shrinkage negative / found positive) and their session reference.
+    source: Mapped[str] = mapped_column(String(15), nullable=False, server_default=text("'sale'"))
+    stocktake_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stocktake_sessions.id"), nullable=True
+    )
+    quantity_delta: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     dispensed_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )

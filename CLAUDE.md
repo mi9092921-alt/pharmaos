@@ -469,6 +469,12 @@ const PERMISSIONS = {
   'inventory.adjust':        ['super_admin', 'branch_manager', 'pharmacist'],
   'inventory.purchase':      ['super_admin', 'branch_manager'],
 
+  // =================== الكاتلوج — استيراد/تصدير (مالك النظام فقط) ===================
+  // استيراد/تصدير الكاتلوج بالكميات (دفعات): إجراء إداري حساس يكتب
+  // أدوية + دفعات + حركات مخزون بالجملة — super_admin فقط.
+  'catalog.import':          ['super_admin'],
+  'catalog.export':          ['super_admin'],
+
   // =================== المبيعات ===================
   'sales.view':              [ALL_ROLES],
   'sales.create':            ['super_admin', 'branch_manager', 'pharmacist', 'cashier'],
@@ -515,6 +521,23 @@ const PERMISSIONS = {
   'compliance.ereceipt':     ['super_admin', 'branch_manager'],
   'compliance.tt_report':    ['super_admin', 'branch_manager', 'pharmacist'],
 } as const;
+```
+
+### قالب ملف استيراد/تصدير الكاتلوج (super_admin فقط)
+```text
+GET  /api/v1/catalog/export?branch_id=اختياري   → Excel (كاتلوج فقط، أو مع دفعات الفرع)
+GET  /api/v1/catalog/import-template            → قالب فارغ + ورقة تعليمات
+POST /api/v1/catalog/import                     → multipart (branch_id + dry_run + file)
+
+الأعمدة (إنجليزية موحّدة للاتجاهين — الثابت _COLUMNS في catalog_io_service.py):
+  trade_name_en*        إلزامي — مفتاح المطابقة (باركود → gtin → اسم تام)
+  trade_name_ar, scientific_name, manufacturer, drug_class, route, gtin   اختيارية
+  price_egp             سعر العلبة (level-1) — يحدّث سعر دواء قائم + price history
+  branch                اسم الفرع — لو معبأ يجب أن يطابق الفرع المختار (branch_mismatch)
+  batch_number, expiry_date (YYYY-MM-DD), quantity, purchase_price
+                        صف بكمية > 0 ⇒ دفعة جديدة + حركة purchase_in على الفرع المختار
+الرفض دائمًا لكل صف بسبب مسمّى (لا صمت ولا مطابقة ضبابية)؛ dry_run يعرض قبل الكتابة.
+التنفيذ all-or-nothing في transaction واحدة — تمسك أقفال صفوف المخزون طوال المدة (دقائق للملفات الكبيرة): نفّذه والصيدلية هادئة أو مقفولة.
 ```
 
 ### تطبيق الصلاحيات — قواعد إلزامية
@@ -746,6 +769,7 @@ AUDITED_OPERATIONS = [
     # المخزون
     'stock.adjusted', 'medication.deleted', 'batch.expired_dispensed',
     'batch.quarantined', 'controlled_substance.dispensed',
+    'catalog.imported', 'catalog.exported',
     # الامتثال
     'ereceipt.submitted', 'ereceipt.failed', 'tt_event.reported',
     # الإعدادات

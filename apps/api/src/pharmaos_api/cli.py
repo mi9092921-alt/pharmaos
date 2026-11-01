@@ -46,6 +46,7 @@ import logging
 import os
 import sys
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -524,6 +525,56 @@ async def _inventory_maintenance(command: str) -> int:
     return 0
 
 
+async def _catalog_cold_chain_review(csv_path: str | None) -> list[Sequence[object]]:
+    """Stocktake M2: the is_cold_chain keyword backfill is a heuristic — this
+    review lists the DISAGREEMENTS for a human pass right after migrating:
+    (a) storage_conditions suggests cold but the flag is unset (false
+    negatives would MISS the fridge in the daily-quick scope);
+    (b) the flag is set with no cold keyword (false positives)."""
+    import json as _json
+
+    from sqlalchemy import text as _text
+
+    async with get_session_factory()() as session:
+        rows = (await session.execute(_text("""
+                    SELECT id, trade_name, trade_name_ar, storage_conditions AS sc,
+                           is_cold_chain
+                    FROM medications
+                    WHERE NOT is_deleted
+                      AND (
+                        (storage_conditions IS NOT NULL AND NOT is_cold_chain
+                         AND (sc ~* :pat))
+                        OR (is_cold_chain AND (storage_conditions IS NULL
+                                               OR NOT (sc ~* :pat)))
+                      )
+                    ORDER BY trade_name
+                    """).bindparams(pat="تبريد|ثلاجة|2-8|2–8|cold|refriger"))).all()
+    out = [
+        {
+            "id": str(r[0]),
+            "trade_name": r[1],
+            "trade_name_ar": r[2],
+            "storage_conditions": r[3],
+            "is_cold_chain": r[4],
+        }
+        for r in rows
+    ]
+    print(_json.dumps(out, ensure_ascii=False, indent=1))
+    print(f"candidates: {len(out)}", file=sys.stderr)
+    return list(rows)
+
+
+def _write_cold_chain_csv(csv_path: str, rows: list[Sequence[object]]) -> None:
+    import csv as _csv
+
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["id", "trade_name", "trade_name_ar", "storage_conditions", "is_cold_chain"])
+        for r in rows:
+            w.writerow([str(r[0]), r[1], r[2], r[3], r[4]])
+    print(f"CSV written: {csv_path}")
+
+
 async def _alerts_evaluate() -> int:
     """Evaluate ALERT_RULES for every active branch (P3-M6, ratified D6 —
     boot / CLI / on-demand; cron-able on the device like expiry-sweep)."""
@@ -781,6 +832,11 @@ def main(argv: list[str] | None = None) -> int:
     inv_sub.add_parser(
         "expiry-sweep", help="Mark past-expiry active batches as expired (cron-able)."
     )
+    ccr = sub.add_parser(
+        "catalog-cold-chain-review",
+        help="Review is_cold_chain candidates (post-migration; CSV with --csv).",
+    )
+    ccr.add_argument("--csv", default=None, help="Write the review table as CSV to this path.")
     sub.add_parser(
         "alerts-evaluate",
         help="Evaluate ALERT_RULES idempotently for every branch (P3-M6, cron-able).",
@@ -892,6 +948,11 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch
             args.inventory_command, "check"
         )
         return asyncio.run(_inventory_maintenance(cmd))
+    if args.command == "catalog-cold-chain-review":
+        rows = asyncio.run(_catalog_cold_chain_review(args.csv))
+        if args.csv:
+            _write_cold_chain_csv(args.csv, rows)
+        return 0
     if args.command == "alerts-evaluate":
         return asyncio.run(_alerts_evaluate())
     if args.command == "notifications-drain-email":
