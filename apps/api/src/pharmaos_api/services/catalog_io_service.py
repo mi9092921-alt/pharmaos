@@ -32,6 +32,7 @@ nothing is silently dropped, and a rejected row applies nothing.
 import datetime as dt
 import io
 import uuid
+from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -136,7 +137,7 @@ async def export_catalog_xlsx(
 
     batches_by_med: dict[uuid.UUID, list[Any]] = {}
     if branch is not None:
-        for row in (
+        for batch_row in (
             await session.execute(
                 select(
                     MedicationBatch.medication_id,
@@ -152,7 +153,7 @@ async def export_catalog_xlsx(
                 .order_by(MedicationBatch.expiry_date)
             )
         ).all():
-            batches_by_med.setdefault(row.medication_id, []).append(row)
+            batches_by_med.setdefault(batch_row.medication_id, []).append(batch_row)
 
     import openpyxl
     from openpyxl.cell import WriteOnlyCell
@@ -192,14 +193,14 @@ async def export_catalog_xlsx(
 
     branch_name = branch.name if branch is not None else ""
     count = 0
-    for row in med_rows:
-        batch_rows = batches_by_med.get(row.id) if branch is not None else None
+    for med_row in med_rows:
+        batch_rows = batches_by_med.get(med_row.id) if branch is not None else None
         if not batch_rows:
-            _text_row(_catalog_cells(row, branch_name))
+            _text_row(_catalog_cells(med_row, branch_name))
             count += 1
             continue
         for b in batch_rows:
-            cells = _catalog_cells(row, branch_name)
+            cells = _catalog_cells(med_row, branch_name)
             cells[_COLUMNS.index("batch_number")] = b.batch_number
             cells[_COLUMNS.index("expiry_date")] = b.expiry_date.isoformat()
             cells[_COLUMNS.index("quantity")] = str(b.quantity)
@@ -326,9 +327,9 @@ def _parse_date(raw: str) -> dt.date | None:
 
 
 def _load_resolution_maps_sync(
-    rows: list[Any],
-    barcode_rows: list[Any],
-    l1_rows: list[Any],
+    rows: Sequence[Any],
+    barcode_rows: Sequence[Any],
+    l1_rows: Sequence[Any],
 ) -> tuple[
     dict[str, list[uuid.UUID]],
     dict[str, list[uuid.UUID]],
@@ -506,11 +507,12 @@ async def import_catalog(
             purchase_price = Decimal("0.00")
             pp_raw = (raw.get("purchase_price") or "").strip()
             if pp_raw:
-                purchase_price = _parse_price(pp_raw)
-                if purchase_price is None:
+                parsed_pp = _parse_price(pp_raw)
+                if parsed_pp is None:
                     entry["reason"] = "bad_purchase_price"
                     parsed.append(entry)
                     continue
+                purchase_price = parsed_pp
             batch_key = (identity, batch_number)
             if batch_key in seen_batches:
                 entry["reason"] = "duplicate_batch_in_file"
@@ -667,7 +669,7 @@ async def import_catalog(
 
     field_list = list(field_updates.items())
     for chunk_start in range(0, len(field_list), _BATCH):
-        chunk = field_list[chunk_start : chunk_start + _BATCH]
+        field_chunk = field_list[chunk_start : chunk_start + _BATCH]
         await session.execute(
             text("""
                 UPDATE medications SET
@@ -680,16 +682,16 @@ async def import_catalog(
                     updated_by      = :actor
                 WHERE id = :id
                 """),
-            [{"id": med_id, "actor": actor.id, **vals} for med_id, vals in chunk],
+            [{"id": med_id, "actor": actor.id, **vals} for med_id, vals in field_chunk],
         )
         await session.commit()
 
     price_list = list(price_updates.items())
     for chunk_start in range(0, len(price_list), _BATCH):
-        chunk = price_list[chunk_start : chunk_start + _BATCH]
+        price_chunk = price_list[chunk_start : chunk_start + _BATCH]
         await session.execute(
             text("UPDATE medication_packaging SET selling_price = :price WHERE id = :pkg_id"),
-            [{"pkg_id": l1_packaging[med_id][1], "price": price} for med_id, price in chunk],
+            [{"pkg_id": l1_packaging[med_id][1], "price": price} for med_id, price in price_chunk],
         )
         await session.execute(
             insert(MedicationPriceHistory),
@@ -701,7 +703,7 @@ async def import_catalog(
                     "new_price": price,
                     "price_source": "import",
                 }
-                for med_id, price in chunk
+                for med_id, price in price_chunk
             ],
         )
         await session.commit()
