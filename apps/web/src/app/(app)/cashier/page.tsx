@@ -240,7 +240,16 @@ export default function CashierPage() {
         <Card>
           <CardContent className="pt-6">
             <h2 className="mb-4 text-sm font-bold text-slate-700">{t('cashier.day_title')}</h2>
-            {zQuery.isLoading || !z ? (
+            {zQuery.isError ? (
+              <div className="space-y-3 py-6 text-center">
+                <p className="text-sm font-medium text-danger">
+                  {formatApiErrorMessage(zQuery.error)}
+                </p>
+                <Button variant="outline" size="sm" onClick={() => void zQuery.refetch()}>
+                  {t('common.retry')}
+                </Button>
+              </div>
+            ) : zQuery.isLoading || !z ? (
               <div className="flex justify-center py-6">
                 <Spinner />
               </div>

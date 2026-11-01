@@ -672,7 +672,11 @@ function HistoryScreen({
       </div>
       <Card>
         <CardContent className="p-0">
-          {sessionsQuery.isLoading ? (
+          {sessionsQuery.isError ? (
+            <p className="py-6 text-center text-sm text-danger">
+              {formatApiErrorMessage(sessionsQuery.error)}
+            </p>
+          ) : sessionsQuery.isLoading ? (
             <div className="flex justify-center py-10">
               <Spinner />
             </div>

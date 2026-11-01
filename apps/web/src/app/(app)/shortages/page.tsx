@@ -234,103 +234,117 @@ export default function ShortagesPage() {
 
       <Card>
         <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs text-slate-500">
-                <th className="w-8 p-2" />
-                <th className="p-2 text-start">{t('shortages.col_name')}</th>
-                <th className="p-2 text-start">{t('shortages.col_status')}</th>
-                <th className="p-2 text-start">{t('shortages.col_qty')}</th>
-                {kind === 'market' && <th className="p-2 text-start">{t('shortages.col_asks')}</th>}
-                <th className="p-2 text-start">{t('shortages.col_customer')}</th>
-                <th className="p-2 text-start">{t('shortages.col_actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-b border-border">
-                  <td className="p-2">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(row.id)}
-                      onChange={() => toggle(row.id)}
-                      disabled={row.status !== 'open' && row.status !== 'ordered'}
-                    />
-                  </td>
-                  <td className="p-2">
-                    {row.name_text}
-                    {row.suppress_auto_resync && (
-                      <Badge tone="neutral" className="ms-1">
-                        {t('shortages.auto_suppressed')}
-                      </Badge>
-                    )}
-                  </td>
-                  <td className="p-2">
-                    <Badge
-                      tone={
-                        row.status === 'received'
-                          ? 'success'
-                          : row.status === 'open'
-                            ? 'warning'
-                            : row.status === 'cancelled'
-                              ? 'danger'
-                              : 'neutral'
-                      }
-                    >
-                      {t(`shortages.status_${row.status}`)}
-                    </Badge>
-                  </td>
-                  <td className="p-2 tabular-nums">{row.qty_needed}</td>
+          {listQuery.isError ? (
+            <p className="py-6 text-center text-sm text-danger">
+              {formatApiErrorMessage(listQuery.error)}
+            </p>
+          ) : listQuery.isLoading ? (
+            <div className="flex justify-center py-8">
+              <Spinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">{t('shortages.empty')}</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-slate-500">
+                  <th className="w-8 p-2" />
+                  <th className="p-2 text-start">{t('shortages.col_name')}</th>
+                  <th className="p-2 text-start">{t('shortages.col_status')}</th>
+                  <th className="p-2 text-start">{t('shortages.col_qty')}</th>
                   {kind === 'market' && (
-                    <td className="p-2 tabular-nums">
-                      {row.ask_count}
-                      {row.status === 'unavailable' && (
-                        <>
-                          {canEdit && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="ms-1"
-                              onClick={async () => {
-                                try {
-                                  await shortageAskAgain(branchId, row.id);
-                                  queryClient.invalidateQueries({
-                                    queryKey: ['shortages', branchId],
-                                  });
-                                } catch (e) {
-                                  onErr(e);
-                                }
-                              }}
-                            >
-                              {t('shortages.asked_again')}
-                            </Button>
-                          )}
-                        </>
+                    <th className="p-2 text-start">{t('shortages.col_asks')}</th>
+                  )}
+                  <th className="p-2 text-start">{t('shortages.col_customer')}</th>
+                  <th className="p-2 text-start">{t('shortages.col_actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b border-border">
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(row.id)}
+                        onChange={() => toggle(row.id)}
+                        disabled={row.status !== 'open' && row.status !== 'ordered'}
+                      />
+                    </td>
+                    <td className="p-2">
+                      {row.name_text}
+                      {row.suppress_auto_resync && (
+                        <Badge tone="neutral" className="ms-1">
+                          {t('shortages.auto_suppressed')}
+                        </Badge>
                       )}
                     </td>
-                  )}
-                  <td className="p-2 text-xs text-slate-600">
-                    {row.customer_name ?? '—'}
-                    {row.customer_phone ? ` · ${row.customer_phone}` : ''}
-                  </td>
-                  <td className="p-2">
-                    {row.medication_id && (
-                      <Button size="sm" variant="ghost" onClick={() => setSubsFor(row)}>
-                        {t('shortages.substitutes')}
-                      </Button>
+                    <td className="p-2">
+                      <Badge
+                        tone={
+                          row.status === 'received'
+                            ? 'success'
+                            : row.status === 'open'
+                              ? 'warning'
+                              : row.status === 'cancelled'
+                                ? 'danger'
+                                : 'neutral'
+                        }
+                      >
+                        {t(`shortages.status_${row.status}`)}
+                      </Badge>
+                    </td>
+                    <td className="p-2 tabular-nums">{row.qty_needed}</td>
+                    {kind === 'market' && (
+                      <td className="p-2 tabular-nums">
+                        {row.ask_count}
+                        {row.status === 'unavailable' && (
+                          <>
+                            {canEdit && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="ms-1"
+                                onClick={async () => {
+                                  try {
+                                    await shortageAskAgain(branchId, row.id);
+                                    queryClient.invalidateQueries({
+                                      queryKey: ['shortages', branchId],
+                                    });
+                                  } catch (e) {
+                                    onErr(e);
+                                  }
+                                }}
+                              >
+                                {t('shortages.asked_again')}
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </td>
                     )}
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-6 text-center text-slate-500">
-                    {t('shortages.empty')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    <td className="p-2 text-xs text-slate-600">
+                      {row.customer_name ?? '—'}
+                      {row.customer_phone ? ` · ${row.customer_phone}` : ''}
+                    </td>
+                    <td className="p-2">
+                      {row.medication_id && (
+                        <Button size="sm" variant="ghost" onClick={() => setSubsFor(row)}>
+                          {t('shortages.substitutes')}
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="p-6 text-center text-slate-500">
+                      {t('shortages.empty')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
 

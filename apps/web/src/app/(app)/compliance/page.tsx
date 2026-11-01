@@ -164,7 +164,11 @@ function EreceiptsTab({ branchId }: { branchId: string }) {
       </div>
       <Card>
         <CardContent className="pt-6">
-          {listQuery.isLoading ? (
+          {listQuery.isError ? (
+            <p className="py-6 text-center text-sm text-danger">
+              {formatApiErrorMessage(listQuery.error)}
+            </p>
+          ) : listQuery.isLoading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
@@ -239,7 +243,11 @@ function TtEventsTab({ branchId }: { branchId: string }) {
       </div>
       <Card>
         <CardContent className="pt-6">
-          {listQuery.isLoading ? (
+          {listQuery.isError ? (
+            <p className="py-6 text-center text-sm text-danger">
+              {formatApiErrorMessage(listQuery.error)}
+            </p>
+          ) : listQuery.isLoading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>

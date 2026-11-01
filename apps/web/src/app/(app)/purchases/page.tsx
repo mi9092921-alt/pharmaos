@@ -34,7 +34,7 @@ import {
   type PurchaseOrder,
   type SupplierDetail,
 } from '@/lib/api';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { RequirePermission } from '@/components/require-permission';
 import { useAuth } from '@/lib/auth-store';
 import { toast } from '@/lib/toast-store';
@@ -158,7 +158,11 @@ function OrdersTab() {
 
       <Card>
         <CardContent className="pt-6">
-          {ordersQuery.isLoading ? (
+          {ordersQuery.isError ? (
+            <p className="py-6 text-center text-sm text-danger">
+              {formatApiErrorMessage(ordersQuery.error)}
+            </p>
+          ) : ordersQuery.isLoading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
@@ -901,7 +905,11 @@ function SuppliersTab() {
 
       <Card>
         <CardContent className="pt-6">
-          {suppliersQuery.isLoading ? (
+          {suppliersQuery.isError ? (
+            <p className="py-6 text-center text-sm text-danger">
+              {formatApiErrorMessage(suppliersQuery.error)}
+            </p>
+          ) : suppliersQuery.isLoading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
