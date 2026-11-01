@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button, Card, CardContent, Select, Spinner } from '@pharmaos/ui';
+import { QueryState, Badge, Button, Card, CardContent, Select, Spinner } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -135,13 +135,15 @@ export default function AlertsPage() {
         ))}
       </div>
 
-      {alertsQuery.isLoading ? (
-        <div className="flex justify-center py-10">
-          <Spinner />
-        </div>
-      ) : alerts.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-500">{t('alerts.empty')}</p>
-      ) : (
+      <QueryState
+        isLoading={alertsQuery.isLoading}
+        isError={alertsQuery.isError}
+        onRetry={() => void alertsQuery.refetch()}
+        errorText={alertsQuery.error ? formatApiErrorMessage(alertsQuery.error) : ''}
+        retryLabel={t('common.retry')}
+        isEmpty={alerts.length === 0}
+        emptyText={t('alerts.empty')}
+      >
         <div className="space-y-3">
           {alerts.map((alert) => (
             <Card key={alert.id}>
@@ -188,7 +190,7 @@ export default function AlertsPage() {
             </Card>
           ))}
         </div>
-      )}
+      </QueryState>
     </div>
   );
 }

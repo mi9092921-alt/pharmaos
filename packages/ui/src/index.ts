@@ -8,6 +8,7 @@ export { Spinner } from './spinner';
 export { Select, type SelectProps } from './select';
 export { Modal, type ModalProps } from './modal';
 export { ConfirmDialog, type ConfirmDialogProps } from './confirm-dialog';
+export { QueryState, type QueryStateProps } from './query-state';
 export {
   DateFormatHint,
   DateInput,
