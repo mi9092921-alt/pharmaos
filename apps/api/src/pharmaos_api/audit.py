@@ -16,6 +16,8 @@ class AuditAction:
     # Inventory
     STOCK_ADJUSTED = "stock.adjusted"
     MEDICATION_DELETED = "medication.deleted"
+    CATALOG_IMPORTED = "catalog.imported"
+    CATALOG_EXPORTED = "catalog.exported"
     BATCH_EXPIRED_DISPENSED = "batch.expired_dispensed"
     BATCH_QUARANTINED = "batch.quarantined"
     CONTROLLED_SUBSTANCE_DISPENSED = "controlled_substance.dispensed"

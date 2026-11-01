@@ -59,6 +59,12 @@ export const PERMISSIONS: Record<string, readonly SystemRoleCode[]> = {
   // اعتماد جلسة الجرد: مدير فقط — فروقات الجرد تتحرك بها الكمية فعليًا.
   'inventory.stocktake_approve': ['super_admin', 'branch_manager'],
 
+  // =================== الكاتلوج — استيراد/تصدير (مالك النظام فقط) ===================
+  // Bulk catalog import/export with batch quantities: an occasional, sensitive
+  // admin action (writes medications + batches + stock movements in bulk).
+  'catalog.import': ['super_admin'],
+  'catalog.export': ['super_admin'],
+
   // =================== المبيعات ===================
   'sales.view': ALL_ROLES,
   'sales.create': ['super_admin', 'branch_manager', 'pharmacist', 'cashier'],

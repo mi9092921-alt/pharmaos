@@ -57,8 +57,8 @@ def sync_test_db_url() -> str:
 async def test_full_matrix_matches_code(db_session: AsyncSession, sync_test_db_url: str) -> None:
     _apply_seed(sync_test_db_url)
     expected = _expected_matrix()
-    assert len(expected) == 124  # 6 roles / 46 permissions / 124 grants
-    # (P3-M6 added alerts.view/manage x 3 roles)
+    assert len(expected) == 126  # 6 roles / 48 permissions / 126 grants
+    # (P3-M6 added alerts.view/manage x 3 roles; catalog.import/export x super_admin)
 
     rows = (await db_session.execute(text("""
                 SELECT r.code, p.code
@@ -84,7 +84,7 @@ async def test_super_admin_has_every_permission(
     total = (
         await db_session.execute(text("SELECT COUNT(*) FROM permissions WHERE NOT is_deleted"))
     ).scalar_one()
-    assert count == total == 46
+    assert count == total == 48
 
 
 async def test_code_wins_over_manual_db_edit(

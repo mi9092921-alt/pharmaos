@@ -46,7 +46,14 @@ async function tryRefreshToken(): Promise<boolean> {
 export async function apiFetch<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const method = init?.method ?? 'GET';
   const headers = new Headers(init?.headers);
-  if (!headers.has('Content-Type') && init?.body) headers.set('Content-Type', 'application/json');
+  // FormData sets its own multipart boundary — never override it (catalog import).
+  if (
+    !headers.has('Content-Type') &&
+    init?.body &&
+    !(typeof FormData !== 'undefined' && init.body instanceof FormData)
+  ) {
+    headers.set('Content-Type', 'application/json');
+  }
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const csrf = readCsrfCookie();
     if (csrf) headers.set('X-CSRF-Token', csrf);
@@ -2381,4 +2388,52 @@ export function shortagesExportCsvUrl(branchId: string, kind?: string): string {
   const params = new URLSearchParams({ branch_id: branchId });
   if (kind) params.set('kind', kind);
   return `/api/v1/shortages/export.csv?${params.toString()}`;
+}
+
+// ---- Catalog import/export (super_admin only — CLAUDE.md file-format matrix) ----
+
+export interface CatalogRejectedRow {
+  row: number;
+  trade_name: string | null;
+  reason: string;
+  code?: string;
+}
+
+export interface CatalogImportReport {
+  branch_id: string;
+  dry_run: boolean;
+  total: number;
+  /** dry_run preview counts */
+  to_create?: number;
+  to_update?: number;
+  /** execute counts */
+  created?: number;
+  updated?: number;
+  batches: number;
+  quantity_total: string;
+  valid?: { row: number; action: string; trade_name: string; quantity: string | null }[];
+  rows?: { row: number; trade_name: string }[];
+  rejected: CatalogRejectedRow[];
+}
+
+/** Without a branch: the pure catalog template; with one: batch quantity rows. */
+export function catalogExportUrl(branchId?: string): string {
+  return branchId
+    ? `/api/v1/catalog/export?${new URLSearchParams({ branch_id: branchId }).toString()}`
+    : '/api/v1/catalog/export';
+}
+
+export function catalogImportTemplateUrl(): string {
+  return '/api/v1/catalog/import-template';
+}
+
+export function importCatalog(file: File, branchId: string, dryRun: boolean) {
+  const form = new FormData();
+  form.set('branch_id', branchId);
+  form.set('dry_run', String(dryRun));
+  form.set('file', file);
+  return apiFetch<CatalogImportReport>('/api/v1/catalog/import', {
+    method: 'POST',
+    body: form,
+  });
 }
