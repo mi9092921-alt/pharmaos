@@ -37,14 +37,24 @@ export default function CatalogPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [exportBranch, setExportBranch] = useState(''); // '' = pure catalog
+  // Pagination without an API change: request PAGE_SIZE+1 and treat the extra
+  // row as a hasMore signal (the endpoint supports skip/limit+meta, but the
+  // shared apiFetch only surfaces `data`).
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
 
   const medsQuery = useQuery({
-    queryKey: ['medications', query],
+    queryKey: ['medications', query, page],
     queryFn: () =>
       apiFetch<Med[]>(
-        `/api/v1/medications?limit=50${query ? `&search=${encodeURIComponent(query)}` : ''}`,
+        `/api/v1/medications?limit=${PAGE_SIZE + 1}&skip=${page * PAGE_SIZE}${
+          query ? `&search=${encodeURIComponent(query)}` : ''
+        }`,
       ),
   });
+  const fetched = medsQuery.data ?? [];
+  const meds = fetched.slice(0, PAGE_SIZE);
+  const hasMore = fetched.length > PAGE_SIZE;
 
   const exportBranchesQuery = useQuery({
     queryKey: ['inv-branches'],
@@ -118,6 +128,7 @@ export default function CatalogPage() {
         onSubmit={(e) => {
           e.preventDefault();
           setQuery(search.trim());
+          setPage(0);
         }}
       >
         <Input
@@ -173,7 +184,7 @@ export default function CatalogPage() {
             onRetry={() => void medsQuery.refetch()}
             errorText={medsQuery.error ? formatApiErrorMessage(medsQuery.error) : ''}
             retryLabel={t('common.retry')}
-            isEmpty={(medsQuery.data ?? []).length === 0}
+            isEmpty={meds.length === 0}
             emptyText={t('catalog.empty')}
           >
             <table className="w-full text-sm">
@@ -188,7 +199,7 @@ export default function CatalogPage() {
                 </tr>
               </thead>
               <tbody>
-                {(medsQuery.data ?? []).map((m) => (
+                {meds.map((m) => (
                   <tr key={m.id} className="border-b border-border/60">
                     <td className="p-2 font-medium text-slate-800">{m.trade_name_ar ?? '—'}</td>
                     <td className="p-2 text-slate-700">{m.trade_name}</td>
@@ -214,6 +225,27 @@ export default function CatalogPage() {
               </tbody>
             </table>
           </QueryState>
+          <div className="flex items-center justify-between pt-3 text-sm text-slate-600">
+            <span>{t('catalog.showing_first').replace('{n}', String(PAGE_SIZE))}</span>
+            <span className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0 || medsQuery.isLoading}
+                onClick={() => setPage((pg) => Math.max(0, pg - 1))}
+              >
+                {t('catalog.prev')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasMore || medsQuery.isLoading}
+                onClick={() => setPage((pg) => pg + 1)}
+              >
+                {t('catalog.next')}
+              </Button>
+            </span>
+          </div>
         </CardContent>
       </Card>
 

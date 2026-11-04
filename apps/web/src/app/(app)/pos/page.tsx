@@ -41,6 +41,7 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { formatMoney } from '@/lib/format';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
@@ -1143,9 +1144,11 @@ function CustomerPicker({
 }) {
   const [term, setTerm] = useState('');
   const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const debouncedTerm = useDebouncedValue(term);
   const searchQuery = useQuery({
-    queryKey: ['pos-customer-search', term],
-    queryFn: () => listCustomers({ search: term, activeOnly: true }),
+    queryKey: ['pos-customer-search', debouncedTerm],
+    queryFn: () => listCustomers({ search: debouncedTerm, activeOnly: true }),
     enabled: open && term.trim().length >= 2,
   });
   const results = searchQuery.data ?? [];
@@ -1176,16 +1179,43 @@ function CustomerPicker({
           onChange={(e) => {
             setTerm(e.target.value);
             setOpen(true);
+            setHighlight(0);
+          }}
+          onKeyDown={(e) => {
+            // Arrow/Enter navigation for the results dropdown — same contract
+            // as the scan-results list, so the picker never needs a mouse.
+            if (!open || results.length === 0) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setHighlight((h) => Math.min(h + 1, results.length - 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setHighlight((h) => Math.max(h - 1, 0));
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              const c = results[highlight];
+              if (c) {
+                onPick(c);
+                setTerm('');
+                setOpen(false);
+                setHighlight(0);
+              }
+            } else if (e.key === 'Escape') {
+              setOpen(false);
+            }
           }}
           placeholder={t('pos.search_customer')}
         />
         {open && term.trim().length >= 2 && results.length > 0 && (
           <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-[var(--radius-md)] border border-border bg-white shadow-lg">
-            {results.map((c) => (
+            {results.map((c, i) => (
               <button
                 key={c.id}
                 type="button"
-                className="flex w-full items-center justify-between px-3 py-2 text-start text-sm hover:bg-primary-50"
+                className={`flex w-full items-center justify-between px-3 py-2 text-start text-sm ${
+                  i === highlight ? 'bg-primary-50 text-primary-700' : 'hover:bg-primary-50'
+                }`}
+                onMouseEnter={() => setHighlight(i)}
                 onClick={() => {
                   onPick(c);
                   setTerm('');
