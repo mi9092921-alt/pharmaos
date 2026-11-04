@@ -1,6 +1,8 @@
 'use client';
 
-import { Badge, Card, CardContent, DateInput, Label, Select, Spinner, Tabs } from '@pharmaos/ui';
+import { Badge, Card, CardContent, Label, Select, Spinner, Tabs } from '@pharmaos/ui';
+
+import { DateInput } from '@/components/date-input';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import {

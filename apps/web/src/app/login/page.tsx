@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@pharmaos/ui';
 
+import { LocaleToggle } from '@/components/locale-toggle';
 import { ApiRequestError, getLicenseStatus, login } from '@/lib/api';
 import { LicenseUploadButton, licenseStatusLabel } from '@/components/license-upload';
 import { useAuth } from '@/lib/auth-store';
@@ -63,7 +64,10 @@ export default function LoginPage() {
           <CardTitle className="text-base font-medium text-slate-500">{t('app.tagline')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <h1 className="mb-4 text-lg font-bold">{t('login.title')}</h1>
+          <div className="mb-4 flex items-center justify-between">
+            <h1 className="text-lg font-bold">{t('login.title')}</h1>
+            <LocaleToggle />
+          </div>
 
           {/* Clear, translated error — never a technical message (UX rules). */}
           {errorCode && (

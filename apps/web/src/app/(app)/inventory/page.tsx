@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   ConfirmDialog,
-  DateInput,
   Input,
   Label,
   Modal,
@@ -14,6 +13,8 @@ import {
   Spinner,
   Tabs,
 } from '@pharmaos/ui';
+
+import { DateInput } from '@/components/date-input';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -1225,7 +1226,7 @@ function ExpiryAlertsTab({ branchId, canAdjust }: { branchId: string; canAdjust:
                                   kind: 'pharmacy',
                                   source: 'manual',
                                   medicationId: b.medication_id,
-                                  notes: `${t('inventory.expiry_tab')} ${b.expiry_date}`,
+                                  notes: `${t('inventory.tab_expiry')} ${b.expiry_date}`,
                                 });
                                 toast.success(t('shortages.added'));
                               } catch (e) {
