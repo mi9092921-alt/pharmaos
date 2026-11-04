@@ -27,7 +27,7 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { formatMoney, currencySymbol } from '@/lib/format';
-import { t } from '@/lib/i18n';
+import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
 const errCode = (e: unknown) => (e instanceof ApiRequestError ? e.code : 'E-SYS-001');
