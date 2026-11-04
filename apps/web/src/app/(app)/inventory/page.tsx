@@ -12,6 +12,7 @@ import {
   Modal,
   Select,
   Spinner,
+  Tabs,
 } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -99,15 +100,15 @@ export default function InventoryPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'stock'} onClick={() => setTab('stock')}>
-          {t('inventory.tab_stock')}
-        </TabButton>
-        <TabButton active={tab === 'expiry'} onClick={() => setTab('expiry')}>
-          {t('inventory.tab_expiry')}
-        </TabButton>
-        <TabButton active={tab === 'report'} onClick={() => setTab('report')}>
-          {t('inventory.tab_report')}
-        </TabButton>
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'stock', label: t('inventory.tab_stock') },
+            { value: 'expiry', label: t('inventory.tab_expiry') },
+            { value: 'report', label: t('inventory.tab_report') },
+          ]}
+        />
       </div>
 
       {tab === 'stock' && (
@@ -121,29 +122,6 @@ export default function InventoryPage() {
       {tab === 'expiry' && <ExpiryAlertsTab branchId={branchId} canAdjust={canAdjust} />}
       {tab === 'report' && <BatchReportTab branchId={branchId} />}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 

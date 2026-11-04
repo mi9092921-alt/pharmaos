@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button } from '@pharmaos/ui';
+import { Badge, Button, Icon } from '@pharmaos/ui';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
@@ -115,21 +115,7 @@ export function Topbar() {
             onClick={() => router.push('/notifications')}
             className="relative rounded-[var(--radius-md)] p-2 hover:bg-primary-50"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-slate-600"
-              aria-hidden
-            >
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </svg>
+            <Icon name="bell" size={18} className="text-slate-600" />
             {unread > 0 && (
               <span className="absolute -top-0.5 -end-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white tabular-nums">
                 {unread > 99 ? '99+' : unread}
@@ -142,6 +128,7 @@ export function Topbar() {
           <div className="text-xs text-slate-500">{roleLabel}</div>
         </div>
         <Button variant="outline" size="sm" onClick={onLogout}>
+          <Icon name="logout" size={14} />
           {t('shell.logout')}
         </Button>
       </div>

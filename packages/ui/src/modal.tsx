@@ -17,12 +17,16 @@ let scrollLocks = 0;
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
+
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
   className?: string;
+  /** Width preset (className still wins via tailwind-merge when both set). */
+  size?: ModalSize;
 }
 
 /**
@@ -30,7 +34,14 @@ export interface ModalProps {
  * alert/confirm/prompt). Escape closes; clicking the backdrop closes; content
  * click is contained. Focus moves to the dialog on open.
  */
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+const SIZE_CLASS: Record<ModalSize, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-2xl',
+};
+
+export function Modal({ open, onClose, title, children, className, size = 'md' }: ModalProps) {
   const ref = React.useRef<HTMLDivElement>(null);
   const idRef = React.useRef<number>(0);
 
@@ -107,7 +118,8 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         className={cn(
-          'w-full max-w-md rounded-[var(--radius-lg)] border border-border bg-white p-6 shadow-xl outline-none',
+          'w-full rounded-[var(--radius-lg)] border border-border bg-white p-6 shadow-xl outline-none',
+          SIZE_CLASS[size],
           className,
         )}
       >

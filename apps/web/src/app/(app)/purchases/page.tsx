@@ -12,6 +12,7 @@ import {
   Modal,
   Select,
   Spinner,
+  Tabs,
 } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -53,38 +54,17 @@ function PurchasesShell() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'orders'} onClick={() => setTab('orders')}>
-          {t('po.tab_orders')}
-        </TabButton>
-        <TabButton active={tab === 'suppliers'} onClick={() => setTab('suppliers')}>
-          {t('po.tab_suppliers')}
-        </TabButton>
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'orders', label: t('po.tab_orders') },
+            { value: 'suppliers', label: t('po.tab_suppliers') },
+          ]}
+        />
       </div>
       {tab === 'orders' ? <OrdersTab /> : <SuppliersTab />}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 
