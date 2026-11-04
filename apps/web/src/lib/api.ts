@@ -6,6 +6,8 @@
 
 import type { ApiResponse } from '@pharmaos/shared';
 
+import { getLocale } from './format';
+
 export class ApiRequestError extends Error {
   constructor(
     public readonly code: string,
@@ -46,6 +48,8 @@ async function tryRefreshToken(): Promise<boolean> {
 export async function apiFetch<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const method = init?.method ?? 'GET';
   const headers = new Headers(init?.headers);
+  // Server-side fallback messages follow the request language (wave هـ).
+  headers.set('Accept-Language', getLocale());
   // FormData sets its own multipart boundary — never override it (catalog import).
   if (
     !headers.has('Content-Type') &&

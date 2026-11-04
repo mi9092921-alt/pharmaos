@@ -984,15 +984,17 @@ const formatCurrency = (amount: number, currency = 'EGP', locale = 'ar-EG') =>
 السرعة أولاً في POS:
 - Barcode scan → إضافة للفاتورة: < 50ms
 - اختيار مستوى البيع: علبة / شريط / قرص (المستوى الافتراضي من medication_packaging)
-- Shortcut Keys:
-    F2: بحث عن دواء
-    F3: خصم
-    F4: إتمام البيع
-    F5: طباعة
-    F6: مرتجع
-    F7: تبديل مستوى الوحدة (علبة/شريط/قرص)
-    F8: فتح الدرج
-    ESC: إلغاء
+- Shortcut Keys (implemented map — v1.1.0-rc6; updated to match code per
+  the spec-vs-implementation review: F5-as-print was a browser-refresh
+  hazard and discount/returns/drawer shortcuts await their features):
+    F2: تركيز حقل المسح
+    F3: بحث بالاسم (نتائج بأسهم + Enter)
+    F4: إتمام البيع (نافذة الدفع)
+    F6: تبديل مستوى الوحدة (علبة/شريط/قرص)
+    Delete: حذف السطر المحدد
+    P: إعادة الطباعة الحرارية · B: طباعة المتصفح
+    Enter (على شاشة النجاح): بيع جديد
+    ESC: إغلاق نافذة الدفع/النتائج
 - Barcode Scanner: HID mode (keyboard input) — يدعم 1D + 2D DataMatrix
 - مسح 2D: يلتقط GTIN + تشغيلة + انتهاء + تسلسلي في خطوة واحدة
 - Cash drawer: تفتح تلقائياً عند اكتمال البيع (ESC/POS pulse — انظر الطباعة)
@@ -1377,7 +1379,10 @@ enum Priority {
 ## 🌐 دعم اللغة العربية
 
 ```typescript
-// i18n Configuration
+// i18n Configuration — EN is LIVE since v1.1.0-rc6 wave هـ:
+// cookie pharmaos_locale drives server lang/dir + client store; switching
+// remounts the tree with a confirm (state-loss documented). gate: check:i18n
+// (key parity + token parity + used-key existence) in CI.
 const i18nConfig = {
   defaultLocale: 'ar',
   locales: ['ar', 'en'],

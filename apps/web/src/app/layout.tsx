@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 
 // Self-hosted fonts (offline-first — no Google Fonts dependency at build OR
 // runtime, per CLAUDE.md). Cairo = Arabic UI (ships the Arabic subset),
@@ -9,20 +10,33 @@ import '@fontsource-variable/inter/index.css';
 import { Providers } from './providers';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'PharmaOS — نظام إدارة الصيدلية',
-  description: 'نظام إدارة صيدلية يعمل offline مع مزامنة سحابية',
-};
+async function requestLocale(): Promise<'ar' | 'en'> {
+  return (await cookies()).get('pharmaos_locale')?.value === 'en' ? 'en' : 'ar';
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await requestLocale();
+  return locale === 'en'
+    ? {
+        title: 'PharmaOS — Pharmacy Management System',
+        description: 'Offline-first pharmacy management with cloud sync',
+      }
+    : {
+        title: 'PharmaOS — نظام إدارة الصيدلية',
+        description: 'نظام إدارة صيدلية يعمل offline مع مزامنة سحابية',
+      };
+}
 
 /**
  * Root layout — FULL RTL (CLAUDE.md UX rules: no mixed RTL/LTR in a page).
  * Default locale is Arabic; the i18n config also supports 'en'.
  */
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await requestLocale();
   return (
-    <html lang="ar" dir="rtl">
+    <html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
       <body className="min-h-screen bg-surface antialiased">
-        <Providers>{children}</Providers>
+        <Providers initialLocale={locale}>{children}</Providers>
       </body>
     </html>
   );

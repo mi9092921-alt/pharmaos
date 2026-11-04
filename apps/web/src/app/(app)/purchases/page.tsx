@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   CardContent,
-  DateInput,
   Input,
   Label,
   Modal,
@@ -14,6 +13,8 @@ import {
   Spinner,
   Tabs,
 } from '@pharmaos/ui';
+
+import { DateInput } from '@/components/date-input';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 

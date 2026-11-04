@@ -31,6 +31,7 @@ import {
   licenseStatusTone,
 } from '@/components/license-upload';
 import { useAuth } from '@/lib/auth-store';
+import { getLocale } from '@/lib/format';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
@@ -491,7 +492,11 @@ function formatLicenseDate(iso: string | null): string {
   if (!iso) return t('settings.software_license.na');
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return t('settings.software_license.na');
-  return d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+  return d.toLocaleDateString(`${getLocale()}-u-nu-latn`, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 function FieldInput({
   label,

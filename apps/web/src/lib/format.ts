@@ -11,9 +11,11 @@
 
 export type Locale = 'ar' | 'en';
 
-export function getLocale(): Locale {
-  return 'ar';
-}
+// Single source of truth lives in i18n — re-exported so existing
+// format.ts consumers keep their import path when the switcher lands.
+import { getLocale } from './i18n';
+
+export { getLocale };
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   EGP: 'ج.م',

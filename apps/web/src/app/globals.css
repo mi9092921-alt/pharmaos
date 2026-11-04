@@ -56,6 +56,11 @@ html {
   font-family: var(--font-arabic);
 }
 
+/* EN mode: Inter leads (Latin-first), Cairo stays the Arabic fallback. */
+html[lang='en'] {
+  font-family: var(--font-numbers), var(--font-arabic), sans-serif;
+}
+
 body {
   background-color: var(--surface);
   color: #0f172a;

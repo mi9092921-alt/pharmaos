@@ -12,6 +12,29 @@ export const i18nConfig = {
 
 export type Locale = (typeof i18nConfig.locales)[number];
 
+/**
+ * Active-locale module state (RC wave هـ). Single-device app: one locale per
+ * process is a documented assumption — SSR serves one pharmacy device, and
+ * the cookie pharmaos_locale is re-read by the server layout per request for
+ * lang/dir while t() reads this module value client-side.
+ */
+let activeLocale: Locale = i18nConfig.defaultLocale;
+
+export function getLocale(): Locale {
+  return activeLocale;
+}
+
+export function setI18nLocale(locale: Locale): void {
+  activeLocale = locale;
+}
+
+/** {token} interpolation shared by every caller that passes params. */
+function interpolate(template: string, params: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, token: string) =>
+    token in params ? String(params[token]) : `{${token}}`,
+  );
+}
+
 const dictionaries: Record<Locale, Record<string, string>> = {
   ar: {
     'app.name': 'PharmaOS',
@@ -22,6 +45,10 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'login.submit': 'دخول',
     'login.submitting': 'جارٍ الدخول…',
     'errors.E-AUTH-001': 'بيانات الدخول غير صحيحة',
+    'locale.toggle': 'اللغة',
+    'locale.switch_title': 'تغيير اللغة؟',
+    'locale.switch_body':
+      'سيُعاد بناء الواجهة باللغة الجديدة وتُفقد البيانات غير المحفوظة (مثل سلة نقطة البيع والنماذج المفتوحة).',
     'errors.E-AUTH-002': 'ليست لديك صلاحية لهذا الإجراء',
     'require_permission.hint': 'لعرض هذه الشاشة صلاحية إضافية — تواصل مع مالك النظام.',
     'errors.E-AUTH-003': 'تم قفل الحساب مؤقتاً بعد محاولات متكررة — حاول بعد 15 دقيقة',
@@ -396,6 +423,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
       'انتهت صلاحية الترخيص والدخول في فترة السماح — جدّد الآن لتفادي وضع القراءة فقط',
     'settings.readonly': 'للعرض فقط — تحتاج صلاحية التعديل',
     'settings.no_branch': 'لا يوجد فرع بعد',
+    'settings.branch_placeholder': 'اسم الفرع الرئيسي',
+    'settings.create_branch': 'إنشاء الفرع',
     // Catalog
     'catalog.title': 'كتالوج الأدوية',
     'catalog.search': 'ابحث بالاسم العربي أو الإنجليزي…',
@@ -1133,6 +1162,10 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'login.submit': 'Sign in',
     'login.submitting': 'Signing in…',
     'errors.E-AUTH-001': 'Invalid credentials',
+    'locale.toggle': 'Language',
+    'locale.switch_title': 'Switch language?',
+    'locale.switch_body':
+      'The interface rebuilds in the new language and unsaved data (the POS cart, open forms) is lost.',
     'errors.E-AUTH-002': 'You do not have permission for this action',
     'require_permission.hint':
       'This screen requires an additional permission — contact the system owner.',
@@ -1516,6 +1549,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
       'License expired, in grace period — renew now to avoid read-only mode',
     'settings.readonly': 'Read-only — edit permission required',
     'settings.no_branch': 'No branch yet',
+    'settings.branch_placeholder': 'Main branch name',
+    'settings.create_branch': 'Create branch',
     // Catalog
     'catalog.title': 'Medications catalog',
     'catalog.search': 'Search Arabic or English name…',
@@ -2245,8 +2280,13 @@ const dictionaries: Record<Locale, Record<string, string>> = {
   },
 };
 
-export function t(key: string, locale: Locale = i18nConfig.defaultLocale): string {
-  return dictionaries[locale][key] ?? dictionaries[i18nConfig.defaultLocale][key] ?? key;
+export function t(
+  key: string,
+  params?: Record<string, string | number>,
+  locale: Locale = getLocale(),
+): string {
+  const template = dictionaries[locale][key] ?? dictionaries[i18nConfig.defaultLocale][key] ?? key;
+  return params ? interpolate(template, params) : template;
 }
 
 export function formatApiErrorMessage(e: unknown, fallbackKey = 'errors.E-SYS-001'): string {

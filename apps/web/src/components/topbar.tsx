@@ -1,5 +1,6 @@
 'use client';
 
+import { LocaleToggle } from '@/components/locale-toggle';
 import { Badge, Button, Icon } from '@pharmaos/ui';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -123,6 +124,7 @@ export function Topbar() {
             )}
           </button>
         )}
+        <LocaleToggle />
         <div className="text-end">
           <div className="text-sm font-semibold text-slate-800">{user?.full_name}</div>
           <div className="text-xs text-slate-500">{roleLabel}</div>
