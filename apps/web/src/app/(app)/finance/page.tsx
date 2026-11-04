@@ -13,6 +13,7 @@ import {
   Modal,
   Select,
   Spinner,
+  Tabs,
 } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -47,40 +48,19 @@ export default function FinancePage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-2xl font-bold text-slate-900">{t('finance.title')}</h1>
 
-      <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'expenses'} onClick={() => setTab('expenses')}>
-          {t('finance.tab_expenses')}
-        </TabButton>
-        <TabButton active={tab === 'categories'} onClick={() => setTab('categories')}>
-          {t('finance.tab_categories')}
-        </TabButton>
-      </div>
+      <div className="flex gap-1 border-b border-border"></div>
+
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: 'expenses', label: t('finance.tab_expenses') },
+          { value: 'categories', label: t('finance.tab_categories') },
+        ]}
+      />
 
       {tab === 'expenses' ? <ExpensesTab /> : <CategoriesTab />}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 

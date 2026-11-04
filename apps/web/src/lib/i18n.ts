@@ -23,6 +23,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'login.submitting': 'جارٍ الدخول…',
     'errors.E-AUTH-001': 'بيانات الدخول غير صحيحة',
     'errors.E-AUTH-002': 'ليست لديك صلاحية لهذا الإجراء',
+    'require_permission.hint': 'لعرض هذه الشاشة صلاحية إضافية — تواصل مع مالك النظام.',
     'errors.E-AUTH-003': 'تم قفل الحساب مؤقتاً بعد محاولات متكررة — حاول بعد 15 دقيقة',
     'errors.E-AUTH-004': 'فشل التحقق الأمني — أعد تحميل الصفحة',
     'errors.E-AUTH-005': 'محاولات كثيرة — انتظر دقيقة ثم أعد المحاولة',
@@ -1133,6 +1134,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'login.submitting': 'Signing in…',
     'errors.E-AUTH-001': 'Invalid credentials',
     'errors.E-AUTH-002': 'You do not have permission for this action',
+    'require_permission.hint':
+      'This screen requires an additional permission — contact the system owner.',
     'errors.E-AUTH-003': 'Account temporarily locked — try again in 15 minutes',
     'errors.E-AUTH-004': 'Security check failed — reload the page',
     'errors.E-AUTH-005': 'Too many attempts — wait a minute and retry',

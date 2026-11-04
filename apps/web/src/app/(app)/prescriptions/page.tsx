@@ -12,6 +12,7 @@ import {
   Modal,
   Select,
   Spinner,
+  Tabs,
 } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -96,14 +97,14 @@ export default function PrescriptionsPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'list'} onClick={() => setTab('list')}>
-          {t('prescriptions.tab_list')}
-        </TabButton>
-        {canViewLog && (
-          <TabButton active={tab === 'log'} onClick={() => setTab('log')}>
-            {t('prescriptions.tab_log')}
-          </TabButton>
-        )}
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'list', label: t('prescriptions.tab_list') },
+            { value: 'log', label: t('prescriptions.tab_log'), hidden: !canViewLog },
+          ]}
+        />
       </div>
 
       {tab === 'list' ? (
@@ -112,29 +113,6 @@ export default function PrescriptionsPage() {
         <ControlledLogTab branchId={branchId} />
       )}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 

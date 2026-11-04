@@ -1,13 +1,69 @@
 'use client';
 
 import { hasPermission } from '@pharmaos/shared';
-import { cn } from '@pharmaos/ui';
+import { Icon, type IconName, cn } from '@pharmaos/ui';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { useAuth } from '@/lib/auth-store';
 import { t } from '@/lib/i18n';
 import { NAV_ITEMS } from '@/lib/nav';
+
+/** Section grouping + icon per route (wave و). Group order is the visual
+ * order; an item not listed keeps its NAV_ITEMS position at the end. */
+const GROUPS: Array<{
+  title: string;
+  items: Array<{ href: string; icon: IconName }>;
+}> = [
+  {
+    title: 'العمليات',
+    items: [
+      { href: '/pos', icon: 'pos' },
+      { href: '/inventory', icon: 'inventory' },
+      { href: '/stocktake', icon: 'stocktake' },
+      { href: '/shortages', icon: 'shortages' },
+    ],
+  },
+  {
+    title: 'الفهرسة والمشتريات',
+    items: [
+      { href: '/catalog', icon: 'catalog' },
+      { href: '/purchases', icon: 'purchases' },
+    ],
+  },
+  {
+    title: 'العملاء والمبيعات',
+    items: [
+      { href: '/customers', icon: 'customers' },
+      { href: '/returns', icon: 'returns' },
+      { href: '/prescriptions', icon: 'prescriptions' },
+    ],
+  },
+  {
+    title: 'المالية والامتثال',
+    items: [
+      { href: '/finance', icon: 'finance' },
+      { href: '/compliance', icon: 'compliance' },
+      { href: '/cashier', icon: 'cashier' },
+    ],
+  },
+  {
+    title: 'المتابعة والإدارة',
+    items: [
+      { href: '/', icon: 'dashboard' },
+      { href: '/alerts', icon: 'alerts' },
+      { href: '/notifications', icon: 'notifications' },
+      { href: '/reports', icon: 'reports' },
+      { href: '/users', icon: 'users' },
+      { href: '/settings', icon: 'settings' },
+      { href: '/about', icon: 'about' },
+    ],
+  },
+];
+
+const ICON_BY_HREF = new Map(GROUPS.flatMap((g) => g.items.map((it) => [it.href, it.icon])));
+const GROUP_BY_HREF = new Map(GROUPS.flatMap((g) => g.items.map((it) => [it.href, g.title])));
+const GROUP_ORDER = GROUPS.map((g) => g.title);
 
 /**
  * Permission-driven navigation. Items the current role lacks permission for are
@@ -31,35 +87,53 @@ export function Sidebar() {
       {/* min-h-0 lets the nav scroll internally when items exceed the
           viewport (aside height = shell h-screen stretch), same contract as
           <main> in the (app) layout. */}
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
-        {visible.map((item) => {
-          const active = pathname === item.href;
-          const label = t(item.labelKey);
-          if (!item.ready) {
-            return (
-              <span
-                key={item.href}
-                aria-disabled
-                title={t('dashboard.coming_soon')}
-                className="flex cursor-not-allowed items-center justify-between rounded-[var(--radius-md)] px-3 py-2 text-sm text-slate-400"
-              >
-                {label}
-                <span className="text-[10px]">•</span>
-              </span>
-            );
-          }
+      <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        {GROUP_ORDER.map((title) => {
+          const items = visible.filter((item) => GROUP_BY_HREF.get(item.href) === title);
+          if (items.length === 0) return null;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? 'page' : undefined}
-              className={cn(
-                'block rounded-[var(--radius-md)] px-3 py-2 text-sm font-medium transition-colors',
-                active ? 'bg-primary-50 text-primary-700' : 'text-slate-700 hover:bg-primary-50',
-              )}
-            >
-              {label}
-            </Link>
+            <div key={title}>
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {title}
+              </p>
+              <div className="space-y-1">
+                {items.map((item) => {
+                  const active = pathname === item.href;
+                  const label = t(item.labelKey);
+                  const icon = ICON_BY_HREF.get(item.href);
+                  if (!item.ready) {
+                    return (
+                      <span
+                        key={item.href}
+                        aria-disabled
+                        title={t('dashboard.coming_soon')}
+                        className="flex cursor-not-allowed items-center gap-2 rounded-[var(--radius-md)] px-3 py-2 text-sm text-slate-400"
+                      >
+                        {icon && <Icon name={icon} size={15} className="opacity-60" />}
+                        {label}
+                        <span className="ms-auto text-[10px]">•</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
+                        'flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-2 text-sm font-medium transition-colors',
+                        active
+                          ? 'bg-primary-50 text-primary-700'
+                          : 'text-slate-700 hover:bg-primary-50',
+                      )}
+                    >
+                      {icon && <Icon name={icon} size={15} />}
+                      {label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </nav>
