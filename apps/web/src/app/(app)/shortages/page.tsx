@@ -47,10 +47,12 @@ const onErr = (e: unknown) => toast.error(formatApiErrorMessage(e));
 export default function ShortagesPage() {
   const canEdit = useAuth((s) => s.hasPermission('inventory.edit'));
   // POS "customer asked" is a cashier action — the manual add form follows
-  // the same create rule (inventory.edit OR sales.create).
-  const canCreate =
-    useAuth((s) => s.hasPermission('inventory.edit')) ||
-    useAuth((s) => s.hasPermission('sales.create'));
+  // the same create rule (inventory.edit OR sales.create). ONE hook call:
+  // an `||` between two useAuth() calls is a conditional hook (the second
+  // call vanishes when the first is true) and breaks the Rules of Hooks.
+  const canCreate = useAuth(
+    (s) => s.hasPermission('inventory.edit') || s.hasPermission('sales.create'),
+  );
   const [branchId, setBranchId] = useState('');
   const [kind, setKind] = useState<'pharmacy' | 'market'>('pharmacy');
   const [status, setStatus] = useState<string>('');
