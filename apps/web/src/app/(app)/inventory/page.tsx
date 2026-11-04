@@ -1073,7 +1073,10 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
           <Button type="button" variant="outline" onClick={onClose}>
             {t('users.cancel')}
           </Button>
-          <Button type="submit" disabled={!ready || receiveMut.isPending}>
+          <Button
+            type="submit"
+            disabled={!ready || !batchNumber.trim() || !expiry || receiveMut.isPending}
+          >
             {t('inventory.receive')}
           </Button>
         </div>

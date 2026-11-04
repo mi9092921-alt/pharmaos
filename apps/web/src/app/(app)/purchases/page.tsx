@@ -37,6 +37,7 @@ import {
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { RequirePermission } from '@/components/require-permission';
 import { useAuth } from '@/lib/auth-store';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { toast } from '@/lib/toast-store';
 
 export default function PurchasesPage() {
@@ -750,11 +751,12 @@ function SuppliersTab() {
   const [editForm, setEditForm] = useState<SupplierForm>(EMPTY_FORM);
   const [editError, setEditError] = useState<string | null>(null);
 
+  const debouncedSearch = useDebouncedValue(search);
   const suppliersQuery = useQuery({
-    queryKey: ['suppliers', search, activeOnly],
-    queryFn: () => listPurchaseSuppliers({ search: search || undefined, activeOnly }),
+    queryKey: ['po-suppliers', debouncedSearch, activeOnly],
+    queryFn: () => listPurchaseSuppliers({ search: debouncedSearch || undefined, activeOnly }),
   });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['suppliers'] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['po-suppliers'] });
 
   const createMut = useMutation({
     mutationFn: () =>
