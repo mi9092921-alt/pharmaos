@@ -149,7 +149,7 @@ function ExpensesTab() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label className="text-xs">{t('inventory.branch')}</Label>
-            <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}

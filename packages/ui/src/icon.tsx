@@ -9,6 +9,8 @@ import {
   CalendarCheck,
   ClipboardList,
   CreditCard,
+  Eye,
+  EyeOff,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -62,6 +64,8 @@ export const ICONS = {
   tone_error: CircleAlert,
   tone_info: Info,
   calendar: CalendarCheck,
+  eye: Eye,
+  eye_off: EyeOff,
 } as const;
 
 export type IconName = keyof typeof ICONS;

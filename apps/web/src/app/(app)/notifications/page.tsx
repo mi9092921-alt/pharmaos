@@ -136,7 +136,7 @@ export default function NotificationsPage() {
               {t('notifications.read_all')}
             </Button>
           )}
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}

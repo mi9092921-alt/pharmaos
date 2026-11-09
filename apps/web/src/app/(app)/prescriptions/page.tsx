@@ -87,7 +87,7 @@ export default function PrescriptionsPage() {
         <h1 className="text-2xl font-bold text-slate-900">{t('prescriptions.title')}</h1>
         <div className="flex items-center gap-2">
           <Label className="text-xs">{t('inventory.branch')}</Label>
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -370,7 +370,7 @@ function CreatePrescriptionModal({
                       <button
                         key={c.id}
                         type="button"
-                        className="block w-full px-3 py-1.5 text-start text-sm hover:bg-primary-50"
+                        className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
                         onClick={() => {
                           setCustomerId(c.id);
                           setCustomerLabel(c.phone ? `${c.name} (${c.phone})` : c.name);
@@ -408,7 +408,7 @@ function CreatePrescriptionModal({
                     key={m.id}
                     type="button"
                     onClick={() => addItemMut.mutate(m)}
-                    className="block w-full px-3 py-1.5 text-start text-sm hover:bg-primary-50"
+                    className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
                   >
                     {m.trade_name_ar ?? m.trade_name}
                   </button>
@@ -750,7 +750,7 @@ function ControlledLogTab({ branchId }: { branchId: string }) {
                   <button
                     key={m.id}
                     type="button"
-                    className="block w-full px-3 py-1.5 text-start text-sm hover:bg-primary-50"
+                    className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
                     onClick={() => {
                       setMedFilter(m);
                       setMedTerm('');

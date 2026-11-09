@@ -1,5 +1,8 @@
 @import 'tailwindcss';
-@source '../../../packages/ui';
+/* From src/app/ it is FOUR levels up to the monorepo root — the old
+   three-level path pointed at apps/packages/ui (nonexistent), which made
+   every utility defined only in packages/ui silently unstyled. */
+@source '../../../../packages/ui';
 
 /*
  * PharmaOS Design System — fixed decisions from CLAUDE.md
@@ -33,6 +36,15 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+
+  /* Control heights — single source of truth for every button & field.
+     sm 36px: dense contexts only (table rows/actions — wave UX-1 floor).
+     md 44px: default buttons and single-line fields (aligned in one row).
+     lg 48px: page-level primary actions (login submit, modal primary).
+     Components reference these via h-[var(--control-h-*)] — never hardcode. */
+  --control-h-sm: 2.25rem;
+  --control-h-md: 2.75rem;
+  --control-h-lg: 3rem;
 }
 
 @theme inline {

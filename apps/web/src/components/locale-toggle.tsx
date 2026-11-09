@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { ConfirmDialog } from '@pharmaos/ui';
+import { ConfirmDialog, cn } from '@pharmaos/ui';
 
 import { t } from '@/lib/i18n';
 import { useLocaleStore } from '@/lib/locale-store';
@@ -24,12 +24,23 @@ export function LocaleToggle({ className }: { className?: string }) {
     setConfirming(target);
   };
 
+  // Dense control height (--control-h-sm, 36px): a compact utility that also
+  // sits in the 64px topbar next to the dense logout button.
+  // Ring is inset because the group's overflow-hidden would clip an outer ring.
+  // Callers may pass positioning classes (e.g. login card corner) — merged
+  // over the chrome classes, never replacing them.
+  const segBase =
+    'flex h-[var(--control-h-sm)] items-center px-3 text-sm font-semibold transition-colors ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ' +
+    'focus-visible:ring-primary-500';
+
   return (
     <>
       <div
-        className={
-          className ?? 'flex overflow-hidden rounded-[var(--radius-md)] border border-border'
-        }
+        className={cn(
+          'flex overflow-hidden rounded-[var(--radius-md)] border border-border',
+          className,
+        )}
         role="group"
         aria-label={t('locale.toggle')}
       >
@@ -37,7 +48,7 @@ export function LocaleToggle({ className }: { className?: string }) {
           type="button"
           aria-pressed={locale === 'ar'}
           onClick={() => ask('ar')}
-          className={`px-2 py-1 text-xs font-semibold transition-colors ${
+          className={`${segBase} ${
             locale === 'ar'
               ? 'bg-primary-600 text-white'
               : 'bg-white text-slate-600 hover:bg-primary-50'
@@ -49,7 +60,7 @@ export function LocaleToggle({ className }: { className?: string }) {
           type="button"
           aria-pressed={locale === 'en'}
           onClick={() => ask('en')}
-          className={`px-2 py-1 text-xs font-semibold transition-colors ${
+          className={`${segBase} ${
             locale === 'en'
               ? 'bg-primary-600 text-white'
               : 'bg-white text-slate-600 hover:bg-primary-50'

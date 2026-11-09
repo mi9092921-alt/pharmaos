@@ -124,7 +124,7 @@ export default function ShortagesPage() {
         <h1 className="text-2xl font-bold text-slate-900">{t('shortages.title')}</h1>
         <div className="flex items-center gap-2">
           <Label className="text-xs">{t('inventory.branch')}</Label>
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -138,7 +138,7 @@ export default function ShortagesPage() {
         {(['pharmacy', 'market'] as const).map((k) => (
           <button
             key={k}
-            className={`rounded-md px-3 py-1.5 text-sm ${kind === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}
+            className={`rounded-md px-3 py-2 text-sm ${kind === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}
             onClick={() => {
               setKind(k);
               setSelected(new Set());
@@ -147,7 +147,7 @@ export default function ShortagesPage() {
             {t(`shortages.tab_${k}`)}
           </button>
         ))}
-        <Select className="h-9 w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
+        <Select className="w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">{t('shortages.all_statuses')}</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>

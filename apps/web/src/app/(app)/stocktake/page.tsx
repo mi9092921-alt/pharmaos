@@ -91,7 +91,7 @@ export default function StocktakePage() {
         <h1 className="text-2xl font-bold text-slate-900">{t('stocktake.title')}</h1>
         <div className="flex items-center gap-2">
           <Label className="text-xs">{t('inventory.branch')}</Label>
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}

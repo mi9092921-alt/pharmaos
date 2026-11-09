@@ -107,7 +107,7 @@ export default function AlertsPage() {
               {t('alerts.evaluate')}
             </Button>
           )}
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}

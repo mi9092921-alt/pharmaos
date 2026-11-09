@@ -36,7 +36,8 @@ export function Tabs<T extends string>({ value, onChange, items, className }: Ta
           aria-selected={value === it.value}
           onClick={() => onChange(it.value)}
           className={cn(
-            'border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
+            // py-2.5 keeps the tab bar ≈40px — navigation control, not a form field.
+            'border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors',
             value === it.value
               ? 'border-primary-600 text-primary-700'
               : 'border-transparent text-slate-500 hover:text-slate-700',

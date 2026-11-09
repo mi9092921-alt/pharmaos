@@ -10,13 +10,15 @@ import { t } from '@/lib/i18n';
 import { NAV_ITEMS } from '@/lib/nav';
 
 /** Section grouping + icon per route (wave و). Group order is the visual
- * order; an item not listed keeps its NAV_ITEMS position at the end. */
+ * order; an item not listed keeps its NAV_ITEMS position at the end. The
+ * title is an i18n key (nav.group.*) — rendered through t() below so the
+ * English UI doesn't leak Arabic headers. */
 const GROUPS: Array<{
   title: string;
   items: Array<{ href: string; icon: IconName }>;
 }> = [
   {
-    title: 'العمليات',
+    title: 'nav.group.operations',
     items: [
       { href: '/pos', icon: 'pos' },
       { href: '/inventory', icon: 'inventory' },
@@ -25,14 +27,14 @@ const GROUPS: Array<{
     ],
   },
   {
-    title: 'الفهرسة والمشتريات',
+    title: 'nav.group.catalog_purchases',
     items: [
       { href: '/catalog', icon: 'catalog' },
       { href: '/purchases', icon: 'purchases' },
     ],
   },
   {
-    title: 'العملاء والمبيعات',
+    title: 'nav.group.customers_sales',
     items: [
       { href: '/customers', icon: 'customers' },
       { href: '/returns', icon: 'returns' },
@@ -40,7 +42,7 @@ const GROUPS: Array<{
     ],
   },
   {
-    title: 'المالية والامتثال',
+    title: 'nav.group.finance_compliance',
     items: [
       { href: '/finance', icon: 'finance' },
       { href: '/compliance', icon: 'compliance' },
@@ -48,7 +50,7 @@ const GROUPS: Array<{
     ],
   },
   {
-    title: 'المتابعة والإدارة',
+    title: 'nav.group.admin',
     items: [
       { href: '/', icon: 'dashboard' },
       { href: '/alerts', icon: 'alerts' },
@@ -94,7 +96,7 @@ export function Sidebar() {
           return (
             <div key={title}>
               <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                {title}
+                {t(title)}
               </p>
               <div className="space-y-1">
                 {items.map((item) => {
