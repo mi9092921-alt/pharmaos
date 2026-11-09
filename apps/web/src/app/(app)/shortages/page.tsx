@@ -11,14 +11,17 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   bulkShortages,
+  createShortage,
   createShortagePo,
   getShortageSubstitutes,
   listInventoryBranches,
   listShortages,
   listSuppliers,
+  searchMedications,
   shortageAskAgain,
   shortagesExportCsvUrl,
   syncShortages,
+  type MedOption,
   type ShortageItem,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
@@ -30,6 +33,7 @@ import {
   Button,
   Card,
   CardContent,
+  Input,
   Label,
   Modal,
   Select,
@@ -42,6 +46,13 @@ const onErr = (e: unknown) => toast.error(formatApiErrorMessage(e));
 
 export default function ShortagesPage() {
   const canEdit = useAuth((s) => s.hasPermission('inventory.edit'));
+  // POS "customer asked" is a cashier action — the manual add form follows
+  // the same create rule (inventory.edit OR sales.create). ONE hook call:
+  // an `||` between two useAuth() calls is a conditional hook (the second
+  // call vanishes when the first is true) and breaks the Rules of Hooks.
+  const canCreate = useAuth(
+    (s) => s.hasPermission('inventory.edit') || s.hasPermission('sales.create'),
+  );
   const [branchId, setBranchId] = useState('');
   const [kind, setKind] = useState<'pharmacy' | 'market'>('pharmacy');
   const [status, setStatus] = useState<string>('');
@@ -49,6 +60,7 @@ export default function ShortagesPage() {
   const [subsFor, setSubsFor] = useState<ShortageItem | null>(null);
   const [poFor, setPoFor] = useState<string[] | null>(null);
   const [orderFor, setOrderFor] = useState<string[] | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const branchesQuery = useQuery({ queryKey: ['sh-branches'], queryFn: listInventoryBranches });
   const branches = branchesQuery.data ?? [];
@@ -156,6 +168,7 @@ export default function ShortagesPage() {
           ))}
         </Select>
         <div className="flex-1" />
+        {canCreate && <Button onClick={() => setAddOpen(true)}>{t('shortages.add_item')}</Button>}
         <a href={shortagesExportCsvUrl(branchId, kind)} download>
           <Button variant="outline">{t('stocktake.export_csv')}</Button>
         </a>
@@ -351,6 +364,9 @@ export default function ShortagesPage() {
       {subsFor && (
         <SubstitutesModal branchId={branchId} item={subsFor} onClose={() => setSubsFor(null)} />
       )}
+      {addOpen && (
+        <AddItemModal branchId={branchId} defaultKind={kind} onClose={() => setAddOpen(false)} />
+      )}
       {orderFor && (
         <SupplierPickerModal
           title={t('shortages.mark_ordered')}
@@ -466,6 +482,188 @@ function SupplierPickerModal({
           </Button>
           <Button disabled={!supplierId} onClick={() => onPick(supplierId)}>
             {t('common.ok')}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------- add-item form (page-level manual entry) ----------------
+
+function AddItemModal({
+  branchId,
+  defaultKind,
+  onClose,
+}: {
+  branchId: string;
+  defaultKind: 'pharmacy' | 'market';
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [kind, setKind] = useState<'pharmacy' | 'market'>(defaultKind);
+  // smart default: a market entry is usually a customer request; a pharmacy
+  // entry is usually a staff-noticed stockout
+  const [source, setSource] = useState<'manual' | 'customer_request'>(
+    defaultKind === 'market' ? 'customer_request' : 'manual',
+  );
+  const [term, setTerm] = useState('');
+  const [picked, setPicked] = useState<MedOption | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [qty, setQty] = useState('1');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [notes, setNotes] = useState('');
+
+  // catalog search only helps when ≥2 chars; free text stays available
+  const searchQuery = useQuery({
+    queryKey: ['sh-item-search', term],
+    queryFn: () => searchMedications(term.trim()),
+    enabled: picked === null && term.trim().length >= 2,
+  });
+  const results = searchQuery.data ?? [];
+  const freeName = picked === null ? term.trim() : '';
+
+  const mut = useMutation({
+    mutationFn: () =>
+      createShortage({
+        branchId,
+        kind,
+        source,
+        medicationId: picked?.id,
+        nameText: picked ? undefined : freeName,
+        qtyNeeded: qty.trim() || '1',
+        customerName: customerName.trim() || undefined,
+        customerPhone: customerPhone.trim() || undefined,
+        notes: notes.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success(t('shortages.added'));
+      queryClient.invalidateQueries({ queryKey: ['shortages', branchId] });
+      onClose();
+    },
+    onError: onErr,
+  });
+
+  const canSubmit = picked !== null || freeName.length >= 2;
+
+  return (
+    <Modal open onClose={onClose} title={t('shortages.add_title')}>
+      <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label>{t('shortages.kind')}</Label>
+            <Select
+              value={kind}
+              onChange={(e) => {
+                const k = e.target.value as 'pharmacy' | 'market';
+                setKind(k);
+                setSource(k === 'market' ? 'customer_request' : 'manual');
+              }}
+            >
+              <option value="pharmacy">{t('shortages.tab_pharmacy')}</option>
+              <option value="market">{t('shortages.tab_market')}</option>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>{t('shortages.source')}</Label>
+            <Select
+              value={source}
+              onChange={(e) => setSource(e.target.value as 'manual' | 'customer_request')}
+            >
+              <option value="manual">{t('shortages.source_manual')}</option>
+              <option value="customer_request">{t('shortages.source_customer')}</option>
+            </Select>
+          </div>
+        </div>
+
+        {picked ? (
+          <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+            <span>{picked.trade_name_ar ?? picked.trade_name}</span>
+            <Button size="sm" variant="ghost" onClick={() => setPicked(null)}>
+              ✕
+            </Button>
+          </div>
+        ) : (
+          <div className="relative space-y-1">
+            <Label>{t('shortages.item_search')}</Label>
+            <Input
+              autoFocus
+              value={term}
+              onChange={(e) => {
+                setTerm(e.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              placeholder={t('shortages.item_search_placeholder')}
+            />
+            {searchOpen && term.trim().length >= 2 && (
+              <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-[var(--radius-md)] border border-border bg-white shadow-lg">
+                {searchQuery.isLoading ? (
+                  <div className="flex justify-center p-3">
+                    <Spinner />
+                  </div>
+                ) : results.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-slate-500">
+                    {t('shortages.item_free_hint')}
+                  </p>
+                ) : (
+                  results.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
+                      onClick={() => {
+                        setPicked(m);
+                        setSearchOpen(false);
+                      }}
+                    >
+                      {m.trade_name_ar ?? m.trade_name}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+            {term.trim().length > 0 && term.trim().length < 2 && (
+              <p className="text-xs text-slate-400">{t('shortages.item_free_hint')}</p>
+            )}
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label>{t('shortages.col_qty')}</Label>
+            <Input
+              className="tabular-nums"
+              inputMode="decimal"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+            />
+          </div>
+          {source === 'customer_request' && (
+            <div className="space-y-1">
+              <Label>{t('shortages.customer_name')}</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+            </div>
+          )}
+        </div>
+        {source === 'customer_request' && (
+          <div className="space-y-1">
+            <Label>{t('shortages.customer_phone')}</Label>
+            <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+          </div>
+        )}
+        <div className="space-y-1">
+          <Label>{t('shortages.notes')}</Label>
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+          <Button disabled={!canSubmit || mut.isPending} onClick={() => mut.mutate()}>
+            {mut.isPending ? <Spinner /> : t('shortages.add_item')}
           </Button>
         </div>
       </div>

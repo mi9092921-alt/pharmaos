@@ -1226,7 +1226,7 @@ function ExpiryAlertsTab({ branchId, canAdjust }: { branchId: string; canAdjust:
                                   kind: 'pharmacy',
                                   source: 'manual',
                                   medicationId: b.medication_id,
-                                  notes: `${t('inventory.tab_expiry')} ${b.expiry_date}`,
+                                  notes: `${t('shortages.from_expiry')} ${b.expiry_date}`,
                                 });
                                 toast.success(t('shortages.added'));
                               } catch (e) {
