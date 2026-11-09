@@ -108,7 +108,8 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
         style={{ direction: 'ltr', unicodeBidi: 'isolate', ...style }}
         className={cn(
           'bidi-date-input',
-          'flex h-10 w-full rounded-[var(--radius-md)] border border-border bg-white px-3 text-sm',
+          // --control-h-md (44px): matches Input and default buttons.
+          'flex h-[var(--control-h-md)] w-full rounded-[var(--radius-md)] border border-border bg-white px-3 text-sm',
           'placeholder:text-slate-400',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
           'disabled:cursor-not-allowed disabled:opacity-60',

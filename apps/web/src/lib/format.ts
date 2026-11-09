@@ -11,10 +11,13 @@
 
 export type Locale = 'ar' | 'en';
 
-export function getLocale(): Locale {
-  return 'ar';
-}
+// Single source of truth lives in i18n — re-exported so existing
+// format.ts consumers keep their import path when the switcher lands.
+import { getLocale, t } from './i18n';
 
+export { getLocale };
+
+/** Arabic-script currency symbols for the default (ar) locale. */
 const CURRENCY_SYMBOLS: Record<string, string> = {
   EGP: 'ج.م',
   SAR: 'ر.س',
@@ -29,8 +32,18 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   GBP: '£',
 };
 
-/** Currency symbol for display; unknown codes fall back to the ISO code. */
+/** Latin symbols shared by both locales; in 'en' any other code falls back to
+ * the ISO code itself ("EGP", "SAR", …) instead of the Arabic script. */
+const CURRENCY_SYMBOLS_EN: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+};
+
+/** Currency symbol for display, per the active locale; unknown codes fall
+ * back to the ISO code. */
 export function currencySymbol(code: string): string {
+  if (getLocale() === 'en') return CURRENCY_SYMBOLS_EN[code] ?? code;
   return CURRENCY_SYMBOLS[code] ?? code;
 }
 
@@ -81,19 +94,20 @@ function localDayKey(d: Date): string {
 /**
  * Timestamps (created_at / last_seen, server TIMESTAMPTZ) in device-local
  * time: "اليوم 3:41 م" / "أمس 9:02 ص" / otherwise "1 نوفمبر 2026، 3:41 م" —
- * Latin digits, pinned locale. (Phase 5 routes the اليوم/أمس literals
- * through i18n when the language switcher lands.)
+ * Latin digits, pinned locale; اليوم/أمس labels route through i18n so the
+ * English UI reads "Today 3:41 PM".
  */
 export function formatDateTime(value: string | Date): string {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   const { date, time } = dateTimeFmt();
   const now = new Date();
-  if (localDayKey(d) === localDayKey(now)) return `اليوم ${time.format(d)}`;
+  if (localDayKey(d) === localDayKey(now)) return `${t('date.today')} ${time.format(d)}`;
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (localDayKey(d) === localDayKey(yesterday)) return `أمس ${time.format(d)}`;
-  return `${date.format(d)}، ${time.format(d)}`;
+  if (localDayKey(d) === localDayKey(yesterday)) return `${t('date.yesterday')} ${time.format(d)}`;
+  const sep = getLocale() === 'ar' ? '،' : ',';
+  return `${date.format(d)}${sep} ${time.format(d)}`;
 }
 
 /**

@@ -1,6 +1,6 @@
 'use client';
 
-import { QueryState, Badge, Button, Card, CardContent, Select, Spinner } from '@pharmaos/ui';
+import { Badge, Button, Card, CardContent, QueryState, Select, Spinner, Tabs } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -107,7 +107,7 @@ export default function AlertsPage() {
               {t('alerts.evaluate')}
             </Button>
           )}
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -117,23 +117,11 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-border">
-        {STATUS_TABS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatus(s)}
-            className={
-              'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-              (status === s
-                ? 'border-primary-600 text-primary-700'
-                : 'border-transparent text-slate-500')
-            }
-          >
-            {t(`alerts.tab_${s}`)}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={status}
+        onChange={setStatus}
+        items={STATUS_TABS.map((s) => ({ value: s, label: t(`alerts.tab_${s}`) }))}
+      />
 
       <QueryState
         isLoading={alertsQuery.isLoading}

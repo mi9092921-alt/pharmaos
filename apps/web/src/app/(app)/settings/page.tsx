@@ -31,6 +31,7 @@ import {
   licenseStatusTone,
 } from '@/components/license-upload';
 import { useAuth } from '@/lib/auth-store';
+import { getLocale } from '@/lib/format';
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { toast } from '@/lib/toast-store';
 
@@ -106,7 +107,7 @@ export default function SettingsPage() {
       <div className="mx-auto max-w-md py-12 text-center space-y-4">
         <p className="text-danger font-medium">{formatApiErrorMessage(branchesQuery.error)}</p>
         <Button variant="outline" onClick={() => branchesQuery.refetch()}>
-          {t('common.retry') || 'إعادة المحاولة'}
+          {t('common.retry')}
         </Button>
       </div>
     );
@@ -120,14 +121,14 @@ export default function SettingsPage() {
           <div className="flex flex-col gap-3 max-w-xs mx-auto">
             <Input
               value={newBranchName}
-              placeholder="اسم الفرع الرئيسي"
+              placeholder={t('settings.branch_placeholder')}
               onChange={(e) => setNewBranchName(e.target.value)}
             />
             <Button
               disabled={createBranchMut.isPending || !newBranchName.trim()}
               onClick={() => createBranchMut.mutate()}
             >
-              {createBranchMut.isPending ? t('users.creating') : 'إنشاء الفرع'}
+              {createBranchMut.isPending ? t('users.creating') : t('settings.create_branch')}
             </Button>
           </div>
         ) : (
@@ -491,7 +492,11 @@ function formatLicenseDate(iso: string | null): string {
   if (!iso) return t('settings.software_license.na');
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return t('settings.software_license.na');
-  return d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+  return d.toLocaleDateString(`${getLocale()}-u-nu-latn`, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 function FieldInput({
   label,

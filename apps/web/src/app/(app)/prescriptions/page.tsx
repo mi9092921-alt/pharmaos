@@ -6,13 +6,15 @@ import {
   Button,
   Card,
   CardContent,
-  DateInput,
   Input,
   Label,
   Modal,
   Select,
   Spinner,
+  Tabs,
 } from '@pharmaos/ui';
+
+import { DateInput } from '@/components/date-input';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -85,7 +87,7 @@ export default function PrescriptionsPage() {
         <h1 className="text-2xl font-bold text-slate-900">{t('prescriptions.title')}</h1>
         <div className="flex items-center gap-2">
           <Label className="text-xs">{t('inventory.branch')}</Label>
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -96,14 +98,14 @@ export default function PrescriptionsPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'list'} onClick={() => setTab('list')}>
-          {t('prescriptions.tab_list')}
-        </TabButton>
-        {canViewLog && (
-          <TabButton active={tab === 'log'} onClick={() => setTab('log')}>
-            {t('prescriptions.tab_log')}
-          </TabButton>
-        )}
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'list', label: t('prescriptions.tab_list') },
+            { value: 'log', label: t('prescriptions.tab_log'), hidden: !canViewLog },
+          ]}
+        />
       </div>
 
       {tab === 'list' ? (
@@ -112,29 +114,6 @@ export default function PrescriptionsPage() {
         <ControlledLogTab branchId={branchId} />
       )}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 
@@ -391,7 +370,7 @@ function CreatePrescriptionModal({
                       <button
                         key={c.id}
                         type="button"
-                        className="block w-full px-3 py-1.5 text-start text-sm hover:bg-primary-50"
+                        className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
                         onClick={() => {
                           setCustomerId(c.id);
                           setCustomerLabel(c.phone ? `${c.name} (${c.phone})` : c.name);
@@ -429,7 +408,7 @@ function CreatePrescriptionModal({
                     key={m.id}
                     type="button"
                     onClick={() => addItemMut.mutate(m)}
-                    className="block w-full px-3 py-1.5 text-start text-sm hover:bg-primary-50"
+                    className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
                   >
                     {m.trade_name_ar ?? m.trade_name}
                   </button>
@@ -771,7 +750,7 @@ function ControlledLogTab({ branchId }: { branchId: string }) {
                   <button
                     key={m.id}
                     type="button"
-                    className="block w-full px-3 py-1.5 text-start text-sm hover:bg-primary-50"
+                    className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
                     onClick={() => {
                       setMedFilter(m);
                       setMedTerm('');

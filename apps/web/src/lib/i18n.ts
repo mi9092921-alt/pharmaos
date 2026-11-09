@@ -12,6 +12,29 @@ export const i18nConfig = {
 
 export type Locale = (typeof i18nConfig.locales)[number];
 
+/**
+ * Active-locale module state (RC wave هـ). Single-device app: one locale per
+ * process is a documented assumption — SSR serves one pharmacy device, and
+ * the cookie pharmaos_locale is re-read by the server layout per request for
+ * lang/dir while t() reads this module value client-side.
+ */
+let activeLocale: Locale = i18nConfig.defaultLocale;
+
+export function getLocale(): Locale {
+  return activeLocale;
+}
+
+export function setI18nLocale(locale: Locale): void {
+  activeLocale = locale;
+}
+
+/** {token} interpolation shared by every caller that passes params. */
+function interpolate(template: string, params: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, token: string) =>
+    token in params ? String(params[token]) : `{${token}}`,
+  );
+}
+
 const dictionaries: Record<Locale, Record<string, string>> = {
   ar: {
     'app.name': 'PharmaOS',
@@ -21,8 +44,16 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'login.password': 'كلمة المرور',
     'login.submit': 'دخول',
     'login.submitting': 'جارٍ الدخول…',
+    'login.show_password': 'إظهار كلمة المرور',
+    'login.hide_password': 'إخفاء كلمة المرور',
+    'login.license_days_left': 'الأيام المتبقية على الانتهاء: {days}',
     'errors.E-AUTH-001': 'بيانات الدخول غير صحيحة',
+    'locale.toggle': 'اللغة',
+    'locale.switch_title': 'تغيير اللغة؟',
+    'locale.switch_body':
+      'سيُعاد بناء الواجهة باللغة الجديدة وتُفقد البيانات غير المحفوظة (مثل سلة نقطة البيع والنماذج المفتوحة).',
     'errors.E-AUTH-002': 'ليست لديك صلاحية لهذا الإجراء',
+    'require_permission.hint': 'لعرض هذه الشاشة صلاحية إضافية — تواصل مع مالك النظام.',
     'errors.E-AUTH-003': 'تم قفل الحساب مؤقتاً بعد محاولات متكررة — حاول بعد 15 دقيقة',
     'errors.E-AUTH-004': 'فشل التحقق الأمني — أعد تحميل الصفحة',
     'errors.E-AUTH-005': 'محاولات كثيرة — انتظر دقيقة ثم أعد المحاولة',
@@ -49,6 +80,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
       'إنشاء إشعار دائن باسترداد تقديري {total}؟ الإشعار لا يُعدَّل بعد إنشائه.',
     'confirm.expiry_sweep.body':
       'حجر كل الدفعات المنتهية الآن؟ يُسجَّل حدث حجر لكل دفعة ويصبح بيعها ممنوعًا.',
+    'confirm.sign_out.title': 'تسجيل الخروج',
+    'confirm.sign_out.body': 'هل تريد تسجيل الخروج من الحساب الحالي؟',
     'stocktake.new_session': 'جلسة جديدة',
     'stocktake.history_empty': 'لا جلسات جرد بعد — ابدأ أول جلسة من الزر أعلاه',
     'stocktake.session_type': 'نوع الجلسة',
@@ -166,7 +199,6 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'shortages.item_free_hint': 'يمكن المتابعة باسم حر غير موجود في الكتالوج',
     'shortages.notes': 'ملاحظات',
     'inventory.expiry_tab': 'قرب انتهاء الصلاحية',
-    'require_permission.hint': 'تواصل مع مدير الفرع لمنحك الصلاحية المطلوبة.',
     'shortages.customer_name': 'اسم العميل',
     'shortages.customer_phone': 'تليفون العميل (اختياري)',
     'errors.E-SYS-001': 'خطأ غير متوقع — حاول مجدداً',
@@ -203,6 +235,11 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'nav.users': 'المستخدمون',
     'nav.settings': 'الإعدادات',
     'nav.about': 'حول PharmaOS',
+    'nav.group.operations': 'العمليات',
+    'nav.group.catalog_purchases': 'الفهرسة والمشتريات',
+    'nav.group.customers_sales': 'العملاء والمبيعات',
+    'nav.group.finance_compliance': 'المالية والامتثال',
+    'nav.group.admin': 'المتابعة والإدارة',
     'shell.logout': 'تسجيل الخروج',
     'shell.online': 'متصل',
     'shell.offline': 'غير متصل — يعمل محلياً',
@@ -262,6 +299,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'common.save': 'حفظ',
     'common.saved': 'تم الحفظ',
     'common.retry': 'إعادة المحاولة',
+    'date.today': 'اليوم',
+    'date.yesterday': 'أمس',
     // Purchases — suppliers (P2-M1)
     'purchases.title': 'الموردون',
     'purchases.add': 'إضافة مورّد',
@@ -409,6 +448,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
       'انتهت صلاحية الترخيص والدخول في فترة السماح — جدّد الآن لتفادي وضع القراءة فقط',
     'settings.readonly': 'للعرض فقط — تحتاج صلاحية التعديل',
     'settings.no_branch': 'لا يوجد فرع بعد',
+    'settings.branch_placeholder': 'اسم الفرع الرئيسي',
+    'settings.create_branch': 'إنشاء الفرع',
     // Catalog
     'catalog.title': 'كتالوج الأدوية',
     'catalog.search': 'ابحث بالاسم العربي أو الإنجليزي…',
@@ -433,6 +474,9 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.created_ok': 'تم إنشاء الدواء',
     'catalog.saved_ok': 'تم حفظ المستويات والأسعار',
     'catalog.empty': 'لا نتائج',
+    'catalog.showing_first': 'تُعرض أول {n} نتيجة — استخدم البحث للوصول لأصناف أبعد',
+    'catalog.next': 'التالي',
+    'catalog.prev': 'السابق',
     'catalog.actions': 'إجراءات',
     'catalog.edit': 'تحرير',
     'catalog.delete': 'حذف',
@@ -1142,8 +1186,17 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'login.password': 'Password',
     'login.submit': 'Sign in',
     'login.submitting': 'Signing in…',
+    'login.show_password': 'Show password',
+    'login.hide_password': 'Hide password',
+    'login.license_days_left': 'Days until expiry: {days}',
     'errors.E-AUTH-001': 'Invalid credentials',
+    'locale.toggle': 'Language',
+    'locale.switch_title': 'Switch language?',
+    'locale.switch_body':
+      'The interface rebuilds in the new language and unsaved data (the POS cart, open forms) is lost.',
     'errors.E-AUTH-002': 'You do not have permission for this action',
+    'require_permission.hint':
+      'This screen requires an additional permission — contact the system owner.',
     'errors.E-AUTH-003': 'Account temporarily locked — try again in 15 minutes',
     'errors.E-AUTH-004': 'Security check failed — reload the page',
     'errors.E-AUTH-005': 'Too many attempts — wait a minute and retry',
@@ -1173,6 +1226,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
       'Create a credit note with an estimated refund of {total}? The note cannot be edited once created.',
     'confirm.expiry_sweep.body':
       'Quarantine every expired batch now? Each batch gets an audit-logged quarantine event and can no longer be sold.',
+    'confirm.sign_out.title': 'Sign out',
+    'confirm.sign_out.body': 'Sign out of the current account?',
     'stocktake.new_session': 'New session',
     'stocktake.history_empty': 'No stocktake sessions yet — start the first one above',
     'stocktake.session_type': 'Session type',
@@ -1290,7 +1345,6 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'shortages.item_free_hint': 'You can continue with a free name not in the catalog',
     'shortages.notes': 'Notes',
     'inventory.expiry_tab': 'Near expiry',
-    'require_permission.hint': 'Contact your branch manager to grant you the required permission.',
     'shortages.customer_name': 'Customer name',
     'shortages.customer_phone': 'Customer phone (optional)',
     'errors.E-SYS-001': 'Unexpected error — please retry',
@@ -1328,6 +1382,11 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'nav.users': 'Users',
     'nav.settings': 'Settings',
     'nav.about': 'About PharmaOS',
+    'nav.group.operations': 'Operations',
+    'nav.group.catalog_purchases': 'Catalog & Purchases',
+    'nav.group.customers_sales': 'Customers & Sales',
+    'nav.group.finance_compliance': 'Finance & Compliance',
+    'nav.group.admin': 'Overview & Admin',
     'shell.logout': 'Sign out',
     'shell.online': 'Online',
     'shell.offline': 'Offline — working locally',
@@ -1389,6 +1448,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'common.save': 'Save',
     'common.saved': 'Saved',
     'common.retry': 'Retry',
+    'date.today': 'Today',
+    'date.yesterday': 'Yesterday',
     // Purchases — suppliers (P2-M1)
     'purchases.title': 'Suppliers',
     'purchases.add': 'Add supplier',
@@ -1538,6 +1599,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
       'License expired, in grace period — renew now to avoid read-only mode',
     'settings.readonly': 'Read-only — edit permission required',
     'settings.no_branch': 'No branch yet',
+    'settings.branch_placeholder': 'Main branch name',
+    'settings.create_branch': 'Create branch',
     // Catalog
     'catalog.title': 'Medications catalog',
     'catalog.search': 'Search Arabic or English name…',
@@ -1562,6 +1625,9 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'catalog.created_ok': 'Medication created',
     'catalog.saved_ok': 'Levels & prices saved',
     'catalog.empty': 'No results',
+    'catalog.showing_first': 'Showing the first {n} results — use search to reach further items',
+    'catalog.next': 'Next',
+    'catalog.prev': 'Previous',
     'catalog.actions': 'Actions',
     'catalog.edit': 'Edit',
     'catalog.delete': 'Delete',
@@ -2264,8 +2330,13 @@ const dictionaries: Record<Locale, Record<string, string>> = {
   },
 };
 
-export function t(key: string, locale: Locale = i18nConfig.defaultLocale): string {
-  return dictionaries[locale][key] ?? dictionaries[i18nConfig.defaultLocale][key] ?? key;
+export function t(
+  key: string,
+  params?: Record<string, string | number>,
+  locale: Locale = getLocale(),
+): string {
+  const template = dictionaries[locale][key] ?? dictionaries[i18nConfig.defaultLocale][key] ?? key;
+  return params ? interpolate(template, params) : template;
 }
 
 export function formatApiErrorMessage(e: unknown, fallbackKey = 'errors.E-SYS-001'): string {

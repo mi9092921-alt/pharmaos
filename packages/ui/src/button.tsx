@@ -17,11 +17,14 @@ const buttonVariants = cva(
         ghost: 'text-slate-700 hover:bg-primary-50 hover:text-primary-700',
       },
       size: {
-        // h-9 minimum: pharmacy-floor tap targets (POS cart rows, table
-        // actions) — wave UX-1 raised the dense size from h-8 (32px).
-        sm: 'h-9 px-3',
-        md: 'h-10 px-4',
-        lg: 'h-12 px-6 text-base',
+        // Heights come from the --control-h-* tokens (globals.css) — never
+        // hardcode px here. sm 36px stays the dense/table floor (wave UX-1
+        // raised it from h-8); md 44px is the default control height so
+        // buttons and single-line fields align inside one row; lg 48px is
+        // reserved for page-level primary actions.
+        sm: 'h-[var(--control-h-sm)] px-3',
+        md: 'h-[var(--control-h-md)] px-4',
+        lg: 'h-[var(--control-h-lg)] px-6 text-base',
       },
     },
     defaultVariants: { variant: 'primary', size: 'md' },

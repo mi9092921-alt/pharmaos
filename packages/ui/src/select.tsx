@@ -10,7 +10,8 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     <select
       ref={ref}
       className={cn(
-        'h-10 rounded-[var(--radius-md)] border border-border bg-white px-3 text-sm',
+        // --control-h-md (44px): matches Input and default buttons.
+        'h-[var(--control-h-md)] rounded-[var(--radius-md)] border border-border bg-white px-3 text-sm',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
         'disabled:cursor-not-allowed disabled:opacity-60',
         className,

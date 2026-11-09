@@ -1,5 +1,6 @@
 'use client';
 
+import { Tabs } from '@pharmaos/ui';
 import { Badge, Button, Card, CardContent, Label, Select, Spinner } from '@pharmaos/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -64,7 +65,7 @@ export default function CompliancePage() {
         <h1 className="text-2xl font-bold text-slate-900">{t('compliance.title')}</h1>
         <div className="flex items-center gap-2">
           <Label className="text-xs">{t('inventory.branch')}</Label>
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -79,16 +80,14 @@ export default function CompliancePage() {
       </p>
 
       <div className="flex gap-1 border-b border-border">
-        {canEreceipt && (
-          <TabButton active={tab === 'ereceipts'} onClick={() => setTab('ereceipts')}>
-            {t('compliance.tab_ereceipts')}
-          </TabButton>
-        )}
-        {canTt && (
-          <TabButton active={tab === 'tt'} onClick={() => setTab('tt')}>
-            {t('compliance.tab_tt')}
-          </TabButton>
-        )}
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'ereceipts', label: t('compliance.tab_ereceipts'), hidden: !canEreceipt },
+            { value: 'tt', label: t('compliance.tab_tt'), hidden: !canTt },
+          ]}
+        />
       </div>
 
       {tab === 'ereceipts' && canEreceipt ? (
@@ -99,29 +98,6 @@ export default function CompliancePage() {
         <p className="py-10 text-center text-sm text-slate-500">{t('errors.E-AUTH-002')}</p>
       )}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 

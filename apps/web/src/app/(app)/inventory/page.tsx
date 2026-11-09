@@ -6,13 +6,15 @@ import {
   Card,
   CardContent,
   ConfirmDialog,
-  DateInput,
   Input,
   Label,
   Modal,
   Select,
   Spinner,
+  Tabs,
 } from '@pharmaos/ui';
+
+import { DateInput } from '@/components/date-input';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -88,7 +90,7 @@ export default function InventoryPage() {
         <h1 className="text-2xl font-bold text-slate-900">{t('inventory.title')}</h1>
         <div className="flex items-center gap-2">
           <Label className="text-xs">{t('inventory.branch')}</Label>
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -99,15 +101,15 @@ export default function InventoryPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'stock'} onClick={() => setTab('stock')}>
-          {t('inventory.tab_stock')}
-        </TabButton>
-        <TabButton active={tab === 'expiry'} onClick={() => setTab('expiry')}>
-          {t('inventory.tab_expiry')}
-        </TabButton>
-        <TabButton active={tab === 'report'} onClick={() => setTab('report')}>
-          {t('inventory.tab_report')}
-        </TabButton>
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'stock', label: t('inventory.tab_stock') },
+            { value: 'expiry', label: t('inventory.tab_expiry') },
+            { value: 'report', label: t('inventory.tab_report') },
+          ]}
+        />
       </div>
 
       {tab === 'stock' && (
@@ -121,29 +123,6 @@ export default function InventoryPage() {
       {tab === 'expiry' && <ExpiryAlertsTab branchId={branchId} canAdjust={canAdjust} />}
       {tab === 'report' && <BatchReportTab branchId={branchId} />}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 
@@ -1073,7 +1052,10 @@ function ReceiveModal({ branchId, onClose }: { branchId: string; onClose: () => 
           <Button type="button" variant="outline" onClick={onClose}>
             {t('users.cancel')}
           </Button>
-          <Button type="submit" disabled={!ready || receiveMut.isPending}>
+          <Button
+            type="submit"
+            disabled={!ready || !batchNumber.trim() || !expiry || receiveMut.isPending}
+          >
             {t('inventory.receive')}
           </Button>
         </div>

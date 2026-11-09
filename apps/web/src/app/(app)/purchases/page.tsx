@@ -6,13 +6,15 @@ import {
   Button,
   Card,
   CardContent,
-  DateInput,
   Input,
   Label,
   Modal,
   Select,
   Spinner,
+  Tabs,
 } from '@pharmaos/ui';
+
+import { DateInput } from '@/components/date-input';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -37,6 +39,7 @@ import {
 import { formatApiErrorMessage, t } from '@/lib/i18n';
 import { RequirePermission } from '@/components/require-permission';
 import { useAuth } from '@/lib/auth-store';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { toast } from '@/lib/toast-store';
 
 export default function PurchasesPage() {
@@ -52,38 +55,17 @@ function PurchasesShell() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex gap-1 border-b border-border">
-        <TabButton active={tab === 'orders'} onClick={() => setTab('orders')}>
-          {t('po.tab_orders')}
-        </TabButton>
-        <TabButton active={tab === 'suppliers'} onClick={() => setTab('suppliers')}>
-          {t('po.tab_suppliers')}
-        </TabButton>
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: 'orders', label: t('po.tab_orders') },
+            { value: 'suppliers', label: t('po.tab_suppliers') },
+          ]}
+        />
       </div>
       {tab === 'orders' ? <OrdersTab /> : <SuppliersTab />}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 
@@ -396,7 +378,7 @@ function CreateOrderModal({
                     key={m.id}
                     type="button"
                     onClick={() => addLineMut.mutate(m)}
-                    className="block w-full px-3 py-1.5 text-start text-sm hover:bg-primary-50"
+                    className="block w-full px-3 py-2 text-start text-sm hover:bg-primary-50"
                   >
                     {m.trade_name_ar ?? m.trade_name}
                   </button>
@@ -750,11 +732,12 @@ function SuppliersTab() {
   const [editForm, setEditForm] = useState<SupplierForm>(EMPTY_FORM);
   const [editError, setEditError] = useState<string | null>(null);
 
+  const debouncedSearch = useDebouncedValue(search);
   const suppliersQuery = useQuery({
-    queryKey: ['suppliers', search, activeOnly],
-    queryFn: () => listPurchaseSuppliers({ search: search || undefined, activeOnly }),
+    queryKey: ['po-suppliers', debouncedSearch, activeOnly],
+    queryFn: () => listPurchaseSuppliers({ search: debouncedSearch || undefined, activeOnly }),
   });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['suppliers'] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['po-suppliers'] });
 
   const createMut = useMutation({
     mutationFn: () =>

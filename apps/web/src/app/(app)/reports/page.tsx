@@ -1,6 +1,8 @@
 'use client';
 
-import { Badge, Card, CardContent, DateInput, Label, Select, Spinner } from '@pharmaos/ui';
+import { Badge, Card, CardContent, Label, Select, Spinner, Tabs } from '@pharmaos/ui';
+
+import { DateInput } from '@/components/date-input';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import {
@@ -136,7 +138,7 @@ export default function ReportsPage() {
         <h1 className="text-2xl font-bold text-slate-900">{t('reports.title')}</h1>
         <div className="flex items-center gap-2">
           <Label className="text-xs">{t('reports.branch')}</Label>
-          <Select className="h-9" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -146,35 +148,37 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {availableTabs.length > 1 && (
-        <div className="flex gap-1 border-b border-border">
-          {availableTabs.includes('sales') && (
-            <TabButton active={tab === 'sales'} onClick={() => setTab('sales')}>
-              {t('reports.tab_sales')}
-            </TabButton>
-          )}
-          {availableTabs.includes('inventory') && (
-            <TabButton active={tab === 'inventory'} onClick={() => setTab('inventory')}>
-              {t('reports.tab_inventory')}
-            </TabButton>
-          )}
-          {availableTabs.includes('profit') && (
-            <TabButton active={tab === 'profit'} onClick={() => setTab('profit')}>
-              {t('reports.tab_profit')}
-            </TabButton>
-          )}
-          {availableTabs.includes('suppliers') && (
-            <TabButton active={tab === 'suppliers'} onClick={() => setTab('suppliers')}>
-              {t('reports.tab_suppliers')}
-            </TabButton>
-          )}
-          {availableTabs.includes('customers') && (
-            <TabButton active={tab === 'customers'} onClick={() => setTab('customers')}>
-              {t('reports.tab_customers')}
-            </TabButton>
-          )}
-        </div>
-      )}
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        items={[
+          {
+            value: 'sales',
+            label: t('reports.tab_sales'),
+            hidden: !availableTabs.includes('sales'),
+          },
+          {
+            value: 'inventory',
+            label: t('reports.tab_inventory'),
+            hidden: !availableTabs.includes('inventory'),
+          },
+          {
+            value: 'profit',
+            label: t('reports.tab_profit'),
+            hidden: !availableTabs.includes('profit'),
+          },
+          {
+            value: 'suppliers',
+            label: t('reports.tab_suppliers'),
+            hidden: !availableTabs.includes('suppliers'),
+          },
+          {
+            value: 'customers',
+            label: t('reports.tab_customers'),
+            hidden: !availableTabs.includes('customers'),
+          },
+        ]}
+      />
 
       {tab === 'sales' && canSales && <SalesTab branchId={branchId} canExport={canExport} />}
       {tab === 'inventory' && canInventory && (
@@ -188,29 +192,6 @@ export default function ReportsPage() {
         <CustomersTab branchId={branchId} canExport={canExport} />
       )}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'border-b-2 px-4 py-2 text-sm font-semibold transition-colors ' +
-        (active ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500')
-      }
-    >
-      {children}
-    </button>
   );
 }
 
@@ -984,20 +965,16 @@ function InventoryTab({ branchId, canExport }: { branchId: string; canExport: bo
   const [sub, setSub] = useState<'stock' | 'valuation' | 'movement' | 'expiry'>('stock');
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-border">
-        <TabButton active={sub === 'stock'} onClick={() => setSub('stock')}>
-          {t('reports.inv_tab_stock_level')}
-        </TabButton>
-        <TabButton active={sub === 'valuation'} onClick={() => setSub('valuation')}>
-          {t('reports.inv_tab_valuation')}
-        </TabButton>
-        <TabButton active={sub === 'movement'} onClick={() => setSub('movement')}>
-          {t('reports.inv_tab_movement')}
-        </TabButton>
-        <TabButton active={sub === 'expiry'} onClick={() => setSub('expiry')}>
-          {t('reports.tab_expiry_waste')}
-        </TabButton>
-      </div>
+      <Tabs
+        value={sub}
+        onChange={setSub}
+        items={[
+          { value: 'stock', label: t('reports.inv_tab_stock_level') },
+          { value: 'valuation', label: t('reports.inv_tab_valuation') },
+          { value: 'movement', label: t('reports.inv_tab_movement') },
+          { value: 'expiry', label: t('reports.tab_expiry_waste') },
+        ]}
+      />
       {sub === 'stock' && <StockLevelSubTab branchId={branchId} canExport={canExport} />}
       {sub === 'valuation' && <ValuationSubTab branchId={branchId} />}
       {sub === 'movement' && <MovementSubTab branchId={branchId} />}
