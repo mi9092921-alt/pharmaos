@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from pharmaos_api.config import ConfigError
 from pharmaos_api.db import get_session_factory
 from pharmaos_api.errors import ApiError, ErrorCode, success_envelope
 from pharmaos_api.licensing import runtime
@@ -16,6 +17,7 @@ from pharmaos_api.licensing.errors import LICENSE_HTTP_STATUS, LicensingError
 from pharmaos_api.licensing.external_stores import default_providers
 from pharmaos_api.licensing.hwid import compute_hwid
 from pharmaos_api.licensing.vendor_key import vendor_accepted_kids, vendor_public_key
+from pharmaos_api.security.keystore import KeystoreUnavailableError
 
 router = APIRouter(prefix="/api/v1/license", tags=["license"])
 
@@ -60,5 +62,12 @@ async def license_activate(request: Request) -> dict[str, Any]:
         )
     except LicensingError as exc:
         raise _lic_error_to_api(exc) from exc
+    except (ConfigError, KeystoreUnavailableError) as exc:
+        # Do not turn a missing device secret into an opaque ASGI 500. The
+        # license file cannot repair the DB keystore by itself.
+        raise ApiError(
+            ErrorCode.LICENSE_KEYSTORE_UNAVAILABLE,
+            503,
+        ) from exc
 
     return success_envelope(runtime.public_view(result.runtime))

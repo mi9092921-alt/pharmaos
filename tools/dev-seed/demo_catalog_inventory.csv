@@ -1,0 +1,13 @@
+trade_name_en,trade_name_ar,scientific_name,manufacturer,drug_class,route,gtin,price_egp,branch,batch_number,expiry_date,quantity,purchase_price
+Panadol Extra,بانادول إكسترا,Paracetamol + Caffeine,GSK,مسكن وخافض حرارة,oral,,85.00,PharmaOS,PNX-2601,2028-06-30,120,62.00
+Brufen 400,بروفين 400,Ibuprofen,Abbott,مسكن مضاد للالتهاب,oral,,72.50,PharmaOS,BRF-2602,2027-11-30,80,51.00
+Augmentin 625,أوجمنتين 625,Amoxicillin + Clavulanic Acid,GSK,مضاد حيوي,oral,,165.00,PharmaOS,AUG-2603,2027-09-30,45,121.00
+Zithromax 500,زيثرومكس 500,Azithromycin,Pfizer,مضاد حيوي ماكروليد,oral,,210.00,PharmaOS,ZTH-2604,2028-02-29,30,154.00
+Controloc 40,كونترلوك 40,Pantoprazole,Takeda,مثبط مضخة البروتون,oral,,118.00,PharmaOS,CNT-2605,2028-01-31,65,86.00
+Glucophage 500,جلوكوفاج 500,Metformin,Merck,خافض سكر الدم,oral,,54.00,PharmaOS,GLU-2606,2028-08-31,110,38.00
+Concor 5,كونكور 5,Bisoprolol,Merck,حاصر بيتا,oral,,96.00,PharmaOS,CNC-2607,2027-12-31,50,68.00
+Norvasc 5,نورفاسك 5,Amlodipine,Pfizer,خافض ضغط,oral,,74.00,PharmaOS,NVS-2608,2028-04-30,75,51.00
+Telfast 180,تلفاست 180,Fexofenadine,Sanofi,مضاد حساسية,oral,,132.00,PharmaOS,TLF-2609,2028-10-31,55,94.00
+Ventolin Inhaler,فنتولين بخاخ,Salbutamol,GSK,موسع قصبي,inhalation,,98.00,PharmaOS,VNT-2610,2027-07-31,24,69.00
+Vitamin C 1000,فيتامين سي 1000,Ascorbic Acid,Pharco,فيتامين ومكمل,oral,,70.00,PharmaOS,VTC-2611,2029-01-31,90,47.00
+Fucidin Cream,فيوسيدين كريم,Fusidic Acid,Leo Pharma,مضاد حيوي موضعي,topical,,88.00,PharmaOS,FCD-2612,2028-05-31,40,61.00

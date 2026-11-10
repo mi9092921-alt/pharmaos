@@ -888,9 +888,10 @@ async def list_inventory(
 ) -> tuple[list[dict[str, object]], int]:
     """Stock-on-hand per medication for a branch (reads the derived cache).
 
-    Search reuses the catalog's Arabic normalization (trigram + ILIKE); with
-    the default sort, low-stock ranks first so the reorder queue is always
-    on top. `shelf` is an EXACT slot code (normalized first: b7 -> B7);
+    Search mirrors the catalog's Arabic FTS/trigram normalization and also
+    matches the scientific name; with the default sort, low-stock ranks first
+    so the reorder queue is always on top. `shelf` is an EXACT slot code
+    (normalized first: b7 -> B7);
     `zone` is a single-letter prefix (B matches B7 but never B71 confusion —
     codes are at most letter+2 digits). `sort="location"` replaces the
     low-stock-first order with the numeric shelf walk
@@ -901,9 +902,11 @@ async def list_inventory(
     params: dict[str, object] = {"b": branch_id}
     if search and search.strip():
         where.append(
-            "(normalize_arabic(m.trade_name_ar) % normalize_arabic(:q) "
+            "(m.search_vector @@ plainto_tsquery('arabic_simple', normalize_arabic(:q)) "
+            "OR normalize_arabic(coalesce(m.trade_name_ar, '')) % normalize_arabic(:q) "
             "OR m.trade_name ILIKE '%' || :q || '%' "
-            "OR m.trade_name_ar ILIKE '%' || :q || '%')"
+            "OR m.trade_name_ar ILIKE '%' || :q || '%' "
+            "OR m.scientific_name ILIKE '%' || :q || '%')"
         )
         params["q"] = search.strip()
     if shelf is not None:

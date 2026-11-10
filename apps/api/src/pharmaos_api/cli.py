@@ -623,6 +623,18 @@ def _device_init(pgdata: str | None) -> int:
     stored = keystore.get_db_password()
     cluster_ready = (pgdata_dir / "PG_VERSION").is_file()
 
+    if cluster_ready and not stored:
+        # Never point a new password at an existing cluster. The database may
+        # contain encrypted production data and the other DPAPI secrets may
+        # still be recoverable under the original Windows profile.
+        print(
+            "device keystore is missing DB_PASSWORD while an existing PostgreSQL "
+            "cluster is present; refusing reinitialization. Restore the original "
+            "Windows keystore or an encrypted PharmaOS backup.",
+            file=sys.stderr,
+        )
+        return 3
+
     if stored and cluster_ready:
         print(
             "device already provisioned (keystore + cluster present) - nothing to do.",
@@ -634,15 +646,57 @@ def _device_init(pgdata: str | None) -> int:
     # keystore survived but pgdata was wiped (or the reverse), re-create the
     # cluster WITH the stored password instead of failing - the device heals.
     password = stored or os.urandom(24).hex()  # URL-safe hex; strong (192 bits)
-    if not cluster_ready and pgdata_dir.exists() and any(pgdata_dir.iterdir()):
-        # initdb requires an empty/nonexistent dir; park whatever is there.
-        parked = pgdata_dir.with_name(f"pgdata.broken-{uuid.uuid4().hex[:8]}")
-        pgdata_dir.rename(parked)
-        print(f"parked unusable pgdata at {parked}", file=sys.stderr)
-    backup_service._init_staging(
-        pgdata_dir, db_user=s.db_user, db_password=password, port=s.db_port
-    )
+    # The installer grants Modify to pgdata itself, but not to its parent
+    # (ProgramData\PharmaOS). Keep all recovery work inside writable paths;
+    # renaming pgdata beside itself fails for a normal daily Windows user.
+    pgdata_dir.mkdir(parents=True, exist_ok=True)
+    if not cluster_ready and any(pgdata_dir.iterdir()):
+        # initdb requires an empty/nonexistent dir. Quarantine leftovers in the
+        # writable backups directory rather than renaming pgdata itself.
+        quarantine = default_data_dir() / "backups" / f"pgdata.broken-{uuid.uuid4().hex[:8]}"
+        quarantine.mkdir(parents=True, exist_ok=False)
+        for entry in list(pgdata_dir.iterdir()):
+            entry.rename(quarantine / entry.name)
+        print(f"quarantined unusable pgdata at {quarantine}", file=sys.stderr)
+
+    # Provision all non-rotating secrets in the same Windows user context as
+    # the DB password *before* initdb. initdb creates PG_VERSION very early;
+    # doing it first leaves a false "provisioned" marker when Credential
+    # Manager rejects a key write, which strands the next startup in recovery.
+    keystore.ensure_jwt_keypair()
+    keystore.ensure_encryption_key()
+    keystore.ensure_backup_key()
     keystore.set_db_password(password)
+
+    # Build the cluster inside the writable pgdata directory and publish its
+    # contents only after initdb and the pinned configuration have completed.
+    # The parent is intentionally not writable for daily users, so a sibling
+    # staging directory under ProgramData cannot be used here.
+    staging_dir = pgdata_dir / f".pgdata-init-{uuid.uuid4().hex[:8]}"
+    try:
+        backup_service._init_staging(
+            staging_dir, db_user=s.db_user, db_password=password, port=s.db_port
+        )
+        leftovers = [entry for entry in pgdata_dir.iterdir() if entry != staging_dir]
+        if leftovers:
+            raise RuntimeError(
+                "PostgreSQL data directory became non-empty during initialization: "
+                f"{', '.join(str(entry) for entry in leftovers[:3])}"
+            )
+        for entry in list(staging_dir.iterdir()):
+            entry.rename(pgdata_dir / entry.name)
+        staging_dir.rmdir()
+    except Exception:
+        # Preserve the failed init for support instead of deleting evidence.
+        if staging_dir.exists():
+            failed_dir = pgdata_dir / f".pgdata-init-failed-{uuid.uuid4().hex[:8]}"
+            try:
+                staging_dir.rename(failed_dir)
+                print(f"preserved failed PostgreSQL init at {failed_dir}", file=sys.stderr)
+            except OSError:
+                logger.exception("could not preserve failed PostgreSQL init at %s", staging_dir)
+        raise
+
     print(f"device cluster provisioned: {pgdata_dir}")
     print("next: pharmaos-api migrate")
     return 0
@@ -753,6 +807,31 @@ def _device_reset() -> int:
     for name in names:
         keystore.delete_secret(name)
     print(f"deleted {len(names)} keystore entries (service '{keystore.SERVICE_NAME}').")
+    return 0
+
+
+def _device_health() -> int:
+    """Print non-secret device/keystore health for support and upgrades."""
+    from pharmaos_api.config import default_data_dir
+    from pharmaos_api.security import keystore
+
+    data_dir = default_data_dir()
+
+    def _safe_is_file(path: Path) -> bool | None:
+        try:
+            return path.is_file()
+        except OSError:
+            # Support may run under a non-owner account that cannot inspect
+            # protected pgdata. Unknown is safer and more useful than a crash.
+            return None
+
+    result = {
+        "data_dir": str(data_dir),
+        "cluster_present": _safe_is_file(data_dir / "pgdata" / "PG_VERSION"),
+        "license_store_present": _safe_is_file(data_dir / "license-store.json"),
+        "keystore": keystore.device_secret_health(),
+    }
+    print(_json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 
@@ -868,6 +947,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Delete device keystore secrets (debug tool; --yes required).",
     )
     dev_reset.add_argument("--yes", action="store_true")
+    sub.add_parser(
+        "device-health",
+        help="Print non-secret device and keystore health for support.",
+    )
     m_cmd = sub.add_parser(
         "migrate",
         help="Apply pending SQL migrations + re-apply seeds (device path, asyncpg).",
@@ -899,6 +982,21 @@ def main(argv: list[str] | None = None) -> int:
     except MaintenanceBusyError as exc:
         print(f"busy: {exc}", file=sys.stderr)
         return MAINTENANCE_BUSY_EXIT
+    except Exception as exc:
+        # CLI commands are launched by Electron during startup. Never leak a
+        # Python traceback into a Windows error dialog; keep the safe failure
+        # visible to the orchestrator and log a recovery-oriented message.
+        from pharmaos_api.config import ConfigError
+        from pharmaos_api.security.keystore import KeystoreUnavailableError
+
+        if args.command == "device-init":
+            logger.exception("device-init failed")
+            print(f"device-init failed: {exc}", file=sys.stderr)
+            return 3
+        if isinstance(exc, (ConfigError, KeystoreUnavailableError)):
+            print(f"device initialization unavailable: {exc}", file=sys.stderr)
+            return 3
+        raise
 
 
 def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch)
@@ -931,6 +1029,8 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: C901 (flat CLI dispatch
             print("refusing: pass --yes (this deletes the device secrets).", file=sys.stderr)
             return 2
         return _device_reset()
+    if args.command == "device-health":
+        return _device_health()
     if args.command == "setup-status":
         return _setup_status_cmd()
     if args.command == "setup-complete":

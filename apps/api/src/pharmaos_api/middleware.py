@@ -175,6 +175,19 @@ class LicenseGateMiddleware:
             return
 
         if status == runtime.STATUS_ERROR:
+            if state.diagnostic == runtime.DIAGNOSTIC_DEVICE_KEYSTORE:
+                await self._send_json(
+                    send,
+                    503,
+                    error_envelope(
+                        ErrorCode.LICENSE_KEYSTORE_UNAVAILABLE,
+                        (
+                            "Device security keys are unavailable — restore the device "
+                            "keys before activating."
+                        ),
+                    ),
+                )
+                return
             await self._send_json(
                 send,
                 503,

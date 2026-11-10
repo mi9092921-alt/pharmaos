@@ -212,6 +212,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'errors.E-LIC-007': 'حالة الترخيص غير متاحة مؤقتاً — جارٍ إعادة المحاولة',
     'errors.E-LIC-008':
       'مفتاح الترخيص مفقود من هذا الجهاز — استعده من النسخة الاحتياطية أو تواصل مع الدعم',
+    'errors.E-LIC-009':
+      'مفاتيح أمان الجهاز غير متاحة — استعد مفاتيح الجهاز أولاً قبل تفعيل الترخيص',
     'errors.unexpected': 'خطأ غير متوقع — حاول مجدداً',
     'validation.username_required': 'اسم المستخدم مطلوب',
     'validation.password_required': 'كلمة المرور مطلوبة',
@@ -253,6 +255,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'shell.license_title': 'مطلوب تفعيل ترخيص البرنامج',
     'shell.hwid': 'كود الجهاز',
     'shell.hwid_unavailable': 'تعذر قراءة كود الجهاز — أعد المحاولة',
+    'shell.keystore_recovery':
+      'ملف الترخيص ليس سبب المشكلة. مفاتيح أمان الجهاز مفقودة أو غير متاحة لهذا الحساب. أوقف إعادة التثبيت وتواصل مع الدعم لاستعادة مفاتيح الجهاز مع الحفاظ على البيانات.',
     'shell.license_step1': '١. انسخ كود الجهاز أعلاه وأرسله للمطور لاستلام ملف الترخيص (.license).',
     'shell.license_step2':
       '٢. فعّل برفع ملف الترخيص من الأسفل، أو عبر أداة التفعيل activate-pharmaos.bat.',
@@ -1359,6 +1363,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'errors.E-LIC-007': 'License state temporarily unavailable — retrying',
     'errors.E-LIC-008':
       'License key is missing from this device — restore it from backup or contact support',
+    'errors.E-LIC-009':
+      'Device security keys are unavailable — restore the device keys before activating',
     'errors.unexpected': 'Unexpected error — please retry',
     'validation.username_required': 'Username is required',
     'validation.password_required': 'Password is required',
@@ -1400,6 +1406,8 @@ const dictionaries: Record<Locale, Record<string, string>> = {
     'shell.license_title': 'Software license activation required',
     'shell.hwid': 'Device code',
     'shell.hwid_unavailable': 'Could not read the device code — retry',
+    'shell.keystore_recovery':
+      'The license file is not the cause. Device security keys are missing or unavailable to this Windows account. Stop reinstalling and contact support to restore the device keys without deleting data.',
     'shell.license_step1':
       '1. Copy the device code above and send it to the developer to receive the license file (.license).',
     'shell.license_step2':
@@ -2351,4 +2359,17 @@ export function formatApiErrorMessage(e: unknown, fallbackKey = 'errors.E-SYS-00
     }
   }
   return t(fallbackKey);
+}
+
+/**
+ * License/boot screens must never expose an internal translation key if a
+ * stale renderer or an incomplete locale bundle is loaded. Normalize API
+ * values that may already contain the `errors.` namespace and use the caller's
+ * safe fallback when the dictionary cannot resolve the code.
+ */
+export function localizedErrorMessage(code: string, fallback: string): string {
+  const normalized = code.startsWith('errors.') ? code.slice('errors.'.length) : code;
+  const key = `errors.${normalized}`;
+  const localized = t(key);
+  return localized === key ? fallback : localized;
 }

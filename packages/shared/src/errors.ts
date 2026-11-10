@@ -47,6 +47,7 @@ export const ERROR_CODES = {
   LICENSE_TAMPER_DETECTED: 'E-LIC-006', // فشل فحص السلامة — تواصل مع الدعم
   LICENSE_STATE_ERROR: 'E-LIC-007', // حالة الترخيص غير متاحة مؤقتاً — إعادة محاولة
   LICENSE_KEY_LOST: 'E-LIC-008', // مفتاح الترخيص مفقود من الجهاز — استعادته أو الدعم
+  LICENSE_KEYSTORE_UNAVAILABLE: 'E-LIC-009', // مفاتيح أمان الجهاز غير متاحة — استعادتها أولاً
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

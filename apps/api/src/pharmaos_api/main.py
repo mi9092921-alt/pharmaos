@@ -167,6 +167,7 @@ async def _run_background_boot_maintenance() -> None:
 
 async def _boot_license_evaluation() -> None:
     """Boot: evaluate license state (fail-closed) (P4 §4)."""
+    from pharmaos_api.config import ConfigError
     from pharmaos_api.db import get_session_factory
     from pharmaos_api.licensing import runtime
     from pharmaos_api.licensing.external_stores import default_providers
@@ -174,11 +175,26 @@ async def _boot_license_evaluation() -> None:
     from pharmaos_api.licensing.state import evaluate_license
     from pharmaos_api.licensing.vendor_key import vendor_public_key
 
+    # HWID is a recovery identifier, not a database-dependent value. Compute it
+    # before opening the DB so a missing keystore never hides the device code
+    # that support needs to issue a recovery license.
+    machine_hwid: str | None = None
+    try:
+        machine_hwid = compute_hwid()
+    except Exception:
+        logger.exception("boot license evaluation could not compute the device HWID")
+
     try:
         public_key = vendor_public_key()
     except Exception:
         # vendor_key missing or broken -> error state (not tamper)
-        runtime.set_state(runtime.LicenseRuntimeState(status=runtime.STATUS_ERROR))
+        runtime.set_state(
+            runtime.LicenseRuntimeState(
+                status=runtime.STATUS_ERROR,
+                hwid=machine_hwid,
+                diagnostic=runtime.DIAGNOSTIC_LICENSE_EVALUATION,
+            )
+        )
         return
 
     try:
@@ -186,11 +202,34 @@ async def _boot_license_evaluation() -> None:
             get_session_factory(),
             public_key=public_key,
             external_providers=default_providers(),
-            hwid=compute_hwid(),
+            hwid=machine_hwid,
+        )
+    except ConfigError as exc:
+        # A provisioned device with a missing DB_PASSWORD is a device-keystore
+        # recovery problem, not a license-file problem. Keep the HWID visible
+        # and give the gate a stable recovery diagnostic.
+        logger.exception("boot license evaluation blocked by device configuration")
+        diagnostic = (
+            runtime.DIAGNOSTIC_DEVICE_KEYSTORE
+            if "keystore" in str(exc).lower() or "db_password" in str(exc).lower()
+            else runtime.DIAGNOSTIC_LICENSE_EVALUATION
+        )
+        runtime.set_state(
+            runtime.LicenseRuntimeState(
+                status=runtime.STATUS_ERROR,
+                hwid=machine_hwid,
+                diagnostic=diagnostic,
+            )
         )
     except Exception:
         logger.exception("boot license evaluation failed")
-        runtime.set_state(runtime.LicenseRuntimeState(status=runtime.STATUS_ERROR))
+        runtime.set_state(
+            runtime.LicenseRuntimeState(
+                status=runtime.STATUS_ERROR,
+                hwid=machine_hwid,
+                diagnostic=runtime.DIAGNOSTIC_LICENSE_EVALUATION,
+            )
+        )
 
 
 async def _license_periodic_task() -> None:
@@ -214,7 +253,13 @@ async def _license_periodic_task() -> None:
                 runtime.STATUS_TAMPER,
                 runtime.STATUS_KEY_LOST,
             ):
-                runtime.set_state(runtime.LicenseRuntimeState(status=runtime.STATUS_ERROR))
+                runtime.set_state(
+                    runtime.LicenseRuntimeState(
+                        status=runtime.STATUS_ERROR,
+                        hwid=current.hwid if current is not None else None,
+                        diagnostic=runtime.DIAGNOSTIC_LICENSE_EVALUATION,
+                    )
+                )
 
 
 @asynccontextmanager

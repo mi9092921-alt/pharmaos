@@ -11,7 +11,7 @@ import { Topbar } from '@/components/topbar';
 import { LicenseUploadButton } from '@/components/license-upload';
 import { ApiRequestError, fetchMe, getLicenseStatus, getSetupStatus } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { localizedErrorMessage, t } from '@/lib/i18n';
 
 function errorCodeOf(error: unknown): string | null {
   return error instanceof ApiRequestError ? error.code : null;
@@ -150,6 +150,15 @@ function LicenseRequiredScreen({ code, onRetry }: { code: string; onRetry: () =>
     retry: false,
   });
   const hwid = statusQuery.data?.hwid ?? null;
+  const normalizedCode = code.startsWith('errors.') ? code.slice('errors.'.length) : code;
+  const keystoreUnavailable =
+    statusQuery.data?.diagnostic === 'device_keystore_unavailable' ||
+    normalizedCode === 'E-LIC-009';
+  const messageCode = keystoreUnavailable ? 'E-LIC-009' : normalizedCode;
+  const licenseMessage = localizedErrorMessage(
+    messageCode,
+    'تعذر التحقق من ترخيص البرنامج — تواصل مع الدعم الفني',
+  );
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
@@ -165,7 +174,7 @@ function LicenseRequiredScreen({ code, onRetry }: { code: string; onRetry: () =>
             role="alert"
             className="rounded-[var(--radius-md)] border border-warning/40 bg-amber-50 p-3 text-sm text-slate-700"
           >
-            {t(`errors.${code}`)}
+            {licenseMessage}
           </div>
 
           <div className="rounded-[var(--radius-md)] border border-border bg-surface p-3 text-center">
@@ -186,19 +195,27 @@ function LicenseRequiredScreen({ code, onRetry }: { code: string; onRetry: () =>
             )}
           </div>
 
-          <ol className="list-none space-y-2 text-sm text-slate-600">
-            <li>{t('shell.license_step1')}</li>
-            <li>{t('shell.license_step2')}</li>
-            <li>{t('shell.license_step3')}</li>
-          </ol>
+          {keystoreUnavailable ? (
+            <div className="rounded-[var(--radius-md)] border border-danger/30 bg-red-50 p-3 text-sm text-danger">
+              {t('shell.keystore_recovery')}
+            </div>
+          ) : (
+            <>
+              <ol className="list-none space-y-2 text-sm text-slate-600">
+                <li>{t('shell.license_step1')}</li>
+                <li>{t('shell.license_step2')}</li>
+                <li>{t('shell.license_step3')}</li>
+              </ol>
 
-          <LicenseUploadButton
-            className="w-full"
-            onActivated={() => {
-              void statusQuery.refetch();
-              onRetry();
-            }}
-          />
+              <LicenseUploadButton
+                className="w-full"
+                onActivated={() => {
+                  void statusQuery.refetch();
+                  onRetry();
+                }}
+              />
+            </>
+          )}
           <Button
             size="lg"
             className="w-full"

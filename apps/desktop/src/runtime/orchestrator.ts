@@ -172,10 +172,24 @@ export class Orchestrator {
       onProgress?.('postgres', 'جاري تشغيل قاعدة البيانات...');
       log('boot: postgres');
       fs.mkdirSync(this.p.logsDir, { recursive: true });
+      // Repair the runtime account ACL before checking PG_VERSION. An
+      // elevated per-machine install may have created pgdata for a different
+      // SID; without this step an unreadable existing cluster looks like a
+      // fresh device and device-init reports a misleading missing-key error.
+      await ensurePgDataAccess(this.p.dataDir, this.p.pgData);
       if (!fs.existsSync(path.join(this.p.pgData, 'PG_VERSION'))) {
         log('boot: device-init (first run - initdb + keystore)');
         onProgress?.('postgres', 'جاري تهيئة قاعدة البيانات لأول مرة...');
-        const init = await runCapture(this.p.apiExe, ['device-init'], this.p.dataDir, 300000, env);
+        // Pin the API's provisioning target to the exact path checked above.
+        // This prevents a production/dev environment mismatch from making
+        // device-init inspect a different pgdata directory than pg_ctl.
+        const init = await runCapture(
+          this.p.apiExe,
+          ['device-init', '--pgdata', this.p.pgData],
+          this.p.dataDir,
+          300000,
+          env,
+        );
         if (init.code !== 0) {
           return {
             ok: false,
@@ -184,6 +198,8 @@ export class Orchestrator {
           };
         }
       }
+      // initdb hardens files and may remove inherited ACLs, so apply the
+      // account grant once more after first-run provisioning.
       await ensurePgDataAccess(this.p.dataDir, this.p.pgData);
       await ensureLicenseStoreAccess(this.p.dataDir);
       const pgStart = await runCapture(
