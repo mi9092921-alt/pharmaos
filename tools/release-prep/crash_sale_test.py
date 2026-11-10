@@ -27,12 +27,11 @@ Invariants checked after EVERY iteration (all must hold):
       the same transaction, so the two sides can never legitimately diverge)
 
 Usage:
-  python tools/release-prep/crash_sale_test.py run --port 5434 --iterations 50
-  python tools/release-prep/crash_sale_test.py child --port 5434   # internal
+  python tools/release-prep/crash_sale_test.py run --iterations 50
+  python tools/release-prep/crash_sale_test.py child   # internal
 
-The harness ONLY ever touches its own dedicated cluster/database
-(pharmaos_crash) — never live or test-shared data. Test data is clearly
-fictional ("GEN-TEST-CRASH-*" medications).
+The harness refuses to run unless its environment explicitly selects a
+loopback QA database and a dedicated .qa-pgdata cluster.
 """
 
 from __future__ import annotations
@@ -43,6 +42,7 @@ import json
 import os
 import queue as queue_mod
 import random
+import re
 import statistics
 import subprocess
 import sys
@@ -51,30 +51,82 @@ import time
 from decimal import Decimal
 from pathlib import Path
 
-DB_NAME = "pharmaos_crash"
+EXPECTED_QA_PORT = "55444"
+ALLOWED_QA_HOSTS = {"127.0.0.1", "localhost"}
+
+
+def _require_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise SystemExit(
+            f"REFUSING TO RUN: required env var {name} is missing or blank."
+        )
+    return value
+
+
+def qa_config_from_env() -> tuple[Path, int, str, Path, Path, Path]:
+    pgdata_raw = Path(_require_env("QA_PGDATA"))
+    port = _require_env("QA_PORT")
+    db_name = _require_env("QA_DB_NAME")
+    host = _require_env("QA_DB_HOST")
+    configured_paths = {
+        name: Path(_require_env(name))
+        for name in ("QA_PG_BIN_DIR", "QA_RESULTS_DIR", "PHARMAOS_API_SRC")
+    }
+
+    pgdata = pgdata_raw.resolve()
+    if not pgdata_raw.is_absolute() or ".qa-pgdata" not in str(pgdata).casefold():
+        raise SystemExit(
+            "REFUSING TO RUN: QA_PGDATA must identify a dedicated .qa-pgdata cluster."
+        )
+    if any(not path.is_absolute() for path in configured_paths.values()):
+        raise SystemExit(
+            "REFUSING TO RUN: QA_PG_BIN_DIR, QA_RESULTS_DIR, and PHARMAOS_API_SRC "
+            "must be absolute paths."
+        )
+    if port != EXPECTED_QA_PORT:
+        raise SystemExit(
+            f"REFUSING TO RUN: QA_PORT must be {EXPECTED_QA_PORT} (got {port!r})."
+        )
+    if host not in ALLOWED_QA_HOSTS:
+        raise SystemExit(
+            f"REFUSING TO RUN: QA_DB_HOST must be loopback (got {host!r})."
+        )
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", db_name) or "_qa_" not in db_name:
+        raise SystemExit(
+            "REFUSING TO RUN: QA_DB_NAME must be a safe identifier containing '_qa_'."
+        )
+    return (
+        pgdata,
+        int(port),
+        db_name,
+        configured_paths["QA_PG_BIN_DIR"].resolve(),
+        configured_paths["QA_RESULTS_DIR"].resolve(),
+        configured_paths["PHARMAOS_API_SRC"].resolve(),
+    )
+
+
+DB_NAME = ""
 MARKER_BRANCH = "فرع اختبار الانقطاع"
 MED_PREFIX = "GEN-TEST-CRASH-"
 MARKER_USER = "crash_cashier"
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
+RESULTS_DIR = Path("__QA_UNCONFIGURED__")
 
 
-def db_url(port: int, db: str = DB_NAME) -> str:
-    return f"postgresql://postgres@127.0.0.1:{port}/{db}"
-
-
-def scratch_dir() -> Path:
-    """Harness-owned scratch area (pgdata + logs) — outside the repo, per-run
-    disposable. Never points at live or project data."""
-    base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Temp"
-    return base / "pharmaos-relprep"
-
-
-def pgdata_default() -> Path:
-    return scratch_dir() / "pgcrash"
+def db_url(port: int, db: str = "") -> str:
+    name = db or DB_NAME
+    if not name:
+        raise SystemExit("REFUSING TO RUN: QA database is not configured.")
+    host = _require_env("QA_DB_HOST")
+    if host not in ALLOWED_QA_HOSTS:
+        raise SystemExit(
+            f"REFUSING TO RUN: QA_DB_HOST must be loopback (got {host!r})."
+        )
+    return f"postgresql://postgres@{host}:{port}/{name}"
 
 
 def pg_bin() -> Path:
-    return Path(r"D:\projects\pharmaos\installer\vendor\pg\bin")
+    return Path(_require_env("QA_PG_BIN_DIR"))
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +150,9 @@ def run_child(port: int) -> int:
         factory = get_session_factory()
         async with factory() as session:
             branch = (
-                await session.execute(select(Branch).where(Branch.name == MARKER_BRANCH))
+                await session.execute(
+                    select(Branch).where(Branch.name == MARKER_BRANCH)
+                )
             ).scalar_one()
             cashier = (
                 await session.execute(select(User).where(User.username == MARKER_USER))
@@ -110,7 +164,9 @@ def run_child(port: int) -> int:
                 (
                     await session.execute(
                         select(MedicationBarcode.barcode)
-                        .join(Medication, Medication.id == MedicationBarcode.medication_id)
+                        .join(
+                            Medication, Medication.id == MedicationBarcode.medication_id
+                        )
                         .where(Medication.trade_name.like(MED_PREFIX + "%"))
                     )
                 )
@@ -118,7 +174,10 @@ def run_child(port: int) -> int:
                 .all()
             )
             picked = random.sample(sorted(barcodes), 10)
-            lines = [SaleLine(barcode=b, quantity=Decimal(random.randint(1, 5))) for b in picked]
+            lines = [
+                SaleLine(barcode=b, quantity=Decimal(random.randint(1, 5)))
+                for b in picked
+            ]
             print("TXN-START", flush=True)
             t0 = time.perf_counter()
             await create_sale(
@@ -304,7 +363,9 @@ def reset_db(port: int) -> None:
 
     applied = run_migrations(db_url(port))
     asyncio.run(_install_amcheck_async(port))
-    print(f"migrations applied fresh: {len(applied['applied'])} (seeds: {applied['seeds']})")
+    print(
+        f"migrations applied fresh: {len(applied['applied'])} (seeds: {applied['seeds']})"
+    )
 
 
 def seed(port: int) -> None:
@@ -440,6 +501,22 @@ def run_checks(port: int) -> dict[str, int]:
     return asyncio.run(_checks_async(port))
 
 
+def run_checks_resilient(
+    port: int, retries: int = 3, delay_s: float = 2.0
+) -> dict[str, int]:
+    last_error: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            return run_checks(port)
+        except Exception as exc:
+            last_error = exc
+            if attempt < retries:
+                time.sleep(delay_s)
+    raise RuntimeError(
+        f"run_checks failed after {retries} retries; last error: {last_error}"
+    )
+
+
 def run_amcheck(port: int, db: str) -> tuple[bool, str]:
     proc = subprocess.run(  # noqa: S603
         [
@@ -468,10 +545,15 @@ def run_amcheck(port: int, db: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def spawn_child(port: int) -> tuple[subprocess.Popen[str], "queue_mod.Queue[str]"]:
+def spawn_child(port: int) -> tuple[subprocess.Popen[str], queue_mod.Queue[str]]:
     env = os.environ.copy()
     env["PHARMAOS_ENV"] = "test"
     env["DATABASE_URL"] = db_url(port)
+    api_src = _require_env("PHARMAOS_API_SRC")
+    env["PYTHONPATH"] = api_src + (
+        os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+    )
+    env["PYTHONUNBUFFERED"] = "1"
     proc = subprocess.Popen(  # noqa: S603
         [sys.executable, str(Path(__file__).resolve()), "child", "--port", str(port)],
         stdout=subprocess.PIPE,
@@ -480,7 +562,7 @@ def spawn_child(port: int) -> tuple[subprocess.Popen[str], "queue_mod.Queue[str]
         bufsize=1,
         env=env,
     )
-    queue: "queue_mod.Queue[str]" = queue_mod.Queue()
+    queue: queue_mod.Queue[str] = queue_mod.Queue()
 
     def _pump() -> None:
         assert proc.stdout is not None
@@ -504,13 +586,15 @@ def measure_commit_time(port: int, runs: int = 3) -> float:
             raise RuntimeError("child never reported TXN-COMMIT")
         proc.wait(timeout=30)
     median = statistics.median(times)
-    print(f"clean sale commit times: {[f'{t:.3f}s' for t in times]} (median {median:.3f}s)")
+    print(
+        f"clean sale commit times: {[f'{t:.3f}s' for t in times]} (median {median:.3f}s)"
+    )
     return median
 
 
 def run_harness(args: argparse.Namespace) -> int:
     pgdata: Path = Path(args.pgdata)
-    logfile = pgdata.parent / "pgcrash.log"
+    logfile = pgdata.parent / "qa-crash.log"
     reset_db(args.port)
     seed(args.port)
 
@@ -518,8 +602,10 @@ def run_harness(args: argparse.Namespace) -> int:
     window_lo, window_hi = 0.005, commit_s * 1.4
     print(f"kill window: {window_lo:.3f}s .. {window_hi:.3f}s (random uniform)")
 
-    RESULTS_DIR.mkdir(exist_ok=True)
-    results_path = RESULTS_DIR / f"crash_results_{time.strftime('%Y%m%dT%H%M%S')}.json"
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    results_path = RESULTS_DIR / (
+        f"crash_results_{time.strftime('%Y%m%dT%H%M%S')}_{time.time_ns()}.json"
+    )
     results: list[dict[str, object]] = []
     failures = 0
 
@@ -527,7 +613,7 @@ def run_harness(args: argparse.Namespace) -> int:
         mode = "power" if i % 2 == 1 else "client"
         delay = random.uniform(window_lo, window_hi)
 
-        invoices_before = run_checks(args.port)["invoice_count"]
+        invoices_before = run_checks_resilient(args.port)["invoice_count"]
         proc, queue = spawn_child(args.port)
         marker = queue.get(timeout=120)
         if marker != "TXN-START":
@@ -546,7 +632,7 @@ def run_harness(args: argparse.Namespace) -> int:
         else:
             kill_tree(proc.pid)
 
-        checks = run_checks(args.port)
+        checks = run_checks_resilient(args.port)
         ok_am, am_out = run_amcheck(args.port, DB_NAME)
         committed = checks["invoice_count"] > invoices_before
         consistent = all(
@@ -573,6 +659,9 @@ def run_harness(args: argparse.Namespace) -> int:
             "amcheck_output": am_out if not ok_am else "",
         }
         results.append(record)
+        results_path.write_text(
+            json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
         print(
             f"[{i:>3}/{args.iterations}] mode={mode:<6} delay={delay:.3f}s "
             f"committed={'Y' if committed else 'N'} consistent={'Y' if consistent else 'N'} "
@@ -590,22 +679,33 @@ def run_harness(args: argparse.Namespace) -> int:
         f"pg_crash_recoveries={recovered_n}"
     )
     print(f"results written to {results_path}")
-    results_path.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    results_path.write_text(
+        json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
     return 0 if failures == 0 else 1
 
 
 def main() -> int:
+    qa_pgdata, qa_port, db_name, _, qa_results_dir, api_src = qa_config_from_env()
+    global DB_NAME, RESULTS_DIR
+    DB_NAME = db_name
+    RESULTS_DIR = qa_results_dir
+    sys.path.insert(0, str(api_src))
     parser = argparse.ArgumentParser(description="PharmaOS sale crash-safety harness")
     sub = parser.add_subparsers(dest="mode", required=True)
     child = sub.add_parser("child", help="internal: run exactly one sale")
-    child.add_argument("--port", type=int, default=5434)
+    child.add_argument("--port", type=int, default=qa_port)
     runner = sub.add_parser("run", help="run the kill/restart/verify loop")
-    runner.add_argument("--port", type=int, default=5434)
+    runner.add_argument("--port", type=int, default=qa_port)
     runner.add_argument("--iterations", type=int, default=50)
-    runner.add_argument("--pgdata", default=str(pgdata_default()))
+    runner.add_argument("--pgdata", default=str(qa_pgdata))
     args = parser.parse_args()
+    if args.port != qa_port:
+        raise SystemExit(f"REFUSING TO RUN: --port must match QA_PORT ({qa_port}).")
     if args.mode == "child":
         return run_child(args.port)
+    if Path(args.pgdata).resolve() != qa_pgdata:
+        raise SystemExit("REFUSING TO RUN: --pgdata must match QA_PGDATA.")
     return run_harness(args)
 
 
