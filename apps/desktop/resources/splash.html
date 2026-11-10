@@ -15,8 +15,9 @@
     }
 
     body {
-      background: #0f172a;
-      color: #f8fafc;
+      position: relative;
+      background: #f8fafc;
+      color: #0f172a;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", Tahoma, sans-serif;
       height: 100vh;
       width: 100vw;
@@ -25,76 +26,86 @@
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      border: 1px solid rgba(16, 185, 129, 0.2);
-      border-radius: 12px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 22px 45px rgba(15, 23, 42, 0.16);
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    body::before {
+      top: -108px;
+      right: -48px;
+      background: #dbeafe;
+    }
+
+    body::after {
+      bottom: -124px;
+      left: -48px;
+      background: #d9f9ea;
     }
 
     .container {
+      position: relative;
+      z-index: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
       text-align: center;
-      padding: 24px;
+      padding: 28px 32px 24px;
       width: 100%;
     }
 
     .logo-box {
-      width: 72px;
-      height: 72px;
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 95, 70, 0.3) 100%);
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      border-radius: 20px;
+      width: 84px;
+      height: 84px;
+      padding: 8px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 24px;
       display: flex;
       align-items: center;
       justify-content: center;
       margin-bottom: 18px;
-      box-shadow: 0 0 30px rgba(16, 185, 129, 0.25);
-      animation: pulse-glow 2.5s infinite ease-in-out;
-    }
-
-    @keyframes pulse-glow {
-      0%, 100% {
-        box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
-        transform: scale(1);
-      }
-      50% {
-        box-shadow: 0 0 35px rgba(16, 185, 129, 0.4);
-        transform: scale(1.03);
-      }
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.12);
+      animation: logo-in 520ms ease-out both;
     }
 
     .logo-icon {
-      width: 40px;
-      height: 40px;
-      fill: none;
-      stroke: #10b981;
-      stroke-width: 2.2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
+      width: 100%;
+      height: 100%;
+      display: block;
     }
 
     .brand-title {
-      font-size: 26px;
+      color: #0f172a;
+      font-size: 27px;
       font-weight: 800;
       letter-spacing: -0.5px;
       margin-bottom: 4px;
-      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      line-height: 1.1;
     }
 
     .brand-subtitle {
       font-size: 13px;
-      color: #94a3b8;
-      margin-bottom: 24px;
-      font-weight: 400;
+      color: #64748b;
+      margin-bottom: 26px;
+      font-weight: 500;
+      line-height: 1.5;
     }
 
     .progress-track {
-      width: 260px;
-      height: 5px;
-      background: rgba(51, 65, 85, 0.6);
+      width: min(270px, 100%);
+      height: 6px;
+      background: #e5eaf2;
       border-radius: 999px;
       overflow: hidden;
       position: relative;
@@ -107,22 +118,22 @@
       left: 0;
       height: 100%;
       width: 40%;
-      background: linear-gradient(90deg, #10b981, #34d399, #06b6d4);
+      background: linear-gradient(90deg, #2563eb, #38a3ff, #74e7b0);
       border-radius: 999px;
-      animation: indeterminate 1.6s infinite cubic-bezier(0.65, 0.815, 0.735, 0.395);
+      animation: indeterminate 1.7s infinite cubic-bezier(0.65, 0.815, 0.735, 0.395);
     }
 
     @keyframes indeterminate {
       0% {
-        left: -40%;
-        width: 30%;
+        left: -38%;
+        width: 28%;
       }
       50% {
-        width: 60%;
+        width: 58%;
       }
       100% {
         left: 100%;
-        width: 30%;
+        width: 28%;
       }
     }
 
@@ -136,30 +147,47 @@
 
     .version-tag {
       position: absolute;
-      bottom: 12px;
-      left: 16px;
-      font-size: 11px;
-      color: #475569;
+      bottom: 13px;
+      right: 18px;
+      font-size: 10px;
+      color: #94a3b8;
       font-family: monospace;
       direction: ltr;
+    }
+
+    .brand-kicker {
+      color: #2563eb;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      line-height: 1;
+      margin-bottom: 7px;
+      direction: ltr;
+    }
+
+    @keyframes logo-in {
+      from { opacity: 0; transform: translateY(8px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .logo-box,
+      .progress-bar { animation: none; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="logo-box">
-      <svg class="logo-icon" viewBox="0 0 24 24">
-        <!-- Medical Cross & Capsule Symbol -->
-        <path d="M12 4v16m-8-8h16" />
-        <circle cx="12" cy="12" r="9" stroke="rgba(16, 185, 129, 0.4)" stroke-width="1.5" stroke-dasharray="3 3" />
-      </svg>
+      <img class="logo-icon" src="brand/pharmaos-icon.svg" alt="" />
     </div>
+    <div class="brand-kicker">PHARMA OPERATING SYSTEM</div>
     <div class="brand-title">PharmaOS</div>
-    <div class="brand-subtitle">نظام إدارة الصيدليات الذكي</div>
+    <div class="brand-subtitle">نظام التشغيل للصيدليات</div>
     <div class="progress-track">
       <div class="progress-bar"></div>
     </div>
-    <div class="status-text" id="status-text">جاري بدء تشغيل النظام...</div>
+    <div class="status-text" id="status-text">جارٍ تجهيز بيئة الصيدلية...</div>
   </div>
   <div class="version-tag">v1.1.0</div>
 

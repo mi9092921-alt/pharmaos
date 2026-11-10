@@ -49,10 +49,16 @@ extraResources:
       - 'share/**/*'
   - from: resources/watchdog.ps1
     to: watchdog.ps1
+  - from: resources/task-runner.ps1
+    to: task-runner.ps1
   - from: resources/setup.html
     to: setup.html
   - from: resources/splash.html
     to: splash.html
+  - from: resources/brand
+    to: brand
+    filter:
+      - '**/*'
   - from: ../../installer/install-steps.ps1
     to: install-steps.ps1
   - from: ../../installer/uninstall-steps.ps1

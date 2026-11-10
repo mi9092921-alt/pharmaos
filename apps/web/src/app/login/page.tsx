@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -71,7 +72,13 @@ export default function LoginPage() {
             centered brand block and the form reads top-to-bottom. */}
         <LocaleToggle className="absolute end-3 top-3" />
         <CardHeader className="items-center text-center">
-          <div className="text-3xl font-extrabold text-primary-600">{t('app.name')}</div>
+          <Image
+            src="/brand/pharmaos-lockup.svg"
+            alt={t('app.name')}
+            width={220}
+            height={51}
+            priority
+          />
           {/* <p>, not CardTitle (<h2>): the h1 below must stay the page's first
               and only heading — an h2 before h1 breaks the document outline. */}
           <p className="text-base font-medium text-slate-500">{t('app.tagline')}</p>

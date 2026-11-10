@@ -20,10 +20,20 @@ export async function generateMetadata(): Promise<Metadata> {
     ? {
         title: 'PharmaOS — Pharmacy Management System',
         description: 'Offline-first pharmacy management with cloud sync',
+        icons: {
+          icon: '/brand/pharmaos-icon.svg',
+          shortcut: '/brand/pharmaos-icon.svg',
+          apple: '/brand/pharmaos-icon.svg',
+        },
       }
     : {
         title: 'PharmaOS — نظام إدارة الصيدلية',
         description: 'نظام إدارة صيدلية يعمل offline مع مزامنة سحابية',
+        icons: {
+          icon: '/brand/pharmaos-icon.svg',
+          shortcut: '/brand/pharmaos-icon.svg',
+          apple: '/brand/pharmaos-icon.svg',
+        },
       };
 }
 

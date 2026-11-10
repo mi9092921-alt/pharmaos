@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512" role="img" aria-label="PharmaOS">
+  <g transform="rotate(-45 50 50)">
+    <path d="M50 31H27A19 19 0 0 0 27 69H50Z" fill="#2563EB"/>
+    <g fill="#16A34A">
+      <circle cx="56" cy="36" r="2.8"/><circle cx="56" cy="50" r="2.8"/><circle cx="56" cy="57" r="2.8"/><circle cx="56" cy="64" r="2.8"/>
+      <circle cx="63" cy="36" r="2.8"/><circle cx="63" cy="43" r="2.8"/><circle cx="63" cy="50" r="2.8"/><circle cx="63" cy="64" r="2.8"/>
+      <circle cx="70" cy="43" r="2.6"/><circle cx="70" cy="50" r="2.6"/><circle cx="70" cy="57" r="2.6"/>
+      <circle cx="77" cy="36" r="2.4"/><circle cx="77" cy="50" r="2.4"/><circle cx="77" cy="57" r="2.4"/><circle cx="77" cy="64" r="2.4"/>
+      <circle cx="84" cy="43" r="2.1"/><circle cx="84" cy="50" r="2.1"/><circle cx="84" cy="57" r="2.1"/>
+    </g>
+  </g>
+</svg>

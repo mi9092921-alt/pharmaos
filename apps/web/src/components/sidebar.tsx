@@ -2,6 +2,7 @@
 
 import { hasPermission } from '@pharmaos/shared';
 import { Icon, type IconName, cn } from '@pharmaos/ui';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -84,7 +85,15 @@ export function Sidebar() {
   return (
     <aside className="flex w-60 shrink-0 flex-col border-e border-border bg-white">
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
-        <span className="text-xl font-extrabold text-primary-600">{t('app.name')}</span>
+        <Link href="/" aria-label={t('app.name')} className="flex items-center">
+          <Image
+            src="/brand/pharmaos-lockup.svg"
+            alt={t('app.name')}
+            width={150}
+            height={35}
+            priority
+          />
+        </Link>
       </div>
       {/* min-h-0 lets the nav scroll internally when items exceed the
           viewport (aside height = shell h-screen stretch), same contract as
