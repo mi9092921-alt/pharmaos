@@ -364,6 +364,16 @@ async function registerScheduledTasks(winPassword: string): Promise<void> {
       schedule: ['/SC', 'DAILY', '/ST', '03:45'],
     },
   ];
+  const taskRunner = path.join(p.desktopResources, 'task-runner.ps1');
+  if (!path.isAbsolute(taskRunner)) {
+    throw new Error('تعذر تحديد مشغّل المهام المجدولة.');
+  }
+  // The API bundle is intentionally a console executable because Electron
+  // captures CLI output during first-run. Task Scheduler's interactive-token
+  // fallback would otherwise attach a visible console every time a task runs.
+  // PowerShell hosts the same command with a hidden window.
+  const taskAction = (taskArgs: string) =>
+    `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${taskRunner}" -ApiExe "${p.apiExe}" ${taskArgs}`;
   for (const task of tasks) {
     const finalArgs = [
       '/Create',
@@ -371,7 +381,7 @@ async function registerScheduledTasks(winPassword: string): Promise<void> {
       '/TN',
       task.name,
       '/TR',
-      `"${p.apiExe}" ${task.args}`,
+      taskAction(task.args),
       ...task.schedule,
       '/RU',
       user,
@@ -395,7 +405,7 @@ async function registerScheduledTasks(winPassword: string): Promise<void> {
         '/TN',
         task.name,
         '/TR',
-        `"${p.apiExe}" ${task.args}`,
+        taskAction(task.args),
         ...task.schedule,
       ];
       const fallback = await runCapture('schtasks.exe', fallbackArgs, p.dataDir);
