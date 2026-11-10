@@ -37,11 +37,15 @@ if (-not (Test-Path $licenseStore)) {
 # PharmaOS root stays admin-owned (Users: read via RX inheritance).
 icacls (Join-Path $data 'backups') /grant '*S-1-5-32-545:(OI)(CI)M' /T | Out-Null
 icacls (Join-Path $data 'logs') /grant '*S-1-5-32-545:(OI)(CI)M' /T | Out-Null
-# PostgreSQL is more sensitive than logs/backups: only the installing/daily
-# user's SID receives Modify, so another local Windows user cannot alter the
-# database files. SYSTEM and Administrators retain recovery/maintenance access.
+# PostgreSQL must be readable and writable by the daily PharmaOS user. A
+# per-machine installer can be elevated under a different administrator than
+# the account that later runs the app, so granting only the elevated SID makes
+# the runtime unable to read PG_VERSION and falsely starts device-init. The
+# local Users group is the stable identity for the offline single-device app;
+# SYSTEM and Administrators retain full recovery/maintenance access.
 $installerUserModify = "*$installerUserSid`:(OI)(CI)M"
-icacls $pgData /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' $installerUserModify /T | Out-Null
+$dailyUsersModify = '*S-1-5-32-545:(OI)(CI)M'
+icacls $pgData /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' $dailyUsersModify $installerUserModify /T | Out-Null
 icacls $data /inheritance:r /grant '*S-1-5-18:F' '*S-1-5-32-544:F' '*S-1-5-32-545:RX' | Out-Null
 # The file itself needs no inheritance flags: the daily account may update
 # it, while SYSTEM and Administrators retain recovery access. Grant the Users

@@ -25,6 +25,13 @@ STATUS_KEY_LOST = "key_lost"
 STATUS_ERROR = "error"
 STATUS_TAMPER = "tamper"
 
+# Safe, non-sensitive diagnostics for a locked device. These values are
+# deliberately descriptive rather than exception text: they are exposed only
+# through the local license-status surface so the UI can choose the correct
+# recovery path without leaking secrets.
+DIAGNOSTIC_DEVICE_KEYSTORE = "device_keystore_unavailable"
+DIAGNOSTIC_LICENSE_EVALUATION = "license_evaluation_failed"
+
 # Every status past active/grace blocks mutations; the distinction is the
 # message + the recovery path shown to the user.
 BLOCKING_STATUSES = frozenset(
@@ -54,6 +61,7 @@ class LicenseRuntimeState:
     warning: bool = False  # active but inside the 14-day renewal window
     tamper_flag: bool = False
     high_water_utc: datetime | None = None
+    diagnostic: str | None = None
 
 
 _module_state: LicenseRuntimeState | None = None
@@ -135,4 +143,5 @@ def public_view(state: LicenseRuntimeState) -> dict[str, Any]:
         ),
         "days_left": state.days_left,
         "needs_activation": state.needs_activation,
+        "diagnostic": state.diagnostic,
     }

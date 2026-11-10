@@ -55,6 +55,7 @@ class ErrorCode:
     LICENSE_TAMPER_DETECTED = "E-LIC-006"
     LICENSE_STATE_ERROR = "E-LIC-007"
     LICENSE_KEY_LOST = "E-LIC-008"
+    LICENSE_KEYSTORE_UNAVAILABLE = "E-LIC-009"
 
 
 # Fallback messages in English (the neutral request-language fallback; the
@@ -97,6 +98,9 @@ _FALLBACK_MESSAGES: dict[str, str] = {
     ErrorCode.LICENSE_STATE_ERROR: "License state is temporarily unavailable — retrying.",
     ErrorCode.LICENSE_KEY_LOST: (
         "License key is missing from this device — restore it or contact support."
+    ),
+    ErrorCode.LICENSE_KEYSTORE_UNAVAILABLE: (
+        "Device security keys are unavailable — restore the device keys before activating."
     ),
 }
 

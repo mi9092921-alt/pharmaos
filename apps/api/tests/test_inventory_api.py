@@ -59,9 +59,18 @@ async def branch(db_session: AsyncSession) -> Branch:
     return b
 
 
-async def _make_med(db_session: AsyncSession, *, gtin: str | None = None) -> str:
+async def _make_med(
+    db_session: AsyncSession,
+    *,
+    gtin: str | None = None,
+    trade_name_ar: str = "دواء اختبار",
+    scientific_name: str | None = None,
+) -> str:
     med = Medication(
-        trade_name=f"InvApi {uuid.uuid4().hex[:6]}", trade_name_ar="دواء اختبار", gtin=gtin
+        trade_name=f"InvApi {uuid.uuid4().hex[:6]}",
+        trade_name_ar=trade_name_ar,
+        scientific_name=scientific_name,
+        gtin=gtin,
     )
     db_session.add(med)
     await db_session.commit()
@@ -114,6 +123,26 @@ async def test_receive_shows_in_stock_and_batches(admin, branch, db_session: Asy
     data = bl.json()["data"]
     assert len(data) == 1 and data[0]["batch_number"] == batch["batch_number"]
     assert data[0]["trade_name_ar"] == "دواء اختبار"
+
+
+async def test_inventory_search_matches_scientific_name_for_pos(
+    admin, branch, db_session: AsyncSession
+):
+    client, csrf = admin
+    med_id = await _make_med(
+        db_session,
+        trade_name_ar="أوجمنتين",
+        scientific_name="Amoxicillin",
+    )
+    received = await _receive(client, csrf, branch_id=str(branch.id), medication_id=med_id)
+    assert received.status_code == 200, received.text
+
+    response = await client.get(
+        "/api/v1/inventory",
+        params={"branch_id": str(branch.id), "search": "Amoxicillin"},
+    )
+    assert response.status_code == 200, response.text
+    assert any(row["medication_id"] == med_id for row in response.json()["data"])
 
 
 async def test_receive_rejects_expired_via_api(admin, branch, db_session: AsyncSession):

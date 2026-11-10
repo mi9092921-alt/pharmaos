@@ -13,7 +13,7 @@ import { LocaleToggle } from '@/components/locale-toggle';
 import { ApiRequestError, getLicenseStatus, login } from '@/lib/api';
 import { LicenseUploadButton, licenseStatusLabel } from '@/components/license-upload';
 import { useAuth } from '@/lib/auth-store';
-import { t } from '@/lib/i18n';
+import { localizedErrorMessage, t } from '@/lib/i18n';
 
 // Form validation (React Hook Form + Zod — CLAUDE.md stack).
 const loginSchema = z.object({
@@ -61,7 +61,8 @@ export default function LoginPage() {
   // (role="status") — licenseStatusTone('active') is success, right for the
   // settings table, not for a warning box here.
   const licenseDanger =
-    !!lic && ['read_only', 'tamper', 'clock_error', 'key_lost'].includes(lic.status);
+    !!lic && ['read_only', 'tamper', 'clock_error', 'key_lost', 'error'].includes(lic.status);
+  const keystoreUnavailable = lic?.diagnostic === 'device_keystore_unavailable';
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
@@ -84,7 +85,7 @@ export default function LoginPage() {
               role="alert"
               className="mb-4 rounded-[var(--radius-md)] border border-danger/30 bg-red-50 p-3 text-sm text-danger"
             >
-              {t(`errors.${errorCode}`)}
+              {localizedErrorMessage(errorCode, 'حدث خطأ أثناء تسجيل الدخول — حاول مجدداً')}
             </div>
           )}
 
@@ -101,15 +102,27 @@ export default function LoginPage() {
               }`}
             >
               <div className="font-medium">
-                {t('settings.software_license.title')}: {licenseStatusLabel(lic.status)}
+                {t('settings.software_license.title')}:{' '}
+                {keystoreUnavailable
+                  ? localizedErrorMessage(
+                      'E-LIC-009',
+                      'مفاتيح أمان الجهاز غير متاحة — استعد مفاتيح الجهاز أولاً قبل تفعيل الترخيص',
+                    )
+                  : licenseStatusLabel(lic.status)}
               </div>
               {lic.days_left != null && lic.days_left <= 14 && (
                 <div>{t('login.license_days_left', { days: lic.days_left })}</div>
               )}
-              <LicenseUploadButton
-                className="w-full"
-                onActivated={() => void licenseQuery.refetch()}
-              />
+              {keystoreUnavailable ? (
+                <div className="rounded-[var(--radius-sm)] border border-danger/30 bg-red-50 p-2 text-xs text-danger">
+                  {t('shell.keystore_recovery')}
+                </div>
+              ) : (
+                <LicenseUploadButton
+                  className="w-full"
+                  onActivated={() => void licenseQuery.refetch()}
+                />
+              )}
             </div>
           )}
 

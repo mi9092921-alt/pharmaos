@@ -142,6 +142,8 @@ export interface LicenseStatus {
   valid_until: string | null;
   days_left: number | null;
   needs_activation: boolean;
+  /** Non-sensitive local recovery hint; absent on older API builds. */
+  diagnostic?: string | null;
 }
 
 /** Allowlisted endpoint (no session needed) — feeds the activation screen. */

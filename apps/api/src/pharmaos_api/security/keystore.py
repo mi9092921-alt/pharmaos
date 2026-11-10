@@ -47,6 +47,17 @@ BACKUP_KEY_IMPORTED_FLAG = "BACKUP_KEY_IMPORTED"
 # gates first-run completion and the persistent in-app warning.
 BACKUP_KEY_EXPORTED_FLAG = "BACKUP_KEY_EXPORTED"
 
+# Secrets that must survive an application upgrade. This is metadata only; the
+# values are never returned by diagnostics or logs.
+DEVICE_SECRET_NAMES = (
+    DB_PASSWORD_NAME,
+    JWT_PRIVATE_KEY_NAME,
+    JWT_PUBLIC_KEY_NAME,
+    ENCRYPTION_KEY_NAME,
+    BACKUP_KEY_NAME,
+    CLOCK_HMAC_KEY_NAME,
+)
+
 _DEV_STORE_DIR = Path(".pharmaos-devkeys")
 
 
@@ -177,12 +188,37 @@ def _keyring_clear(name: str) -> None:
             keyring.delete_password(SERVICE_NAME, target)
 
 
+def _refuse_secret_regeneration(name: str) -> None:
+    """Prevent silent key replacement on an already-provisioned device.
+
+    A missing JWT/encryption/backup key after provisioning is a recovery event,
+    not a first-run event. Generating a replacement would make existing tokens,
+    encrypted fields, or backups unreadable while appearing to succeed.
+    """
+
+    # The PostgreSQL cluster is the durable, non-secret provisioning marker.
+    # A DB_PASSWORD entry by itself is not enough: after an interrupted or
+    # partial reinstall, the old password may survive while the cluster and
+    # the other device keys do not. In that state there is no database to
+    # decrypt, so first-run provisioning must be allowed to complete instead
+    # of crashing on a missing JWT key. Once PG_VERSION exists, regeneration
+    # remains forbidden because it could make existing data unreadable.
+    from pharmaos_api.config import default_data_dir
+
+    provisioned = (default_data_dir() / "pgdata" / "PG_VERSION").is_file()
+    if get_settings().is_production and provisioned:
+        raise KeystoreUnavailableError(
+            f"device keystore entry {name} is missing; restore the device keys"
+        )
+
+
 def ensure_jwt_keypair() -> tuple[str, str]:
     """Return (private_pem, public_pem), generating & storing them on first run."""
     private_pem = get_secret(JWT_PRIVATE_KEY_NAME)
     public_pem = get_secret(JWT_PUBLIC_KEY_NAME)
     if private_pem and public_pem:
         return private_pem, public_pem
+    _refuse_secret_regeneration(JWT_PRIVATE_KEY_NAME)
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private_pem = key.private_bytes(
@@ -209,6 +245,7 @@ def ensure_encryption_key() -> bytes:
     stored = get_secret(ENCRYPTION_KEY_NAME)
     if stored:
         return bytes.fromhex(stored)
+    _refuse_secret_regeneration(ENCRYPTION_KEY_NAME)
     key = os.urandom(32)
     set_secret(ENCRYPTION_KEY_NAME, key.hex())
     logger.info("Generated new AES-256 field-encryption key and stored it in the keystore.")
@@ -225,6 +262,7 @@ def ensure_backup_key() -> bytes:
     stored = get_secret(BACKUP_KEY_NAME)
     if stored:
         return bytes.fromhex(stored)
+    _refuse_secret_regeneration(BACKUP_KEY_NAME)
     key = os.urandom(32)
     set_secret(BACKUP_KEY_NAME, key.hex())
     logger.info("Generated new AES-256 backup-encryption key and stored it in the keystore.")
@@ -295,3 +333,14 @@ def set_clock_hmac_key(key: bytes) -> None:
     """Store a 32-byte license clock-HMAC key (first-run generation, backup
     `import-keys`, or owner-initiated key rotation — P4 §3)."""
     set_secret(CLOCK_HMAC_KEY_NAME, key.hex())
+
+
+def device_secret_health() -> dict[str, bool]:
+    """Return presence-only health for the device keystore.
+
+    The result is intentionally boolean-only. It is used for diagnostics and
+    upgrade preflight; secret values and exception details never leave this
+    module.
+    """
+
+    return {name: bool(get_secret(name)) for name in DEVICE_SECRET_NAMES}
