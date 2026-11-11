@@ -45,3 +45,13 @@ async def get_session() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency — one session per request."""
     async with get_session_factory()() as session:
         yield session
+
+
+async def reset_engine() -> None:
+    """Dispose and rebuild the pool after a cluster-level restore."""
+
+    global _engine, _session_factory
+    if _engine is not None:
+        await _engine.dispose()
+    _engine = None
+    _session_factory = None

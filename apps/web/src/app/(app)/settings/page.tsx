@@ -16,12 +16,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import {
+  ApiRequestError,
   createBranch,
+  createManualBackup,
   getLicenseStatus,
   getSettings,
   getTaxProfile,
   listBranches,
   putSettings,
+  restoreBackup,
   updateTaxProfile,
   type BranchSettings,
 } from '@/lib/api';
@@ -274,9 +277,131 @@ export default function SettingsPage() {
 
       <TaxProfileCard branchId={branch.id} canEdit={canEdit} />
 
+      <BackupManagementCard />
+
       <SoftwareLicenseCard />
     </div>
   );
+}
+
+function BackupManagementCard() {
+  const canBackup = useAuth((s) => s.hasPermission('settings.backup'));
+  const [showRestore, setShowRestore] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+
+  const createMut = useMutation({
+    mutationFn: createManualBackup,
+    onSuccess: (result) => toast.success(t('settings.backup.created', { file: result.file_name })),
+    onError: (e) => toast.error(backupErrorMessage(e)),
+  });
+
+  const restoreMut = useMutation({
+    mutationFn: () => {
+      if (!restoreFile) throw new Error(t('settings.backup.no_file'));
+      return restoreBackup(restoreFile, password, confirmation);
+    },
+    onSuccess: () => {
+      window.location.assign('/login');
+    },
+    onError: (e) => toast.error(backupErrorMessage(e)),
+  });
+
+  if (!canBackup) return null;
+
+  return (
+    <Card className="mt-6 border-primary-200">
+      <CardHeader>
+        <CardTitle className="text-base">{t('settings.backup.title')}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-0">
+        <p className="text-sm text-slate-500">{t('settings.backup.hint')}</p>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            type="button"
+            disabled={createMut.isPending || restoreMut.isPending}
+            onClick={() => createMut.mutate()}
+          >
+            {createMut.isPending ? t('settings.backup.creating') : t('settings.backup.create')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={createMut.isPending || restoreMut.isPending}
+            onClick={() => setShowRestore((value) => !value)}
+          >
+            {t('settings.backup.restore')}
+          </Button>
+        </div>
+
+        {showRestore && (
+          <form
+            className="space-y-4 rounded-[var(--radius-md)] border border-danger/30 bg-red-50 p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!restoreFile || confirmation !== 'RESTORE_BACKUP') return;
+              restoreMut.mutate();
+            }}
+          >
+            <p className="text-sm font-medium text-danger">
+              {t('settings.backup.restore_warning')}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <Label>{t('settings.backup.choose_file')}</Label>
+              <Input
+                type="file"
+                accept=".pharmaos-backup"
+                onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)}
+                disabled={restoreMut.isPending}
+              />
+            </div>
+            <FieldInput
+              label={t('settings.backup.password')}
+              value={password}
+              onChange={setPassword}
+              disabled={restoreMut.isPending}
+            />
+            <div className="flex flex-col gap-1.5">
+              <Label>{t('settings.backup.confirmation')}</Label>
+              <Input
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                disabled={restoreMut.isPending}
+                autoComplete="off"
+                dir="ltr"
+              />
+              <span className="text-xs text-slate-500">
+                {t('settings.backup.confirmation_hint')}
+              </span>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                variant="danger"
+                disabled={
+                  restoreMut.isPending ||
+                  !restoreFile ||
+                  !password ||
+                  confirmation !== 'RESTORE_BACKUP'
+                }
+              >
+                {restoreMut.isPending
+                  ? t('settings.backup.restoring')
+                  : t('settings.backup.restore_confirm')}
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function backupErrorMessage(error: unknown): string {
+  return error instanceof ApiRequestError
+    ? t(`errors.${error.code}`)
+    : formatApiErrorMessage(error);
 }
 
 function TaxProfileCard({ branchId, canEdit }: { branchId: string; canEdit: boolean }) {

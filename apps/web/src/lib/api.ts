@@ -281,6 +281,34 @@ export function putSettings(branchId: string, values: Record<string, unknown>) {
   });
 }
 
+// ---- Owner backup controls ----
+
+export interface ManualBackupResult {
+  file_name: string;
+  size_bytes: number;
+  sha256: string;
+  secondary_file_name: string | null;
+  cloud_uploaded: boolean;
+  pruned_count: number;
+}
+
+export function createManualBackup() {
+  return apiFetch<ManualBackupResult>('/api/v1/system/backup/create', {
+    method: 'POST',
+  });
+}
+
+export function restoreBackup(file: File, password: string, confirmation: string) {
+  const form = new FormData();
+  form.set('file', file);
+  form.set('password', password);
+  form.set('confirmation', confirmation);
+  return apiFetch<{ file_name: string; report: Record<string, unknown> }>(
+    '/api/v1/system/backup/restore',
+    { method: 'POST', body: form },
+  );
+}
+
 export function updateBranch(branchId: string, values: Record<string, unknown>) {
   return apiFetch<BranchInfo>(`/api/v1/branches/${branchId}`, {
     method: 'PATCH',

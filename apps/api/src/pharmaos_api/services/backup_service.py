@@ -261,6 +261,41 @@ def record_backup_failure(backup_dir: Path, error: BaseException) -> None:
         logger.exception("Could not write backup failure status in %s", backup_dir)
 
 
+def create_backup_job(backup_dir: Path, *, cloud: bool) -> dict[str, object]:
+    """Run one complete manual/scheduled backup job.
+
+    The caller owns the device-wide maintenance lock. Keeping the lock at the
+    caller lets the CLI and HTTP route share exactly the same job without
+    acquiring the non-recursive lock twice.
+    """
+
+    from pharmaos_api.config import get_settings
+
+    try:
+        backup_file = create_backup(backup_dir)
+        if not verify_checksum(backup_file):
+            raise BackupError("backup checksum verification failed")
+        record_backup_success(backup_dir, backup_file)
+
+        settings = get_settings()
+        secondary_file: Path | None = None
+        if settings.backup_secondary_path:
+            secondary_file = copy_to_secondary(backup_file, settings.backup_secondary_path)
+        uploaded = upload_to_cloud(backup_file) if cloud else False
+        deleted = prune_old_backups(backup_dir, keep=settings.backup_keep_count)
+        return {
+            "file_name": backup_file.name,
+            "size_bytes": backup_file.stat().st_size,
+            "sha256": hashlib.sha256(backup_file.read_bytes()).hexdigest(),
+            "secondary_file_name": secondary_file.name if secondary_file else None,
+            "cloud_uploaded": uploaded,
+            "pruned_count": len(deleted),
+        }
+    except Exception as exc:
+        record_backup_failure(backup_dir, exc)
+        raise
+
+
 def write_checksum(backup_file: Path) -> Path:
     """SHA-256 sidecar next to the backup: integrity can be checked WITHOUT
     the backup key (corruption vs tampering; tampering is caught by GCM at

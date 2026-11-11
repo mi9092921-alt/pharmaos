@@ -90,7 +90,9 @@ async def test_backup_checksum_sidecar_written_and_verifies(tmp_path: Path) -> N
     assert sidecar.read_text(encoding="ascii").startswith(expected)
     assert backup_service.verify_checksum(backup_file) is True
     # corruption flips the verdict
-    backup_file.write_bytes(backup_file.read_bytes()[:-1] + b"\x00")
+    corrupted = bytearray(backup_file.read_bytes())
+    corrupted[-1] ^= 0x01
+    backup_file.write_bytes(bytes(corrupted))
     assert backup_service.verify_checksum(backup_file) is False
 
 

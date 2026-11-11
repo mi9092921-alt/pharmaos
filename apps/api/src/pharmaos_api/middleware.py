@@ -21,6 +21,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from pharmaos_api.config import get_settings
 from pharmaos_api.errors import ApiError, ErrorCode, error_envelope
 from pharmaos_api.licensing import runtime
+from pharmaos_api.maintenance_state import is_active
 
 _SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -29,6 +30,24 @@ _SECURITY_HEADERS = {
 }
 
 _MAX_LICENSE_BYTES = 64 * 1024  # 64 KiB (P4 §6)
+
+
+class MaintenanceGateMiddleware(BaseHTTPMiddleware):
+    """Fail closed while an in-process backup/restore owns the device."""
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        if is_active() and request.url.path.rstrip("/") != "/api/v1/health":
+            return JSONResponse(
+                status_code=503,
+                content=error_envelope(
+                    ErrorCode.MAINTENANCE_ACTIVE,
+                    "The system is temporarily unavailable for maintenance.",
+                ),
+                headers={"Retry-After": "5"},
+            )
+        return await call_next(request)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

@@ -21,11 +21,13 @@ from pharmaos_api.errors import ApiError, ErrorCode, error_envelope, success_env
 from pharmaos_api.middleware import (
     LicenseGateMiddleware,
     LoginRateLimitMiddleware,
+    MaintenanceGateMiddleware,
     SecurityHeadersMiddleware,
 )
 from pharmaos_api.routers import (
     alerts,
     auth,
+    backup,
     cashier,
     catalog,
     compliance,
@@ -303,10 +305,12 @@ def create_app(license_scheduler: bool = True) -> FastAPI:
     # Middleware LIFO order (outermost executed first):
     # SecurityHeaders (1st) -> LicenseGate (2nd) -> LoginRateLimit (3rd) -> app
     app.add_middleware(LoginRateLimitMiddleware)
+    app.add_middleware(MaintenanceGateMiddleware)
     app.add_middleware(LicenseGateMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
 
     app.include_router(license_router.router)
+    app.include_router(backup.router)
     app.include_router(auth.router)
     app.include_router(pos.router)
     app.include_router(users.router)

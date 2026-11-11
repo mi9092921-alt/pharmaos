@@ -119,26 +119,24 @@ def _backup_create(backup_dir: Path, *, cloud: bool) -> int:
     from pharmaos_api.services import backup_service
 
     try:
-        backup_file = backup_service.create_backup(backup_dir)
-        print(f"backup created: {backup_file}")
-        if not backup_service.verify_checksum(backup_file):
-            raise RuntimeError("checksum sidecar is missing or does not verify")
+        result = backup_service.create_backup_job(backup_dir, cloud=cloud)
+        print(f"backup created: {backup_dir / str(result['file_name'])}")
         print("checksum sidecar: written")
-        backup_service.record_backup_success(backup_dir, backup_file)
-        secondary = get_settings().backup_secondary_path
-        if secondary is not None:
-            secondary_file = backup_service.copy_to_secondary(backup_file, secondary)
-            print(f"secondary copy: {secondary_file}")
+        if result["secondary_file_name"]:
+            print(f"secondary copy: {result['secondary_file_name']}")
         if cloud:
-            uploaded = backup_service.upload_to_cloud(backup_file)
-            print("cloud copy: uploaded" if uploaded else "cloud copy: skipped (not configured)")
-        keep = get_settings().backup_keep_count
-        deleted = backup_service.prune_old_backups(backup_dir, keep=keep)
-        if deleted:
-            print(f"retention: pruned {len(deleted)} old backup(s) (keeping newest {keep})")
+            print(
+                "cloud copy: uploaded"
+                if result["cloud_uploaded"]
+                else "cloud copy: skipped (not configured)"
+            )
+        if result["pruned_count"]:
+            print(
+                f"retention: pruned {result['pruned_count']} old backup(s) "
+                f"(keeping newest {get_settings().backup_keep_count})"
+            )
         return 0
     except Exception as exc:
-        backup_service.record_backup_failure(backup_dir, exc)
         logger.exception("Backup job failed (directory=%s)", backup_dir)
         print(f"backup failed: {exc}", file=sys.stderr)
         return 1
