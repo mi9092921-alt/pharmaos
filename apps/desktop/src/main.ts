@@ -102,6 +102,10 @@ async function boot(): Promise<void> {
     return;
   }
 
+  // Migrate task actions on every successful boot so upgrades repair tasks
+  // that were registered by a previous version without requiring a new setup.
+  await refreshScheduledTaskActions();
+
   if (result.setup && !result.setup.setup_complete) {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
@@ -439,6 +443,43 @@ async function registerScheduledTasks(winPassword: string): Promise<void> {
     log(
       `scheduled task registered: ${task.name} (user ${user}, run-whether-logged-on, start-when-available)`,
     );
+  }
+}
+
+/**
+ * Upgrade tasks created by an older PharmaOS build. Existing installations
+ * already have the task names, so first-run registration is not called again
+ * after an upgrade. Replacing only the task action is enough to stop the old
+ * console-subsystem API from flashing a CMD window; missing tasks are ignored
+ * because first-run registration may not have happened yet.
+ */
+async function refreshScheduledTaskActions(): Promise<void> {
+  const tasks: Array<{ name: string; args: string }> = [
+    { name: 'PharmaOS-Backup', args: 'backup create --no-cloud' },
+    { name: 'PharmaOS-Compliance-Drain', args: 'compliance-drain' },
+    { name: 'PharmaOS-Expiry-Sweep', args: 'inventory expiry-sweep' },
+    { name: 'PharmaOS-Alerts-Evaluate', args: 'alerts-evaluate' },
+  ];
+  const taskRunner = path.join(p.desktopResources, 'task-runner.ps1');
+  const taskAction = (taskArgs: string) =>
+    `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${taskRunner}" -ApiExe "${p.apiExe}" ${taskArgs}`;
+
+  for (const task of tasks) {
+    const result = await runCapture(
+      'schtasks.exe',
+      ['/Change', '/TN', task.name, '/TR', taskAction(task.args)],
+      p.dataDir,
+      15000,
+    );
+    if (result.code === 0) {
+      log(`scheduled task action upgraded: ${task.name}`);
+    } else {
+      // A missing task is normal before first-run setup; an access or service
+      // failure must not prevent the desktop UI from opening.
+      log(
+        `scheduled task action upgrade skipped: ${task.name} (${result.stderr || result.stdout})`,
+      );
+    }
   }
 }
 
