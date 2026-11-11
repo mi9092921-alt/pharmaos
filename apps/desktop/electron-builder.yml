@@ -4,6 +4,7 @@
 appId: com.pharmaos.desktop
 productName: PharmaOS
 copyright: PharmaOS
+icon: resources/brand/pharmaos-app-icon.ico
 
 directories:
   output: ../../installer/dist/installer

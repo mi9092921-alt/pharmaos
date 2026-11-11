@@ -14,6 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
+import Image from 'next/image';
 import Link from 'next/link';
 
 import {
@@ -1026,6 +1027,14 @@ function PrintableReceipt({ receipt }: { receipt: InvoiceReceipt }) {
   const width = receipt.paper_size === '80mm' ? 'max-w-[300px]' : 'max-w-[420px]';
   return (
     <div className={`receipt-print mx-auto ${width} bg-white p-4 text-center text-sm text-black`}>
+      <Image
+        src="/brand/pharmaos-mark-mono.svg"
+        alt="PharmaOS"
+        width={48}
+        height={48}
+        className="mx-auto mb-2"
+        unoptimized
+      />
       <p className="text-lg font-extrabold">{receipt.pharmacy_name}</p>
       <p>{receipt.branch_name}</p>
       {receipt.address && <p>{receipt.address}</p>}
