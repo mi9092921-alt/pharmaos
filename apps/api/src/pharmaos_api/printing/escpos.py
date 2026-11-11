@@ -16,6 +16,7 @@ for the customer, not an API response (the bilingual-codes rule applies to API
 payloads; the M12 skeleton established Arabic labels in this module).
 """
 
+import math
 import socket
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -33,9 +34,81 @@ FEED = b"\n"
 CUT = b"\x1dV\x42\x03"  # GS V B — partial cut with feed
 DRAWER_PULSE = b"\x1bp\x00\x19\xfa"  # ESC p — open cash drawer (pin 2)
 QR_PREFIX = b"\x1d\x28\x6b"  # GS ( k — QR model/size/EC/store/print family
+RASTER_IMAGE_PREFIX = b"\x1d\x76\x30"  # GS v 0 — raster bit-image
 
 _LINE_WIDTH = 42  # characters at font A on 80mm paper
 _QR_MAX_BYTES = 700  # stay well under model-2 symbol capacity
+_LOGO_WIDTH = 96
+_LOGO_HEIGHT = 96
+
+
+def _logo_pixel(x: int, y: int, width: int, height: int, scale: float = 0.76) -> bool:
+    """Return whether a printer pixel belongs to the approved mono mark.
+
+    ESC/POS printers cannot consume SVG. The coordinates below are the
+    monochrome mark's viewBox geometry (100x100), transformed from the
+    committed ``brand/pharmaos-mark-mono.svg``. Keeping this tiny renderer in
+    the API avoids a Pillow/native-image dependency in the offline desktop
+    runtime while producing the same mark on every supported printer.
+    """
+    # Undo the SVG's -45 degree rotation to test the unrotated mark geometry.
+    centered_x = (x + 0.5 - width / 2) / scale
+    centered_y = (y + 0.5 - height / 2) / scale
+    cos_45 = math.sqrt(0.5)
+    sin_45 = cos_45
+    local_x = centered_x * cos_45 - centered_y * sin_45 + 50
+    local_y = centered_x * sin_45 + centered_y * cos_45 + 50
+
+    # Left half of the capsule: a rectangle plus the left semicircle.
+    if 27 <= local_x <= 50 and 31 <= local_y <= 69:
+        return True
+    if local_x <= 27 and (local_x - 27) ** 2 + (local_y - 50) ** 2 <= 19**2:
+        return True
+
+    dots = (
+        (56, 36, 3.0),
+        (56, 50, 3.0),
+        (56, 57, 3.0),
+        (56, 64, 3.0),
+        (63, 36, 3.0),
+        (63, 43, 3.0),
+        (63, 50, 3.0),
+        (63, 64, 3.0),
+        (70, 43, 2.8),
+        (70, 50, 2.8),
+        (70, 57, 2.8),
+        (77, 36, 2.6),
+        (77, 50, 2.6),
+        (77, 57, 2.6),
+        (77, 64, 2.6),
+        (84, 43, 2.3),
+        (84, 50, 2.3),
+        (84, 57, 2.3),
+    )
+    return any((local_x - cx) ** 2 + (local_y - cy) ** 2 <= radius**2 for cx, cy, radius in dots)
+
+
+def pharmaos_logo_raster(*, width: int = _LOGO_WIDTH, height: int = _LOGO_HEIGHT) -> bytes:
+    """Encode the approved PharmaOS mono mark as an ESC/POS raster image."""
+    if width < 8 or height < 1:
+        raise ValueError("logo raster must be at least 8x1 pixels")
+    bytes_per_row = (width + 7) // 8
+    bitmap = bytearray(bytes_per_row * height)
+    for y in range(height):
+        for x in range(width):
+            if _logo_pixel(x, y, width, height):
+                bitmap[y * bytes_per_row + x // 8] |= 0x80 >> (x % 8)
+
+    header = bytes(
+        (
+            0,  # m: normal density
+            bytes_per_row & 0xFF,
+            (bytes_per_row >> 8) & 0xFF,
+            height & 0xFF,
+            (height >> 8) & 0xFF,
+        )
+    )
+    return RASTER_IMAGE_PREFIX + header + bytes(bitmap)
 
 
 def qr_code(content: str, *, module_size: int = 6) -> bytes:
@@ -114,6 +187,7 @@ def build_receipt(receipt: ReceiptData, *, open_drawer: bool = True) -> bytes:
     out = bytearray()
     out += INIT
 
+    out += ALIGN_CENTER + pharmaos_logo_raster() + FEED
     out += ALIGN_CENTER + DOUBLE_SIZE + BOLD_ON
     out += _text(receipt.pharmacy_name) + FEED
     out += NORMAL_SIZE + BOLD_OFF

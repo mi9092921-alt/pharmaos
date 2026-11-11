@@ -28,9 +28,11 @@ from pharmaos_api.printing.escpos import (
     DRAWER_PULSE,
     INIT,
     QR_PREFIX,
+    RASTER_IMAGE_PREFIX,
     ReceiptData,
     ReceiptLine,
     build_receipt,
+    pharmaos_logo_raster,
     qr_code,
 )
 from pharmaos_api.services import receipt_service, sales_service
@@ -68,6 +70,20 @@ def test_qr_code_bytes_structure() -> None:
     assert payload.startswith(QR_PREFIX)  # model command first
     assert b"PHARMAOS|INV-1|60.00" in payload  # data stored
     assert payload.endswith(QR_PREFIX + b"\x03\x00\x31\x51\x30")  # print symbol last
+
+
+def test_pharmaos_logo_is_encoded_as_escpos_raster() -> None:
+    logo = pharmaos_logo_raster()
+    # GS v 0 + normal density + 12 bytes/row + 96 rows + bitmap bytes.
+    assert logo.startswith(RASTER_IMAGE_PREFIX + b"\x00\x0c\x00\x60\x00")
+    assert len(logo) == len(RASTER_IMAGE_PREFIX) + 5 + 12 * 96
+    assert any(logo[5:])
+
+
+def test_receipt_starts_with_pharmaos_logo() -> None:
+    payload = build_receipt(_minimal_receipt())
+    logo_start = len(INIT) + len(b"\x1ba\x01")
+    assert payload[logo_start : logo_start + len(RASTER_IMAGE_PREFIX)] == RASTER_IMAGE_PREFIX
 
 
 def test_receipt_qr_only_when_content_present() -> None:
