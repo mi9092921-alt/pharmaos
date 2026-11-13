@@ -25,15 +25,14 @@ import {
   getInvoiceReceipt,
   getMedication,
   getPrescription,
-  type InventoryRow,
   type InvoiceReceipt,
   listCustomers,
-  listInventory,
   listInventoryBranches,
   listPrescriptions,
   type MedOption,
   parseGs1,
   posScan,
+  searchPosMedications,
   type PosLevel,
   type PosSaleResult,
   type PosScan,
@@ -267,9 +266,9 @@ export default function PosPage() {
     if (term.length < 2 || searching || !branchId) return;
     setSearching(true);
     try {
-      // Branch-scoped search (not the global catalog): each hit carries its
-      // shelf slot and on-hand stock so the seller walks straight to the drawer.
-      const rows: InventoryRow[] = await listInventory(branchId, { search: term });
+      // Search the global catalog, then overlay branch shelf and on-hand stock
+      // so an out-of-stock item can still be identified or requested.
+      const rows = await searchPosMedications(branchId, term);
       const found: PosSearchHit[] = rows.map((r) => ({
         id: r.medication_id,
         trade_name: r.trade_name,

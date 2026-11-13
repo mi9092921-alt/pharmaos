@@ -287,6 +287,23 @@ async def test_scan_endpoint_returns_all_sellable_levels(
     assert next(x for x in levels if x["is_default_sale"])["selling_price"] == "30.00"
 
 
+async def test_pos_name_search_finds_catalog_item_without_stock(
+    client: httpx.AsyncClient, db_session: AsyncSession, branch: Branch
+) -> None:
+    """POS search starts from the catalog, so zero-stock items remain selectable."""
+    await _login(client, await _seed_role_user(db_session, "cashier"))
+    ids = await _make_pos_med(db_session)
+
+    response = await client.get(
+        "/api/v1/pos/search",
+        params={"branch_id": str(branch.id), "search": "نقطة"},
+    )
+    assert response.status_code == 200, response.text
+    row = next(item for item in response.json()["data"] if item["medication_id"] == ids["med_id"])
+    assert row["cached_quantity"] in ("0", "0.000")
+    assert row["shelf_location"] is None
+
+
 async def test_scan_endpoint_resolves_gs1_datamatrix(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:

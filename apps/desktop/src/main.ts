@@ -102,10 +102,6 @@ async function boot(): Promise<void> {
     return;
   }
 
-  // Migrate task actions on every successful boot so upgrades repair tasks
-  // that were registered by a previous version without requiring a new setup.
-  await refreshScheduledTaskActions();
-
   if (result.setup && !result.setup.setup_complete) {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
@@ -118,6 +114,17 @@ async function boot(): Promise<void> {
 
   createMainWindow();
   isSettingUp = false;
+
+  // Task-action migration is maintenance work and must not hold the UI
+  // hostage after the services already reported that they are ready. A
+  // missing task is expected on first run, and schtasks can also block while
+  // the Task Scheduler service is unavailable. Neither case should leave the
+  // user staring at the splash screen.
+  void refreshScheduledTaskActions().catch((error) => {
+    log(
+      `scheduled task action refresh failed (non-fatal): ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
 }
 
 function createMainWindow(): void {
@@ -151,7 +158,17 @@ function createMainWindow(): void {
     }
   });
 
-  void window.loadURL(uiUrl);
+  void window.loadURL(uiUrl).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    log(`main window failed to load ${uiUrl}: ${message}`);
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close();
+      splashWindow = null;
+    }
+    if (!window.isDestroyed()) window.close();
+    dialog.showErrorBox('PharmaOS - تعذر فتح الواجهة', `${message}\n\nالسجلات: ${p.logsDir}`);
+    app.quit();
+  });
 }
 
 // ---------------------------------------------------------------------------

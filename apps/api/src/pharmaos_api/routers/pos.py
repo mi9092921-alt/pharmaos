@@ -37,6 +37,18 @@ from pharmaos_api.services import (
 router = APIRouter(prefix="/api/v1/pos", tags=["pos"])
 
 
+@router.get("/search")
+async def search_catalog(
+    branch_id: uuid.UUID = Query(),
+    search: str = Query(min_length=2, max_length=120),
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_permission("inventory.view")),
+) -> dict[str, object]:
+    """Name search for POS: catalog results overlaid with branch stock."""
+    rows = await inventory_service.search_pos_catalog(session, branch_id=branch_id, search=search)
+    return success_envelope(rows, meta={"page": 1, "total": len(rows), "per_page": len(rows)})
+
+
 @router.get("/scan")
 async def scan(
     barcode: str = Query(min_length=1, max_length=120),

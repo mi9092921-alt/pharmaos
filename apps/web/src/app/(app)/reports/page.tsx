@@ -56,6 +56,15 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function supplierTodayIso(): string {
+  // Supplier order_date is a local business date. Keep this correction scoped
+  // to the affected report until the other report filters are reviewed.
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
 const STOCK_STATUS_TONE: Record<StockLevelStatus, 'success' | 'warning' | 'danger'> = {
   ok: 'success',
   low_stock: 'warning',
@@ -658,8 +667,8 @@ function ProfitReportBody({ data }: { data: ProfitLossReport }) {
 // ------------------------------ suppliers (P3-M5) ------------------------------
 
 function SuppliersTab({ branchId, canExport }: { branchId: string; canExport: boolean }) {
-  const [dateFrom, setDateFrom] = useState(todayIso());
-  const [dateTo, setDateTo] = useState(todayIso());
+  const [dateFrom, setDateFrom] = useState(supplierTodayIso());
+  const [dateTo, setDateTo] = useState(supplierTodayIso());
   const reportQuery = useQuery({
     queryKey: ['supplier-performance-report', branchId, dateFrom, dateTo],
     queryFn: () => getSupplierPerformanceReport({ branchId, dateFrom, dateTo }),

@@ -985,6 +985,66 @@ async def list_inventory(
     )
 
 
+async def search_pos_catalog(
+    session: AsyncSession,
+    *,
+    branch_id: uuid.UUID,
+    search: str,
+    limit: int = 50,
+) -> list[dict[str, object]]:
+    """Search the POS catalog while overlaying branch stock metadata.
+
+    POS name search must start from the global catalog, not
+    ``branch_inventory``: a catalog item can be sellable but have no cache row
+    yet (or currently be out of stock).  The left join keeps those items
+    searchable and reports zero stock instead of hiding them.
+    """
+    term = search.strip()
+    if not term:
+        return []
+    capped = min(max(limit, 1), MAX_PAGE_SIZE)
+    rows = (await session.execute(text("""
+                SELECT m.id, m.trade_name, m.trade_name_ar,
+                       COALESCE(bi.cached_quantity, 0) AS cached_quantity,
+                       bi.shelf_location
+                FROM medications m
+                LEFT JOIN branch_inventory bi
+                  ON bi.branch_id = :b
+                 AND bi.medication_id = m.id
+                 AND NOT bi.is_deleted
+                WHERE NOT m.is_deleted
+                  AND m.is_active
+                  AND EXISTS (
+                      SELECT 1 FROM medication_packaging p
+                      WHERE p.medication_id = m.id
+                        AND NOT p.is_deleted
+                        AND p.is_sellable
+                  )
+                  AND (
+                      m.search_vector @@ plainto_tsquery(
+                          'arabic_simple', normalize_arabic(:q)
+                      )
+                      OR normalize_arabic(coalesce(m.trade_name_ar, ''))
+                         % normalize_arabic(:q)
+                      OR m.trade_name ILIKE '%' || :q || '%'
+                      OR m.trade_name_ar ILIKE '%' || :q || '%'
+                      OR m.scientific_name ILIKE '%' || :q || '%'
+                  )
+                ORDER BY m.trade_name
+                LIMIT :lim
+                """).bindparams(b=branch_id, q=term, lim=capped))).all()
+    return [
+        {
+            "medication_id": str(row[0]),
+            "trade_name": row[1],
+            "trade_name_ar": row[2],
+            "cached_quantity": str(row[3]),
+            "shelf_location": row[4],
+        }
+        for row in rows
+    ]
+
+
 async def list_batches(
     session: AsyncSession,
     *,

@@ -699,6 +699,19 @@ export function searchMedications(term: string) {
 
 // ---- POS (P1-M8): scan, unit switching, sale ----
 
+export interface PosSearchItem {
+  medication_id: string;
+  trade_name: string;
+  trade_name_ar: string | null;
+  cached_quantity: string;
+  shelf_location: string | null;
+}
+
+export function searchPosMedications(branchId: string, term: string) {
+  const params = new URLSearchParams({ branch_id: branchId, search: term });
+  return apiFetch<PosSearchItem[]>(`/api/v1/pos/search?${params.toString()}`);
+}
+
 export interface PosLevel {
   id: string;
   level: number;
